@@ -1,0 +1,17 @@
+ Changes I made to the simulator:
+ 
+ in src/plugins_pkg/bno055_plugin/src/ bno....cpp
+ added (rebuild needed, dont forget to remove .gazebo in the home folder)
+ 
+ this->m_bno055_pose.posx   = this->m_model->RelativePose().Pos().X();
+ this->m_bno055_pose.posy   = abs(this->m_model->RelativePose().Pos().Y()); 
+ 
+ 
+ in src/utils/msg/IMU.msg
+ added (rebuild needed)
+ 
+ float32 posx
+ float32 posy
+ 
+ 
+ 
