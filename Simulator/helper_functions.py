@@ -16,9 +16,7 @@ def yaw2world(angle):
 def world2yaw(angle):
     return -angle -np.pi/2
 
-
-
-#function to draw the wheels on the map
+#function to draw the car on the map
 def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
     car_length = 0.4 #m
     car_width = 0.2 #m
