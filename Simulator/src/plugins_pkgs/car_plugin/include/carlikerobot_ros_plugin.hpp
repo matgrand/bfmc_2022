@@ -36,6 +36,7 @@ namespace gazebo
                 void brakeMessage(float _msg_val);
                 void spedMessage(float _msg_val);
                 void sterMessage(float _msg_val);
+                void moveMessage(float _speed_val, float _steer_val);
                 
                 // private variable 
                 IRobotCommandSetter*                _robotSetter;

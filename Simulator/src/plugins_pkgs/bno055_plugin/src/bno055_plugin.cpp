@@ -11,7 +11,7 @@ namespace gazebo
         void BNO055::Load(physics::ModelPtr model_ptr, sdf::ElementPtr sdf_ptr)
         {
             nh = boost::make_shared<ros::NodeHandle>();	
-            timer = nh->createTimer(ros::Duration(0.1), std::bind(&BNO055::OnUpdate, this));
+            timer = nh->createTimer(ros::Duration(0.01), std::bind(&BNO055::OnUpdate, this));
 	    	
       			// Save a pointer to the model for later use
       			this->m_model = model_ptr;

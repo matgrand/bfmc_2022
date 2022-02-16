@@ -74,7 +74,11 @@ namespace gazebo
 		            if (DEBUG){ROS_INFO_STREAM("Received BRAKE message");}
 		            if (doc.HasMember("steerAngle")){ this->brakeMessage(doc["steerAngle"].GetFloat());}
 		    		else{ROS_INFO_STREAM("Invalid message"); this->unknownMessage();}
-		    	} else {
+		    	} else if (command =="4") {
+		            if (DEBUG){ROS_INFO_STREAM("Received MOVE message");}
+		            if (doc.HasMember("speed") && doc.HasMember("steerAngle")){ this->moveMessage(doc["speed"].GetFloat(), doc["steerAngle"].GetFloat());}
+		    		else{ROS_INFO_STREAM("Invalid message"); this->unknownMessage();}
+                } else {
 		            ROS_INFO_STREAM("Received UNKNOWN message");
 		            this->unknownMessage();
 		    	}
@@ -116,6 +120,16 @@ namespace gazebo
             _robotSetter->setCommand();
             std_msgs::String l_resp;
             l_resp.data = "@2:ack;;";
+            this->_feedbackPublisher.publish(l_resp);
+        }
+
+        void CMessageHandler::moveMessage(float _speed_val, float _steer_val)
+        {
+            _robotSetter->f_speed = _speed_val;
+            _robotSetter->f_steer = _steer_val;
+            _robotSetter->setCommand();
+            std_msgs::String l_resp;
+            l_resp.data = "@4:ack;;";
             this->_feedbackPublisher.publish(l_resp);
         }
 
