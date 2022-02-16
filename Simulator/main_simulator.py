@@ -13,17 +13,15 @@ import numpy as np
 from std_srvs.srv import Empty
 #from car_plugin.msg import Response
 from time import sleep
-#from helper_functions import *
 import os
 import matplotlib.pyplot as plt
 
 from LaneKeepingReloaded import LaneKeepingReloaded
-# from  car_data import Automobile_Data
 from  automobile_data import Automobile_Data
 from PathPlanning_advanced import *
 from PathPlanning_advanced import PathPlanning
 
-from generate_standard_route import SimpleController#, TrainingTrajectory
+from simple_controller import SimpleController
 
 
 # map = cv.imread('src/models_pkg/track/materials/textures/2021_Medium.png')
@@ -75,12 +73,6 @@ if __name__ == '__main__':
         path.compute_shortest_path(step_length=0.01)
         path.draw_path()
 
-        # plt.scatter(path.path[0:500,0], path.path[0:500,1])
-        # for i in range(500):
-        #     plt.text(path.path[i,0], path.path[i,1], str(i))
-        # plt.show()
-        # sleep(1)
-            
         while not rospy.is_shutdown():
             # Get the image from the camera
             frame = car.cv_image
