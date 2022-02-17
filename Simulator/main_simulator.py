@@ -27,6 +27,11 @@ from simple_controller import SimpleController
 # map = cv.imread('src/models_pkg/track/materials/textures/2021_Medium.png')
 map = cv.imread('src/models_pkg/track/materials/textures/2021_VerySmall.png')
 
+training = False
+folder = 'training_imgs' 
+# folder = 'test_imgs'
+
+
 if __name__ == '__main__':
 
     #init windows
@@ -44,11 +49,11 @@ if __name__ == '__main__':
     sample_time = 0.01 # [s]
     max_angle = 30.0    # [deg]
     max_speed = 0.5  # [m/s]
-    desired_speed = 0.30 # [m/s]
+    desired_speed = 0.15 # [m/s]
     nodes_ahead = 400 # [nodes] how long the trajectory will be
     samples_per_edge = 100# [steps] how many steps per edge in graph
     # init trajectory
-    path = PathPlanning(map, source=86, target=235)
+    path = PathPlanning(map, source=86, target=254) #254 463
 
     #init controller
     k1 = 0.0 #4.0 gain error parallel to direction (speed)
@@ -56,7 +61,7 @@ if __name__ == '__main__':
     k3 = 1.5 #1.5 yaw error gain
     #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
     ff_curvature = 1.0 # feedforward gain
-    controller = SimpleController(k1=k1, k2=k2, k3=k3, ff=ff_curvature)
+    controller = SimpleController(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, training=training)
 
     start_time_stamp = 0.0
 
@@ -89,12 +94,21 @@ if __name__ == '__main__':
             xd, yd, yawd, curv, finished = path.get_reference(car)
             if finished:
                 print("Reached end of trajectory")
+                car.stop()
                 break
             #draw refrence car
             draw_car(tmp, xd, yd, yawd, color=(0, 0, 255))
 
             #car control, unrealistic: uses the true position
-            speed_ref, angle_ref = controller.get_control(car.x_true, car.y_true, car.yaw, xd, yd, yawd, desired_speed, curv)
+            if training:
+                #training
+                speed_ref, angle_ref = controller.get_control(car.x_true, car.y_true, car.yaw, xd, yd, yawd, desired_speed, curv)
+                controller.save_data(car.cv_image, folder)
+            else:
+                #Neural network control
+                speed_ref, angle_ref = controller.get_nn_control(frame, desired_speed)
+
+            
             car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
 
         

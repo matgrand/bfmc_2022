@@ -316,7 +316,7 @@ class PathPlanning():
         closest_index = np.argmin(diff_norms)
         #check if it's last element
         if closest_index == len(path_to_analyze)-1:
-            closest_index = closest_index - (1+look_ahead)
+            closest_index = closest_index - (2+look_ahead)
         closest_index = closest_index + look_ahead
         closest_point = path_to_analyze[closest_index]
         x_des = closest_point[0]

@@ -4,3 +4,6 @@ build/
 .catkin_workspace
 src/CMakeLists.txt
 **/*.pyc
+dl_env/*
+training_imgs/*
+test_imgs/*
