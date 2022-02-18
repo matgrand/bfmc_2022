@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 
 from LaneKeepingReloaded import LaneKeepingReloaded
 from  automobile_data import Automobile_Data
-from PathPlanning_advanced import *
+from helper_functions import *
 from PathPlanning_advanced import PathPlanning
 
 from simple_controller import SimpleController
@@ -27,7 +27,7 @@ from simple_controller import SimpleController
 # map = cv.imread('src/models_pkg/track/materials/textures/2021_Medium.png')
 map = cv.imread('src/models_pkg/track/materials/textures/2021_VerySmall.png')
 
-training = False
+training = True
 folder = 'training_imgs' 
 # folder = 'test_imgs'
 
@@ -49,7 +49,7 @@ if __name__ == '__main__':
     sample_time = 0.01 # [s]
     max_angle = 30.0    # [deg]
     max_speed = 0.5  # [m/s]
-    desired_speed = 0.15 # [m/s]
+    desired_speed = 0.30 # [m/s]
     nodes_ahead = 400 # [nodes] how long the trajectory will be
     samples_per_edge = 100# [steps] how many steps per edge in graph
     # init trajectory
@@ -79,11 +79,13 @@ if __name__ == '__main__':
         path.draw_path()
 
         while not rospy.is_shutdown():
-            # Get the image from the camera
-            frame = car.cv_image
-
-            #draw car on map
             tmp = np.copy(map)
+            # Get the image from the camera
+            frame = car.cv_image.copy()
+            #decimate path.path
+            points = path.path[::20]
+            frame, proj = project_onto_frame(frame, car, np.array(points)) 
+
             #draw true car position
             draw_car(tmp, car.x_true, car.y_true, car.yaw, color=(0, 255, 0))
 
@@ -120,9 +122,7 @@ if __name__ == '__main__':
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {controller.e3:.3f}")
             print(f"speed_ref: {speed_ref:.3f},    angle_ref: {angle_ref:.3f}")
             #print(f"time remaining: {trajectory.total_time-(car.time_stamp - start_time_stamp):.3f} seconds")
-    
-            #show poly_image
-            # cv.imshow("Poly", poly)
+
             cv.imshow("Frame preview", frame)
             cv.imshow("2D-MAP", tmp)
             cv.waitKey(1)

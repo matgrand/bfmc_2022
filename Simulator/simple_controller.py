@@ -64,15 +64,13 @@ class SimpleController():
         curvature_ahead = 0.0 ####### <------------------------------------------------------------
         output_angle = self.ff*curvature_ahead - self.k2 * self.e2 - self.k3 * self.e3
         output_speed = vd - self.k1 * self.e1
-        output_angle = output_angle
         return output_speed, output_angle
-
-
+    
     def get_random_noise(self, std=np.deg2rad(20), reset=7):
         if self.cnt == reset:
             self.cnt = 0
             self.noise = np.random.normal(0, std)
-            print(f"noise: {self.noise}")
+            # print(f"noise: {self.noise}")
         self.cnt += 1
         return self.noise
 

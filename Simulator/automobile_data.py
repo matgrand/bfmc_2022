@@ -36,6 +36,12 @@ TREAD = 0.09  			            # horizantal distance between the imaginary line th
 #WB = 0.26  			                # distance between the two wheels centers on one side (front and back wheel) [m]
 WB = 0.304
 
+#Camera position and orientation wrt the car frame
+CAM_X, CAM_Y, CAM_Z, CAM_ROLL, CAM_PITCH, CAM_YAW = 0, 0, 0.2, 0, 0.2617, 0 #[m, rad]
+CAM_FOV = 1.085594795 #[rad]
+CAM_F = 1.0 # focal length
+CAM_Sx, CAM_Sy, CAM_Ox, CAM_Oy = 10,10,10,10#100, 100, 240, 320 #scaling factors [m]->[pixels], and offsets [pixel]
+
 #  Simulation parameter
 #Qsim = np.diag([0.5, 0.5])**2
 #Rsim = np.diag([1.0, np.deg2rad(30.0)])**2
@@ -83,6 +89,15 @@ class Automobile_Data():
         # camera
         self.bridge = CvBridge()
         self.cv_image = np.zeros((640, 480))
+        self.cam_x = CAM_X
+        self.cam_y = CAM_Y
+        self.cam_z = CAM_Z
+        self.cam_roll = CAM_ROLL
+        self.cam_pitch = CAM_PITCH
+        self.cam_yaw = CAM_YAW
+        self.cam_fov = CAM_FOV
+        self.cam_K = np.array([[CAM_F*CAM_Sx, 0, CAM_Ox], [ 0, CAM_F*CAM_Sy, CAM_Oy], [ 0, 0, 1.0]])
+        assert self.cam_K.shape == (3,3) # make sure the matrix is 3x3
 
         # Publisher node : Send command to the car
         rospy.init_node('automobile_data', anonymous=False)  

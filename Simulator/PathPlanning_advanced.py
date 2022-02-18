@@ -10,6 +10,8 @@ import random
 from pyclothoids import Clothoid
 import math
 
+from helper_functions import *
+
 class PathPlanning(): 
     def __init__(self, map_img, source="86", target="300"):
         # start and end nodes
@@ -388,8 +390,8 @@ class PathPlanning():
         for i, (x,y) in enumerate(zip(path_X, path_Y)):
             if not (np.isclose(x,prev_x, rtol=1e-5) and np.isclose(y, prev_y, rtol=1e-5)):
                 path.append([x,y])
-            else:
-                print(f'Duplicate point: {x}, {y}, index {i}')
+            # else:
+            #     print(f'Duplicate point: {x}, {y}, index {i}')
             prev_x = x
             prev_y = y
         
@@ -440,89 +442,3 @@ class PathPlanning():
         # save current image
         cv.imwrite('my_trajectory.png', self.map)
         cv.waitKey(1)
-
-
-# HELPER FUNCTIONS
-
-def m2pix(m):
-    #const_simple = 196.5
-    #const_med = 14164/15.0
-    const_verysmall = 3541/15.0
-    return np.int32(m*const_verysmall)
-
-def yaw2world(angle):
-        return -(angle + np.pi/2)
-
-def world2yaw(angle):
-    return -angle -np.pi/2
-
-#function to draw the car on the map
-def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
-    car_length = 0.4 #m
-    car_width = 0.2 #m
-    #match angle with map frame of reference
-    angle = yaw2world(angle)
-    #find 4 corners not rotated
-    corners = np.array([[-car_width/2, car_length/2],
-                        [car_width/2, car_length/2],
-                        [car_width/2, -car_length/2],
-                        [-car_width/2, -car_length/2]])
-    #rotate corners
-    rot_matrix = np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])
-    corners = np.matmul(rot_matrix, corners.T)
-    #add car position
-    corners = corners.T + np.array([x,y])
-    #draw body
-    if draw_body:
-        cv.polylines(map, [m2pix(corners)], True, color, 3, cv.LINE_AA) 
-    return map
-
-
-
-    # def draw_car(self, xList, yList, angleList, colorList=[(0, 255, 0)],  draw_body=True):
-    #     tmp_map = np.copy(self.map)
-    #     for x,y,angle,color in zip(xList, yList, angleList, colorList):
-    #         car_length = 0.4 #m
-    #         car_width = 0.2 #m
-    #         #match angle with map frame of reference
-    #         angle = yaw2world(angle)
-    #         #find 4 corners not rotated
-    #         corners = np.array([[-car_width/2, car_length/2],
-    #                             [car_width/2, car_length/2],
-    #                             [car_width/2, -car_length/2],
-    #                             [-car_width/2, -car_length/2]])
-    #         #rotate corners
-    #         rot_matrix = np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])
-    #         corners = np.matmul(rot_matrix, corners.T)
-    #         #add car position
-    #         corners = corners.T + np.array([x,y])
-    #         #draw body
-            
-    #         if draw_body:
-    #             tmp_map = cv.polylines(tmp_map, [m2pix(corners)], True, color, 3, cv.LINE_AA)
-            
-    #     cv.imshow('Trajectory', tmp_map)
-    #     cv.waitKey(1)
-    '''
-    def get_next_reference(self, x, y):
-        print(self.path.size)
-        print(self.path[0])
-        print(len(self.route))
-        
-        distances_dict = {"Nodes": [], "Distances":[]}
-        
-        for i in range(self.path.size):
-            node_x = PathPlanning.G.nodes[node]['x']
-            node_y = PathPlanning.G.nodes[node]['y']
-
-            distance_from_node = distance.euclidean((x,y), (node_x,node_y))
-            
-            distances_dict["Nodes"].append(node)
-            distances_dict["Distances"].append(distance_from_node)
-
-        
-        min_distance = min(distances_dict["Distances"])
-        min_index  = distances_dict["Distances"].index(min_distance)
-        min_node = distances_dict["Nodes"][min_index]
-        '''
-
