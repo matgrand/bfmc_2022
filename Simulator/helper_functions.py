@@ -42,23 +42,30 @@ def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
         cv.polylines(map, [m2pix(corners)], True, color, 3, cv.LINE_AA) 
     return map
 
-def project_onto_frame(frame, car, points):
+def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255)):
     # #debug
     # proj = np.copy(map)
     num_points = points.shape[0]
     #check shape
     if points[0].shape == (2,):
         #add 0 Z component
-        points = np.concatenate((points, np.zeros((num_points,1))), axis=1)
+        points = np.concatenate((points, -car.cam_z*np.ones((num_points,1))), axis=1)
     # assert points[0].shape == (3,), "points must be (3,), got {}".format(points[0].shape)
     
+
+    #rotate the points around the z axis
+    if align_to_car:
+        diff = align_with_car(points, car, 3)
+    else:
+        diff = points
+
     #get points inside the fov:
     #translation
-    diff = points - np.array([car.x_true, car.y_true, car.cam_z])
+    # diff = points - np.array([car.x_true, car.y_true, car.cam_z])
     #angles
     angles = - np.arctan2(diff[:,1], diff[:,0])
     #calculate angle differences
-    diff_angles = diff_angle(angles, car.yaw)
+    diff_angles = diff_angle(angles, 0.0) #car.yaw
     #get points in front of the car
     # front_points = []
     rel_pos_points = []
@@ -66,6 +73,10 @@ def project_onto_frame(frame, car, points):
         if np.abs(diff_angles[i]) < car.cam_fov/2:
             # front_points.append(point)
             rel_pos_points.append(diff[i])
+
+    #convert to numpy
+    # front_points = np.array(front_points)
+    rel_pos_points = np.array(rel_pos_points)
 
     if len(rel_pos_points) == 0:
         # return frame, proj
@@ -75,14 +86,6 @@ def project_onto_frame(frame, car, points):
     # for p in front_points:
     #     cv.circle(map, m2pix(p[:2]), 15, (0,255,255), -1)
 
-    #convert to numpy
-    # front_points = np.array(front_points)
-    rel_pos_points = np.array(rel_pos_points)
-
-    #rotate the points around the z axis
-    gamma = car.yaw
-    rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma), 0],[np.sin(gamma), np.cos(gamma), 0 ], [0,0,1]])
-    rel_pos_points = np.matmul(rot_matrix, rel_pos_points.T).T
 
     #rotate the points around the relative y axis, pitch
     beta = -car.cam_pitch
@@ -114,11 +117,31 @@ def project_onto_frame(frame, car, points):
     #project the points onto the camera frame
     proj_points = np.array([[p[1]/p[0], -p[2]/p[0]] for p in rotated_points])
     #convert to pixel coordinates
-    proj_points = 500*proj_points + np.array([320, 240])
+    proj_points = 490*proj_points + np.array([320, 240])
 
     # draw the points
     for p in proj_points:
-        cv.circle(frame, (round(p[0]), round(p[1])), 2, (0,255,255), -1)
+        cv.circle(frame, (round(p[0]), round(p[1])), 2, color, -1)
 
     return frame, proj_points
 
+def align_with_car(points, car, return_size=3):
+    gamma = car.yaw
+    if points.shape[1] == 3:
+        diff = points - np.array([car.x_true, car.y_true, 0])
+        rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma), 0],[np.sin(gamma), np.cos(gamma), 0 ], [0,0,1]])
+        out = np.matmul(rot_matrix, diff.T).T
+        if return_size == 2:
+            out = out[:,:2]
+        assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
+        return out
+    elif points.shape[1] == 2:
+        diff = points - np.array([car.x_true, car.y_true]) 
+        rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma)],[np.sin(gamma), np.cos(gamma)]])
+        out = np.matmul(rot_matrix, diff.T).T
+        if return_size == 3:
+            out = np.concatenate((out, np.zeros((out.shape[0],1))), axis=1)
+        assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
+        return out
+    else:
+        raise ValueError("points must be (2,), or (3,)")

@@ -1,14 +1,18 @@
 #!/usr/bin/python3
 
+from curses.ascii import BS
 from os import path
 from re import X
 from time import sleep
+import copy
+from cv2 import cubeRoot
 import networkx as nx
 import numpy as np
 import cv2 as cv
 import random
 from pyclothoids import Clothoid
 import math
+from scipy.interpolate import BSpline, CubicSpline, make_interp_spline
 
 from helper_functions import *
 
@@ -288,7 +292,7 @@ class PathPlanning():
 
         return ind, Lf
 
-    def get_reference(self, car, limit_search_to=100, look_ahead=5): 
+    def get_reference(self, car, v_des, limit_search_to=100, look_ahead=5, frame=None, n=3): 
         '''
         Returns the reference point, i.e., the point on the path nearest to the vehicle, 
         returns
@@ -297,7 +301,7 @@ class PathPlanning():
         yaw desired
         TODO current curvature
         finished=True when the end of the path is reached
-        TODO path paramters ahead
+        path paramters ahead
         '''
         prev_pos = self.path[self.prev_index]
         x_prev = self.path[self.prev_index, 0]
@@ -334,21 +338,59 @@ class PathPlanning():
         self.prev_index = min_index + closest_index - (1+look_ahead)
 
         path_ahead = self.get_path_ahead(min_index+closest_index, limit_search_to)
+
+        #get parameters of the curve
+        if len(path_ahead) > 5:
+            aligned_path = align_with_car(path_ahead, car, return_size=2)
+            # aligned_path = path_ahead
+            t_path = np.arange(1,len(aligned_path)+1)
+            spline = CubicSpline(t_path, aligned_path)
+            tn = np.geomspace(1, len(aligned_path)+1, n)
+            gen = spline(tn)
+            assert gen.shape[1] == 2, f"gen3.shape[1] != 2, {gen.shape[1]}"
+            #draw generated points
+            project_onto_frame(frame, car, points=gen, color=(0,200,200), align_to_car=False)
+
+            splinen = CubicSpline(tn, gen)
+
+            coeffn = splinen.c
+            # print(f'coeff: {coeffn}')
+            
+            t_geom = np.geomspace(1, len(aligned_path)+1, 50)
+            generated = splinen(t_geom)
+            project_onto_frame(frame, car, points=generated, color=(0,0,255), align_to_car=False)
+
+            # cv.waitKey(0)
+        
+        # calculate curvature 
+        local_traj = path_ahead
+        path_length = self.get_length(local_traj)
+        tot_time = path_length / v_des
+        local_time = np.linspace(0, tot_time, len(local_traj))
+        dx_dt = np.gradient(local_traj[:,0], local_time)
+        dy_dt = np.gradient(local_traj[:,1], local_time)
+        dp_dt = np.gradient(local_traj, local_time, axis=0)
+        v = np.linalg.norm(dp_dt, axis=1)
+        ddx_dt = np.gradient(dx_dt, local_time)
+        ddy_dt = np.gradient(dy_dt, local_time)
+        curv = (dx_dt*ddy_dt-dy_dt*ddx_dt) / np.power(v,1.5)
+        avg_curv = np.mean(curv)
+
         info = self.path_data[min_index+closest_index]
 
-        return x_des, y_des, yaw_des, curv, finished, path_ahead, info
+        return x_des, y_des, yaw_des, avg_curv, finished, path_ahead, info, coeffn
 
     def get_path_ahead(self, index, look_ahead=100):
         assert index < len(self.path) and index >= 0
         return np.array(self.path[index:min(index + look_ahead, len(self.path)-1), :])
 
-    def augment_path(self, action_range=100, default_distance=100, tol=0.01):
+    def augment_path(self, default_distance=150, tol=0.01):
         print("Augmenting path...")
         #intersection ins
         intersection_in_indexes = []
         intersection_in_pos = []
         intersection_in_yaw = []
-        for i in range(len(self.path)-2):
+        for i in range(len(self.path)-1):
             curr_x = self.path[i,0]
             curr_y = self.path[i,1]
             for n in self.intersection_in:
@@ -377,16 +419,35 @@ class PathPlanning():
                     break   
         # print("intersection_out_indexes: ", intersection_out_indexes) 
         #roundabouts in
-        #TODO
         roundabout_in_indexes = []
         roundabout_in_pos = []
         roundabout_in_yaw = []
+        for i in range(len(self.path)-1):
+            curr_x = self.path[i,0]
+            curr_y = self.path[i,1]
+            for n in self.ra_enter:
+                nx, ny = self.get_coord(n)
+                if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
+                    roundabout_in_indexes.append(i) 
+                    roundabout_in_pos.append((nx, ny))
+                    yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
+                    roundabout_in_yaw.append(yaw)
+                    break
         #roundabouts out
-        #TODO
         roundabout_out_indexes = []
         roundabout_out_pos = []
         roundabout_out_yaw = []
-
+        for i in range(len(self.path)-1):
+            curr_x = self.path[i,0]
+            curr_y = self.path[i,1]
+            for n in self.ra_exit:
+                nx, ny = self.get_coord(n)
+                if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
+                    roundabout_out_indexes.append(i) 
+                    roundabout_out_pos.append((nx, ny))
+                    yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
+                    roundabout_out_yaw.append(yaw)
+                    break
         self.path_data = [None for i in range(len(self.path))]
         # self.path_data[0] = ['start', None, None, self.path[0,0], self.path[0,1], 0.0]
         for i, (x,y), yaw in zip(intersection_in_indexes, intersection_in_pos, intersection_in_yaw):
@@ -469,7 +530,7 @@ class PathPlanning():
                 # print(f'curr_index: {curr_index}, next_index: {next_index}')
                 while curr_index < next_index:
                     if next_index-curr_index < default_distance:
-                        euclidean_distance = np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
+                        euclidean_distance = -0.3 + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
                         self.path_data[curr_index] = ('road', 'intersection', action, euclidean_distance, None, None, None)
                     else:
                         self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
@@ -490,7 +551,7 @@ class PathPlanning():
                 action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
                 while curr_index < next_index:
                     if next_index-curr_index < default_distance:
-                        euclidean_distance = np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
+                        euclidean_distance = -0.6 + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
                         self.path_data[curr_index] = ('road', 'roundabout', action, euclidean_distance, None, None, None)
                     else:
                         self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
@@ -498,12 +559,15 @@ class PathPlanning():
             #6. Error case intersection 
             elif prev_event != 'int_in' and next_event == 'int_out':
                 print('Error case intersection')
+                cv.waitKey(0)
             #7. Error case roundabout
             elif prev_event != 'rou_in' and next_event == 'rou_out':
                 print('Error case roundabout')
+                cv.waitKey(0)
             #8. OTHER CASES
             else:
                 print('OTHER CASES')
+                cv.waitKey(0)
 
 
             #update prev_event
@@ -512,17 +576,35 @@ class PathPlanning():
             prev_event = next_event
             # cv.waitKey(0)
         
+    def print_path_info(self):
+        prev_state = None
+        prev_next_state = None
+        for i in range(len(self.path_data)-1):
+            curr_state = self.path_data[i][0]
+            next_state = self.path_data[i][1]
+            if curr_state != prev_state or next_state != prev_next_state:
+                print(f'{i}: {self.path_data[i]}')
+            prev_state = curr_state
+            prev_next_state = next_state
 
-    def get_length(self):
+    def get_length(self, path=None):
         ''' Calculates the length of the trajectory '''
-        length = 0
-        for i in range(len(self.path)-1):
-            x1,y1 = self.path[i]
-            x2,y2 = self.path[i+1]
-            length += math.hypot(x2-x1,y2-y1)
-        
-        #print(f"Length of the trajectory: {length}")  
-        return length
+        if path is None:
+            length = 0
+            for i in range(len(self.path)-1):
+                x1,y1 = self.path[i]
+                x2,y2 = self.path[i+1]
+                length += math.hypot(x2-x1,y2-y1)
+            
+            #print(f"Length of the trajectory: {length}")  
+            return length
+        else:
+            length = 0
+            for i in range(len(path)-1):
+                x1,y1 = path[i]
+                x2,y2 = path[i+1]
+                length += math.hypot(x2-x1,y2-y1) 
+            return length
 
     def get_coord(self, node):
         x = self.nodes_data[node]['x']

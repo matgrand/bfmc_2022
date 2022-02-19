@@ -77,6 +77,7 @@ if __name__ == '__main__':
 
         path.compute_shortest_path(step_length=0.01)
         path.draw_path()
+        path.print_path_info()
 
         # cv.waitKey(0)
 
@@ -92,7 +93,7 @@ if __name__ == '__main__':
             #angle_ref, both_lanes, poly = lane_keeping.lane_keeping_pipeline(frame)
 
             #FOLLOW predefined trajectory
-            xd, yd, yawd, curv, finished, path_ahead, info = path.get_reference(car)
+            xd, yd, yawd, curv, finished, path_ahead, info, coeffs = path.get_reference(car, desired_speed, frame=frame)
             if finished:
                 print("Reached end of trajectory")
                 car.stop()
@@ -123,6 +124,7 @@ if __name__ == '__main__':
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {controller.e3:.3f}")
             print(f"speed_ref: {speed_ref:.3f},    angle_ref: {angle_ref:.3f}")
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}")
+            print(f"Coeffs:\n{coeffs}")
             #print(f"time remaining: {trajectory.total_time-(car.time_stamp - start_time_stamp):.3f} seconds")
 
             cv.imshow("Frame preview", frame)
