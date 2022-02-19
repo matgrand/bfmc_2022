@@ -61,7 +61,7 @@ if __name__ == '__main__':
     k3 = 1.5 #1.5 yaw error gain
     #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
     ff_curvature = 1.0 # feedforward gain
-    controller = SimpleController(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, training=training)
+    controller = SimpleController(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, training=training, noise_std=0.0)
 
     start_time_stamp = 0.0
 
@@ -78,13 +78,12 @@ if __name__ == '__main__':
         path.compute_shortest_path(step_length=0.01)
         path.draw_path()
 
+        # cv.waitKey(0)
+
         while not rospy.is_shutdown():
             tmp = np.copy(map)
             # Get the image from the camera
             frame = car.cv_image.copy()
-            #decimate path.path
-            points = path.path[::20]
-            frame, proj = project_onto_frame(frame, car, np.array(points)) 
 
             #draw true car position
             draw_car(tmp, car.x_true, car.y_true, car.yaw, color=(0, 255, 0))
@@ -93,13 +92,15 @@ if __name__ == '__main__':
             #angle_ref, both_lanes, poly = lane_keeping.lane_keeping_pipeline(frame)
 
             #FOLLOW predefined trajectory
-            xd, yd, yawd, curv, finished = path.get_reference(car)
+            xd, yd, yawd, curv, finished, path_ahead, info = path.get_reference(car)
             if finished:
                 print("Reached end of trajectory")
                 car.stop()
                 break
             #draw refrence car
             draw_car(tmp, xd, yd, yawd, color=(0, 0, 255))
+            #project path ahead
+            frame, proj = project_onto_frame(frame, car, path_ahead) 
 
             #car control, unrealistic: uses the true position
             if training:
@@ -121,6 +122,7 @@ if __name__ == '__main__':
             print(f"xd: {xd:.3f}, yd: {yd:.3f}, yawd: {np.rad2deg(yawd):.3f}, curv: {np.rad2deg(curv):.3f}")
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {controller.e3:.3f}")
             print(f"speed_ref: {speed_ref:.3f},    angle_ref: {angle_ref:.3f}")
+            print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}")
             #print(f"time remaining: {trajectory.total_time-(car.time_stamp - start_time_stamp):.3f} seconds")
 
             cv.imshow("Frame preview", frame)

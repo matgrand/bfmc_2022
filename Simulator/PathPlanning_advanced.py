@@ -21,6 +21,8 @@ class PathPlanning():
         # initialize path
         self.path = []
         self.navigator = []# set of instruction for the navigator
+        self.path_data = [] #additional data for the path (e.g. curvature, 
+        # state=following/intersection/roundabout, next_action=left/right/straight, path_params_ahead)
 
         # previous index of the closest point on the path to the vehicle
         self.prev_index = 0
@@ -35,7 +37,6 @@ class PathPlanning():
         # define intersection central nodes
         #self.intersection_cen = ['347', '37', '39', '38', '11', '29', '30', '28', '371', '84', '9', '20', '20', '82', '75', '74', '83', '312', '315', '65', '468', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
         self.intersection_cen = ['37', '39', '38', '11', '29', '30', '28', '371', '84', '9','19', '20', '21', '82', '75', '74', '83', '312', '315', '65', '468', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
-
 
         # define intersecion entrance nodes
         self.intersection_in = [77,45,54,50,41,79,374,52,43,81,36,4,68,2,34,70,6,32,72,59,15,16,27,14,25,18,61,23,63]
@@ -57,7 +58,6 @@ class PathPlanning():
 
         self.ra_exit = [271,304,306]
         self.ra_exit = [str(i) for i in self.ra_exit]
-
 
         # import nodes and edges
         self.list_of_nodes = list(self.G.nodes)
@@ -252,6 +252,8 @@ class PathPlanning():
         #self.print_navigation_instructions()
         # interpolate the route of nodes
         self.path = PathPlanning.interpolate_route(self.route_list, step_length)
+
+        self.augment_path()
     
     def search_target_index(self, car):
         cx = self.path[:,0]
@@ -286,7 +288,7 @@ class PathPlanning():
 
         return ind, Lf
 
-    def get_reference(self, car, limit_search_to=50, look_ahead=5): 
+    def get_reference(self, car, limit_search_to=100, look_ahead=5): 
         '''
         Returns the reference point, i.e., the point on the path nearest to the vehicle, 
         returns
@@ -321,6 +323,7 @@ class PathPlanning():
             closest_index = closest_index - (2+look_ahead)
         closest_index = closest_index + look_ahead
         closest_point = path_to_analyze[closest_index]
+        #get path ahead
         x_des = closest_point[0]
         y_des = closest_point[1]
         #calculate yaw angle
@@ -329,8 +332,186 @@ class PathPlanning():
         yaw_des = - np.arctan2(next_y - y_des, next_x - x_des)
         #update prev_index
         self.prev_index = min_index + closest_index - (1+look_ahead)
-        return x_des, y_des, yaw_des, curv, finished
 
+        path_ahead = self.get_path_ahead(min_index+closest_index, limit_search_to)
+        info = self.path_data[min_index+closest_index]
+
+        return x_des, y_des, yaw_des, curv, finished, path_ahead, info
+
+    def get_path_ahead(self, index, look_ahead=100):
+        assert index < len(self.path) and index >= 0
+        return np.array(self.path[index:min(index + look_ahead, len(self.path)-1), :])
+
+    def augment_path(self, action_range=100, default_distance=100, tol=0.01):
+        print("Augmenting path...")
+        #intersection ins
+        intersection_in_indexes = []
+        intersection_in_pos = []
+        intersection_in_yaw = []
+        for i in range(len(self.path)-2):
+            curr_x = self.path[i,0]
+            curr_y = self.path[i,1]
+            for n in self.intersection_in:
+                nx, ny = self.get_coord(n)
+                if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
+                    intersection_in_indexes.append(i) 
+                    intersection_in_pos.append((nx, ny))
+                    yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
+                    intersection_in_yaw.append(yaw)
+                    break 
+        # print("intersection_in_indexes: ", intersection_in_indexes) 
+        #intersection outs
+        intersection_out_indexes = []
+        intersection_out_pos = []
+        intersection_out_yaw = []
+        for i in range(len(self.path)-1):
+            curr_x = self.path[i,0]
+            curr_y = self.path[i,1]
+            for n in self.intersection_out:
+                nx, ny = self.get_coord(n)
+                if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
+                    intersection_out_indexes.append(i) 
+                    intersection_out_pos.append((nx, ny))
+                    yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
+                    intersection_out_yaw.append(yaw)
+                    break   
+        # print("intersection_out_indexes: ", intersection_out_indexes) 
+        #roundabouts in
+        #TODO
+        roundabout_in_indexes = []
+        roundabout_in_pos = []
+        roundabout_in_yaw = []
+        #roundabouts out
+        #TODO
+        roundabout_out_indexes = []
+        roundabout_out_pos = []
+        roundabout_out_yaw = []
+
+        self.path_data = [None for i in range(len(self.path))]
+        # self.path_data[0] = ['start', None, None, self.path[0,0], self.path[0,1], 0.0]
+        for i, (x,y), yaw in zip(intersection_in_indexes, intersection_in_pos, intersection_in_yaw):
+            self.path_data[i] = ('int_in', None, None, x, y, yaw, None, None)
+        for i, (x,y), yaw in zip(intersection_out_indexes, intersection_out_pos, intersection_out_yaw):
+            self.path_data[i] = ('int_out', None, None, x, y, yaw, None, None)
+        for i, (x,y), yaw in zip(roundabout_in_indexes, roundabout_in_pos, roundabout_in_yaw):
+            self.path_data[i] = ('rou_in', None, None, x, y, yaw, None, None)
+        for i, (x,y), yaw in zip(roundabout_out_indexes, roundabout_out_pos, roundabout_out_yaw):
+            self.path_data[i] = ('rou_out', None, None, x, y, yaw, None, None)
+        
+        # print("path_data: ", self.path_data)
+        
+        curr_index , next_index = 0, 1
+        prev_event, next_event = 'start', None
+        while curr_index < len(self.path):
+            #search next event ahead
+            # print(f'Searching for next event ahead of {curr_index}, prev event: {prev_event}')
+            while next_index < len(self.path):
+                if self.path_data[next_index] is None:
+                    next_index += 1
+                    next_event = None
+                else:
+                    next_event = self.path_data[next_index][0]
+                    # print(f'Found next event: {next_event}, curr_index: {curr_index}, next_index: {next_index}')
+                    break
+            
+            #cases:
+            # state=following/intersection/roundabout, next_action=left/right/straight, path_params_ahead)
+            #1. no event ahead
+            if next_event is None:
+                #continue previous event
+                while curr_index < len(self.path):
+                    if self.path_data[curr_index] is None:
+                        if prev_event == 'int_in':
+                            print('ERROR: Path cannot end inside an intersection')
+                        if prev_event == 'int_out':
+                            self.path_data[curr_index] = (None, 'continue', None, None, None, None, None)
+                        if prev_event == 'rou_in':
+                            print('ERROR: Path cannot end inside a roundabout')
+                        if prev_event == 'rou_out':
+                            self.path_data[curr_index] = (None, 'continue',  None, None, None, None, None)
+                    curr_index += 1
+                print('Done')
+                sleep(1)
+
+            #2. inside intersection
+            elif prev_event == 'int_in' and next_event == 'int_out':
+                # print('INSIDE INTERSECTION')
+                #continue intersection
+                angle = diff_angle(self.path_data[curr_index][5], self.path_data[next_index][5])
+                action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
+                curv = 0.0 #TODO
+                while curr_index < next_index:
+                    self.path_data[curr_index] = ('inside_intersection', 'intersection', action, None, None, curv, None)
+                    curr_index += 1
+            #3. inside roundabout
+            elif prev_event == 'rou_in' and next_event == 'rou_out':
+                # print('INSIDE ROUNDABOUT')
+                #continue roundabout
+                angle = diff_angle(self.path_data[curr_index][5], self.path_data[next_index][5])
+                action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
+                curv = 0.0
+                while curr_index < next_index:
+                    self.path_data[curr_index] = ('inside_roundabout', 'roundabout', action, None, None, curv, None)
+                    curr_index += 1
+            #4. intersection ahead
+            elif next_event == 'int_in':
+                # print('INTERSECTION AHEAD')
+                xi, yi = self.path_data[next_index][3], self.path_data[next_index][4] #intersection coordinates
+                #search ahead for intersection out
+                yaw_out = 0.0
+                for i in range(next_index+1, len(self.path)):
+                    if self.path_data[i] is not None and self.path_data[i][0] == 'int_out':
+                        yaw_out = self.path_data[i][5]
+                        break
+                yaw_in = self.path_data[next_index][5]
+                angle = diff_angle(yaw_in, yaw_out)
+                action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
+                # print(f'curr_index: {curr_index}, next_index: {next_index}')
+                while curr_index < next_index:
+                    if next_index-curr_index < default_distance:
+                        euclidean_distance = np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
+                        self.path_data[curr_index] = ('road', 'intersection', action, euclidean_distance, None, None, None)
+                    else:
+                        self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
+                    curr_index += 1
+                # print(f'curr_index: {curr_index}, next_index: {next_index}')
+            #5. roundabout ahead
+            elif next_event == 'rou_in':
+                # print('ROUNDABOUT AHEAD')
+                xi, yi = self.path_data[next_index][3], self.path_data[next_index][4] #roundabout coordinates
+                #search ahead for roundabout out
+                yaw_out = 0.0
+                for i in range(next_index+1, len(self.path)):
+                    if self.path_data[i] is not None and self.path_data[i][0] == 'rou_out':
+                        yaw_out = self.path_data[i][5]
+                        break
+                yaw_in = self.path_data[next_index][5]
+                angle = diff_angle(yaw_in, yaw_out)
+                action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
+                while curr_index < next_index:
+                    if next_index-curr_index < default_distance:
+                        euclidean_distance = np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
+                        self.path_data[curr_index] = ('road', 'roundabout', action, euclidean_distance, None, None, None)
+                    else:
+                        self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
+                    curr_index += 1
+            #6. Error case intersection 
+            elif prev_event != 'int_in' and next_event == 'int_out':
+                print('Error case intersection')
+            #7. Error case roundabout
+            elif prev_event != 'rou_in' and next_event == 'rou_out':
+                print('Error case roundabout')
+            #8. OTHER CASES
+            else:
+                print('OTHER CASES')
+
+
+            #update prev_event
+            next_index += 1
+            # print(f'STATUS: curr_index: {curr_index}, next_index: {next_index}\nPrev_event: {prev_event},  Next_event: {next_event}')
+            prev_event = next_event
+            # cv.waitKey(0)
+        
 
     def get_length(self):
         ''' Calculates the length of the trajectory '''

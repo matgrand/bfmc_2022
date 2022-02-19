@@ -13,7 +13,7 @@ IMG_SIZE = (320, 240)
 
 class SimpleController():
     def __init__(self, k1=1.0,k2=1.0,k3=1.0, ff=1.0, folder='training_imgs', 
-                    nn_model_path="model_test.onnx", training=True):
+                    nn_model_path="model_test.onnx", training=True, noise_std=np.deg2rad(20)):
         self.k1 = k1
         self.k2 = k2
         self.k3 = k3
@@ -25,6 +25,8 @@ class SimpleController():
         self.cnt = 0
         self.noise = 0.0
         self.data_cnt = 0
+
+        self.noise_std = noise_std
 
         #load neural network
         self.net =  cv.dnn.readNetFromONNX(nn_model_path) 
@@ -51,7 +53,7 @@ class SimpleController():
         self.e3 = e_yaw #yaw error
         output_angle = self.ff*curvature_ahead - self.k2 * self.e2 - self.k3 * self.e3
         output_speed = vd - self.k1 * self.e1
-        output_angle = output_angle + self.get_random_noise() #add noise for training
+        output_angle = output_angle + self.get_random_noise(std=self.noise_std) #add noise for training
         return output_speed, output_angle
 
     def get_nn_control(self, frame, vd):
