@@ -153,15 +153,34 @@ paths = [fo+'cross_walk.png', fo+'enter_highway.png', fo+'parking.png', fo+'stop
 sign_imgs = [cv.imread(path) for path in paths]
 
 def add_sign(frame):
-    bounding_box = (0,0)
+    bounding_box = (0,0,0,0)
     sign = 'no_sign'
-    if np.random.rand() < 0.5:
+    if np.random.rand() < 0.3:
         signs = ['cross_walk', 'highway', 'park', 'stop', 'preference_road', 'roundabout']
+        #pick a random indeces from 0 to 7
+        idx = np.random.randint(0, len(signs))
+        sign = signs[idx]
+        img = sign_imgs[idx]
+        new_size = np.random.randint(50, 100)
+        img = cv.resize(img, (new_size, new_size))
+        y= np.random.randint(100, frame.shape[0]-new_size-100)
+        x = np.random.randint(300, frame.shape[1]-new_size)
+        bounding_box = (x,y,x+new_size,y+new_size)
+        #add random rotation 
+        angle = np.random.rand()*np.pi/16
+        rot_matrix = np.array([[np.cos(angle), -np.sin(angle), 0.9*np.random.rand()],[np.sin(angle), np.cos(angle), .9*np.random.rand()]])
+        img = cv.warpAffine(img, rot_matrix, (new_size, new_size))
+        frame[y:y+new_size, x:x+new_size] = img
 
+        # draw_bounding_box(frame, bounding_box, (0,0,255))
 
     return bounding_box, frame, sign
 
 
+def draw_bounding_box(frame, bounding_box, color=(0,0,255)):
+    x,y,x2,y2 = bounding_box
+    cv.rectangle(frame, (x,y), (x2,y2), color, 2)
+    return frame
 
 
 

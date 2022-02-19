@@ -83,9 +83,9 @@ class SimpleController():
         # print(f'output: {output.shape}')
         output = output[0]
 
-        (state,next,sign,dist,curv,coeffs,bounding_box) = self.unpack_network_output(output)
+        (state,next,sign,dist,curv,bounding_box) = self.unpack_network_output(output)
 
-        net_out = (state,next,sign,dist,curv,coeffs,bounding_box)
+        net_out = (state,next,sign,dist,curv,bounding_box)
 
         curvature_ahead = curv ####### <------------------------------------------------------------
         output_angle = self.ff*curvature_ahead - self.k2 * self.e2 - self.k3 * self.e3
@@ -94,7 +94,7 @@ class SimpleController():
     
     def pack_input_data(self):
         data = [0,0,0,0]
-        xd,yd,yawd,curv,path_ahead,(state,next,action,dist,_,_,_),coeffs,bounding_box = self.curr_data
+        xd,yd,yawd,curv,path_ahead,(state,next,action,dist,_,_,_),coeffs,bounding_box,sign = self.curr_data
         if action == "straight":
             data[0] = 1
         elif action == "left":
@@ -110,51 +110,51 @@ class SimpleController():
                 f.write(str(data[i])+",")
             f.write(str(data[-1])+"\n")
 
-    def pack_regression_labels(self):
+    def pack_regression_labels(self, bb_const=1000.0):
         
-        xd,yd,yawd,curv,path_ahead,(state,next,action,dist,_,_,_),coeffs,bounding_box = self.curr_data
+        xd,yd,yawd,curv,path_ahead,(state,next,action,dist,_,_,_),coeffs,bounding_box,sign = self.curr_data
         #reshape coeffs to be a 1D array and convert to list
-        coeffs = coeffs.ravel().tolist()
-        c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16 = coeffs
+        # coeffs = coeffs.ravel().tolist()
+        # c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16 = coeffs
         if dist is None:
             dist = 10
-        reg_label = [self.e2, self.e3, dist, curv,c1,c2,c3,c4,c5,c6,c7,
-                c8,c9,c10,c11,c12,c13,c14,c15,c16, bounding_box[0], bounding_box[1]]
+        # print(f'bounding box: {bounding_box}')
+        reg_label = [self.e2, self.e3, dist, curv, bounding_box[0]/bb_const, bounding_box[1]/bb_const, bounding_box[2]/bb_const, bounding_box[3]/bb_const]
         np_arr = np.array(reg_label)
-        print(f'reg_label: {np_arr}')
+        # print(f'reg_label: {np_arr}')
         #append to file
         with open(self.folder+"/regression_labels.csv", "a") as f:
             for i in range(len(reg_label)-1):
                 f.write(str(reg_label[i])+",")
             f.write(str(reg_label[-1])+"\n")
     
-    def unpack_network_output(self, output):
+    def unpack_network_output(self, output,bb_const=1000.0):
         #first 22 regression + 13 classification
         #22 regression: 
         self.e2 = output[0]
         self.e3 = output[1]
         dist = output[2]
         curv = output[3]
-        coeffs = output[4:20]
-        bounding_box = (output[20], output[21])
+        # coeffs = output[4:20] #round(bb_const*
+        bounding_box = (round(bb_const*output[20-16]), round(bb_const*output[21-16]), round(bb_const*output[22-16]), round(bb_const*output[23-16]))
         #13 classification:
         states = ['road', 'intersection', 'roundabout']
-        state_vec = output[22:25]
+        state_vec = output[22-16+2:25-16+2]
         state_index = np.argmax(state_vec)
         state = states[state_index]
-        next_vec = output[25:28]
+        next_vec = output[25-16+2:28-16+2]
         next_index = np.argmax(next_vec)
         next = states[next_index]
-        sign_vec = output[28:]
+        sign_vec = output[28-16+2:]
         signs = ['no_sign', 'cross_walk', 'highway', 'park', 'stop', 'preference_road', 'roundabout']
         sign_index = np.argmax(sign_vec)
         sign = signs[sign_index]
-        return (state,next,sign,dist,curv,coeffs,bounding_box)
+        return (state,next,sign,dist,curv,bounding_box)
 
     
 
     def pack_classification_labels(self):
-        xd,yd,yawd,curv,path_ahead,(state,next,action,dist,_,_,_),coeffs,bounding_box = self.curr_data
+        xd,yd,yawd,curv,path_ahead,(state,next,action,dist,_,_,_),coeffs,bounding_box,sign = self.curr_data
         #3 states, 3 next states, 7 signs
         class_data = [0,0,0,0,0,0,0,0,0,0,0,0,0]
         if state == 'road':
@@ -170,8 +170,22 @@ class SimpleController():
         if next == 'roundabout':
             class_data[5] = 1
         #TODO add signs
-        class_data[6] = 1
-
+        signs = ['no_sign', 'cross_walk', 'highway', 'park', 'stop', 'preference_road', 'roundabout']
+        if sign == signs[0]:
+            class_data[6] = 1
+        elif sign == signs[1]:
+            class_data[7] = 1
+        elif sign == signs[2]:
+            class_data[8] = 1
+        elif sign == signs[3]:
+            class_data[9] = 1
+        elif sign == signs[4]:
+            class_data[10] = 1
+        elif sign == signs[5]:
+            class_data[11] = 1
+        elif sign == signs[6]:
+            class_data[12] = 1
+        
         #append to file
         with open(self.folder+"/classification_labels.csv", "a") as f:
             for i in range(len(class_data)-1):

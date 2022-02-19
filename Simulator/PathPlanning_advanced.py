@@ -349,7 +349,7 @@ class PathPlanning():
             gen = spline(tn)
             assert gen.shape[1] == 2, f"gen3.shape[1] != 2, {gen.shape[1]}"
             #draw generated points
-            if training:
+            if not training:
                 project_onto_frame(frame, car, points=gen, color=(0,200,200), align_to_car=False)
 
             splinen = CubicSpline(tn, gen)
@@ -359,7 +359,7 @@ class PathPlanning():
             
             t_geom = np.geomspace(1, len(aligned_path)+1, 50)
             generated = splinen(t_geom)
-            if training:
+            if not training:
                 project_onto_frame(frame, car, points=generated, color=(0,0,255), align_to_car=False)
 
             # cv.waitKey(0)

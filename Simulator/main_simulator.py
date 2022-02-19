@@ -47,22 +47,22 @@ if __name__ == '__main__':
     car = Automobile_Data(trig_control=True, trig_cam=True, trig_gps=False, trig_bno=True)
 
     # PARAMETERS
-    sample_time = 0.01 # [s]
+    sample_time = 0.01 # [s]sss
     max_angle = 30.0    # [deg]
     max_speed = 0.5  # [m/s]
-    desired_speed = 0.10 # [m/s]
+    desired_speed = 0.2 # [m/s]
     nodes_ahead = 400 # [nodes] how long the trajectory will be
     samples_per_edge = 100# [steps] how many steps per edge in graph
     # init trajectory
-    path = PathPlanning(map, source=86, target=463) #254 463
+    path = PathPlanning(map, source=86, target=254) #254 463
 
     #init controller
     k1 = 0.0 #4.0 gain error parallel to direction (speed)
     k2 = 2.0 #2.0 perpedndicular error gain
     k3 = 1.5 #1.5 yaw error gain
     #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
-    ff_curvature = 0.0 # feedforward gain
-    noise_std = np.deg2rad(20) # [rad] noise in the steering angle
+    ff_curvature = 1.2 # feedforward gain
+    noise_std = np.deg2rad(30) # [rad] noise in the steering angle
     controller = SimpleController(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, training=training, noise_std=noise_std)
 
     start_time_stamp = 0.0
@@ -94,16 +94,17 @@ if __name__ == '__main__':
             #lane keeping
             #angle_ref, both_lanes, poly = lane_keeping.lane_keeping_pipeline(frame)
 
-            bounding_box = (0, 0)
-            if training:
-                bounding_box, frame = add_sign(frame)
+            bounding_box = (0,0,0,0)
+            sign = 'no_sign'
+            if training :
+                bounding_box, frame, sign = add_sign(frame)
                 
             
 
             #FOLLOW predefined trajectory
             xd, yd, yawd, curv, finished, path_ahead, info, coeffs = path.get_reference(car, desired_speed, 
                                                                                         frame=frame, training=training)
-            controller.curr_data = [xd,yd,yawd,curv,path_ahead,info,coeffs,bounding_box]
+            controller.curr_data = [xd,yd,yawd,curv,path_ahead,info,coeffs,bounding_box,sign]
             if finished:
                 print("Reached end of trajectory")
                 car.stop()
@@ -115,7 +116,7 @@ if __name__ == '__main__':
             if training:
                 #training
                 speed_ref, angle_ref = controller.get_control(car.x_true, car.y_true, car.yaw, xd, yd, yawd, desired_speed, curv)
-                controller.save_data(car.cv_image, folder)
+                controller.save_data(frame, folder)
             else:
                 #Neural network control
                 action = info[2]
@@ -136,7 +137,11 @@ if __name__ == '__main__':
             # print(f"Coeffs:\n{coeffs}")
             print(f'Net out:\n {net_out}') if not training else None
      
-
+            if not training:
+                bb = net_out[5]
+                sign = net_out[2]
+                # if sign != 'no_sign':
+                #     draw_bounding_box(frame, bb)
 
             #project path ahead
             frame, proj = project_onto_frame(frame, car, path_ahead) 
