@@ -292,7 +292,7 @@ class PathPlanning():
 
         return ind, Lf
 
-    def get_reference(self, car, v_des, limit_search_to=100, look_ahead=5, frame=None, n=3): 
+    def get_reference(self, car, v_des, limit_search_to=70, look_ahead=5, frame=None, n=3, training=True): 
         '''
         Returns the reference point, i.e., the point on the path nearest to the vehicle, 
         returns
@@ -349,7 +349,8 @@ class PathPlanning():
             gen = spline(tn)
             assert gen.shape[1] == 2, f"gen3.shape[1] != 2, {gen.shape[1]}"
             #draw generated points
-            project_onto_frame(frame, car, points=gen, color=(0,200,200), align_to_car=False)
+            if training:
+                project_onto_frame(frame, car, points=gen, color=(0,200,200), align_to_car=False)
 
             splinen = CubicSpline(tn, gen)
 
@@ -358,7 +359,8 @@ class PathPlanning():
             
             t_geom = np.geomspace(1, len(aligned_path)+1, 50)
             generated = splinen(t_geom)
-            project_onto_frame(frame, car, points=generated, color=(0,0,255), align_to_car=False)
+            if training:
+                project_onto_frame(frame, car, points=generated, color=(0,0,255), align_to_car=False)
 
             # cv.waitKey(0)
         
@@ -427,27 +429,33 @@ class PathPlanning():
             curr_y = self.path[i,1]
             for n in self.ra_enter:
                 nx, ny = self.get_coord(n)
-                if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
+                #and = workaround, ra exits and entrance must be outside the ra
+                if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2 and len(roundabout_in_indexes) < 1: #and = workaround 
                     roundabout_in_indexes.append(i) 
                     roundabout_in_pos.append((nx, ny))
                     yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
                     roundabout_in_yaw.append(yaw)
                     break
+        # print("roundabout_in_indexes: ", roundabout_in_indexes)
         #roundabouts out
         roundabout_out_indexes = []
         roundabout_out_pos = []
         roundabout_out_yaw = []
-        for i in range(len(self.path)-1):
+        # for i in range(len(self.path)-1):
+        for i in range(len(self.path)-2, 0, -1): # REVERSE ORDER, PART OF WORKAROUND
             curr_x = self.path[i,0]
             curr_y = self.path[i,1]
             for n in self.ra_exit:
                 nx, ny = self.get_coord(n)
-                if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
+                #and = workaround, ra exits and entrance must be outside the ra
+                if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2 and len(roundabout_out_indexes) < 1:
                     roundabout_out_indexes.append(i) 
                     roundabout_out_pos.append((nx, ny))
-                    yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
+                    yaw = - np.arctan2(curr_y-self.path[i+1,1], curr_x-self.path[i+1,0])
                     roundabout_out_yaw.append(yaw)
                     break
+        # print("roundabout_out_indexes: ", roundabout_out_indexes)
+
         self.path_data = [None for i in range(len(self.path))]
         # self.path_data[0] = ['start', None, None, self.path[0,0], self.path[0,1], 0.0]
         for i, (x,y), yaw in zip(intersection_in_indexes, intersection_in_pos, intersection_in_yaw):
@@ -479,17 +487,18 @@ class PathPlanning():
             # state=following/intersection/roundabout, next_action=left/right/straight, path_params_ahead)
             #1. no event ahead
             if next_event is None:
+                self.path_data[curr_index] = ('road', 'road',  'continue', None, None, None, None)
                 #continue previous event
                 while curr_index < len(self.path):
                     if self.path_data[curr_index] is None:
                         if prev_event == 'int_in':
                             print('ERROR: Path cannot end inside an intersection')
                         if prev_event == 'int_out':
-                            self.path_data[curr_index] = (None, 'continue', None, None, None, None, None)
+                            self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
                         if prev_event == 'rou_in':
                             print('ERROR: Path cannot end inside a roundabout')
                         if prev_event == 'rou_out':
-                            self.path_data[curr_index] = (None, 'continue',  None, None, None, None, None)
+                            self.path_data[curr_index] = ('road', 'road',  'continue', None, None, None, None)
                     curr_index += 1
                 print('Done')
                 sleep(1)
@@ -500,9 +509,8 @@ class PathPlanning():
                 #continue intersection
                 angle = diff_angle(self.path_data[curr_index][5], self.path_data[next_index][5])
                 action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
-                curv = 0.0 #TODO
                 while curr_index < next_index:
-                    self.path_data[curr_index] = ('inside_intersection', 'intersection', action, None, None, curv, None)
+                    self.path_data[curr_index] = ('intersection', 'road', action, None, None, None, None)
                     curr_index += 1
             #3. inside roundabout
             elif prev_event == 'rou_in' and next_event == 'rou_out':
@@ -510,9 +518,8 @@ class PathPlanning():
                 #continue roundabout
                 angle = diff_angle(self.path_data[curr_index][5], self.path_data[next_index][5])
                 action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
-                curv = 0.0
                 while curr_index < next_index:
-                    self.path_data[curr_index] = ('inside_roundabout', 'roundabout', action, None, None, curv, None)
+                    self.path_data[curr_index] = ('roundabout', 'road', action, None, None, None, None)
                     curr_index += 1
             #4. intersection ahead
             elif next_event == 'int_in':

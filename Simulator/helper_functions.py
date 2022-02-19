@@ -4,6 +4,8 @@
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
+import glob
+import os
 from mpl_toolkits.mplot3d import Axes3D
 
 def diff_angle(angle1, angle2):
@@ -145,3 +147,32 @@ def align_with_car(points, car, return_size=3):
         return out
     else:
         raise ValueError("points must be (2,), or (3,)")
+
+fo = 'sign_imgs/'
+paths = [fo+'cross_walk.png', fo+'enter_highway.png', fo+'parking.png', fo+'stop.png', fo+'preference_road.png', fo+'roundabout.png']
+sign_imgs = [cv.imread(path) for path in paths]
+
+def add_sign(frame):
+    bounding_box = (0,0)
+    sign = 'no_sign'
+    if np.random.rand() < 0.5:
+        signs = ['cross_walk', 'highway', 'park', 'stop', 'preference_road', 'roundabout']
+
+
+    return bounding_box, frame, sign
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

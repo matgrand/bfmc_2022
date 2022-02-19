@@ -3,6 +3,7 @@ from mimetypes import init
 import string
 from tkinter import Frame
 import cv2 as cv
+from cv2 import fastNlMeansDenoising
 from zmq import CURVE_SERVERKEY
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
@@ -27,7 +28,7 @@ from simple_controller import SimpleController
 # map = cv.imread('src/models_pkg/track/materials/textures/2021_Medium.png')
 map = cv.imread('src/models_pkg/track/materials/textures/2021_VerySmall.png')
 
-training = True
+training = False
 folder = 'training_imgs' 
 # folder = 'test_imgs'
 
@@ -49,19 +50,20 @@ if __name__ == '__main__':
     sample_time = 0.01 # [s]
     max_angle = 30.0    # [deg]
     max_speed = 0.5  # [m/s]
-    desired_speed = 0.30 # [m/s]
+    desired_speed = 0.10 # [m/s]
     nodes_ahead = 400 # [nodes] how long the trajectory will be
     samples_per_edge = 100# [steps] how many steps per edge in graph
     # init trajectory
-    path = PathPlanning(map, source=86, target=254) #254 463
+    path = PathPlanning(map, source=86, target=463) #254 463
 
     #init controller
     k1 = 0.0 #4.0 gain error parallel to direction (speed)
     k2 = 2.0 #2.0 perpedndicular error gain
     k3 = 1.5 #1.5 yaw error gain
     #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
-    ff_curvature = 1.0 # feedforward gain
-    controller = SimpleController(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, training=training, noise_std=0.0)
+    ff_curvature = 0.0 # feedforward gain
+    noise_std = np.deg2rad(20) # [rad] noise in the steering angle
+    controller = SimpleController(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, training=training, noise_std=noise_std)
 
     start_time_stamp = 0.0
 
@@ -92,16 +94,22 @@ if __name__ == '__main__':
             #lane keeping
             #angle_ref, both_lanes, poly = lane_keeping.lane_keeping_pipeline(frame)
 
+            bounding_box = (0, 0)
+            if training:
+                bounding_box, frame = add_sign(frame)
+                
+            
+
             #FOLLOW predefined trajectory
-            xd, yd, yawd, curv, finished, path_ahead, info, coeffs = path.get_reference(car, desired_speed, frame=frame)
+            xd, yd, yawd, curv, finished, path_ahead, info, coeffs = path.get_reference(car, desired_speed, 
+                                                                                        frame=frame, training=training)
+            controller.curr_data = [xd,yd,yawd,curv,path_ahead,info,coeffs,bounding_box]
             if finished:
                 print("Reached end of trajectory")
                 car.stop()
                 break
             #draw refrence car
             draw_car(tmp, xd, yd, yawd, color=(0, 0, 255))
-            #project path ahead
-            frame, proj = project_onto_frame(frame, car, path_ahead) 
 
             #car control, unrealistic: uses the true position
             if training:
@@ -110,7 +118,8 @@ if __name__ == '__main__':
                 controller.save_data(car.cv_image, folder)
             else:
                 #Neural network control
-                speed_ref, angle_ref = controller.get_nn_control(frame, desired_speed)
+                action = info[2]
+                speed_ref, angle_ref, net_out = controller.get_nn_control(frame, desired_speed, action)
 
             
             car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
@@ -124,8 +133,13 @@ if __name__ == '__main__':
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {controller.e3:.3f}")
             print(f"speed_ref: {speed_ref:.3f},    angle_ref: {angle_ref:.3f}")
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}")
-            print(f"Coeffs:\n{coeffs}")
-            #print(f"time remaining: {trajectory.total_time-(car.time_stamp - start_time_stamp):.3f} seconds")
+            # print(f"Coeffs:\n{coeffs}")
+            print(f'Net out:\n {net_out}') if not training else None
+     
+
+
+            #project path ahead
+            frame, proj = project_onto_frame(frame, car, path_ahead) 
 
             cv.imshow("Frame preview", frame)
             cv.imshow("2D-MAP", tmp)
