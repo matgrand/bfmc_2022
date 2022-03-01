@@ -17,11 +17,9 @@ from time import sleep
 import os
 import matplotlib.pyplot as plt
 
-from LaneKeepingReloaded import LaneKeepingReloaded
 from  automobile_data import Automobile_Data
 from helper_functions import *
 from PathPlanning_advanced import PathPlanning
-
 from simple_controller import SimpleController
 
 
@@ -29,41 +27,40 @@ from simple_controller import SimpleController
 map = cv.imread('src/models_pkg/track/materials/textures/2021_VerySmall.png')
 
 training = False
-folder = 'training_imgs' 
-# folder = 'test_imgs'
+# folder = 'training_imgs' 
+folder = 'test_imgs'
+
+# PARAMETERS
+sample_time = 0.01 # [s]
+max_angle = 30.0    # [deg]
+max_speed = 0.5  # [m/s]
+desired_speed = 0.2 # [m/s]
+nodes_ahead = 400 # [nodes] how long the trajectory will be
+samples_per_edge = 100# [steps] how many steps per edge in graph
+path_step_length = 0.01 # [m]
+# CONTROLLER
+k1 = 0.0 #4.0 gain error parallel to direction (speed)
+k2 = 1.5 #2.0 perpedndicular error gain
+k3 = 1.5 #1.5 yaw error gain
+#dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
+ff_curvature = 0.2 # feedforward gain
+noise_std = np.deg2rad(25) # [rad] noise in the steering angle
 
 
 if __name__ == '__main__':
 
     #init windows
-    #cv.namedWindow("Poly") 
-    #cv.namedWindow("Frame preview") 
     cv.namedWindow("2D-MAP", cv.WINDOW_NORMAL)
     
-    #lane keeping
-    #lane_keeping = LaneKeepingReloaded(640, 480)
-
-    #initilize the car data
+    # init the car data
     car = Automobile_Data(trig_control=True, trig_cam=True, trig_gps=False, trig_bno=True)
 
-    # PARAMETERS
-    sample_time = 0.01 # [s]sss
-    max_angle = 30.0    # [deg]
-    max_speed = 0.5  # [m/s]
-    desired_speed = 0.2 # [m/s]
-    nodes_ahead = 400 # [nodes] how long the trajectory will be
-    samples_per_edge = 100# [steps] how many steps per edge in graph
     # init trajectory
-    path = PathPlanning(map, source=86, target=254) #254 463
+    path = PathPlanning(map) #254 463
 
-    #init controller
-    k1 = 0.0 #4.0 gain error parallel to direction (speed)
-    k2 = 2.0 #2.0 perpedndicular error gain
-    k3 = 1.5 #1.5 yaw error gain
-    #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
-    ff_curvature = 1.2 # feedforward gain
-    noise_std = np.deg2rad(30) # [rad] noise in the steering angle
-    controller = SimpleController(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, training=training, noise_std=noise_std)
+    # init controller
+    controller = SimpleController(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, 
+                                    training=training, noise_std=noise_std)
 
     start_time_stamp = 0.0
 
@@ -77,11 +74,16 @@ if __name__ == '__main__':
 
         start_time_stamp = car.time_stamp
 
-        path.compute_shortest_path(step_length=0.01)
+        #generate path
+        path_nodes = [86,436,273,136,321,262,105,350,373,451,265,145,160,353,94,127,91,99,
+                        97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
+        path_nodes = [86,436,273,136,321,262]
+        path.generate_path_passing_through(path_nodes, path_step_length) #[86,110,310,254,463] ,[86,436, 273,136,321,262,105,350,451,265]
+        # [86,436, 273,136,321,262,105,350,373,451,265,145,160,353]
         path.draw_path()
         path.print_path_info()
 
-        # cv.waitKey(0)
+        cv.waitKey(0)
 
         while not rospy.is_shutdown():
             tmp = np.copy(map)
@@ -91,15 +93,10 @@ if __name__ == '__main__':
             #draw true car position
             draw_car(tmp, car.x_true, car.y_true, car.yaw, color=(0, 255, 0))
 
-            #lane keeping
-            #angle_ref, both_lanes, poly = lane_keeping.lane_keeping_pipeline(frame)
-
             bounding_box = (0,0,0,0)
             sign = 'no_sign'
-            if training :
-                bounding_box, frame, sign = add_sign(frame)
-                
-            
+            # if training :
+            #     bounding_box, frame, sign = add_sign(frame)
 
             #FOLLOW predefined trajectory
             xd, yd, yawd, curv, finished, path_ahead, info, coeffs = path.get_reference(car, desired_speed, 
@@ -137,11 +134,11 @@ if __name__ == '__main__':
             # print(f"Coeffs:\n{coeffs}")
             print(f'Net out:\n {net_out}') if not training else None
      
-            if not training:
-                bb = net_out[5]
-                sign = net_out[2]
-                # if sign != 'no_sign':
-                #     draw_bounding_box(frame, bb)
+            # if not training:
+            #     bb = net_out[5]
+            #     sign = net_out[2]
+            #     # if sign != 'no_sign':
+            #     draw_bounding_box(frame, bb)
 
             #project path ahead
             frame, proj = project_onto_frame(frame, car, path_ahead) 
