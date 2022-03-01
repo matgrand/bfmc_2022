@@ -179,10 +179,31 @@ def add_sign(frame):
 
 def draw_bounding_box(frame, bounding_box, color=(0,0,255)):
     x,y,x2,y2 = bounding_box
+    x,y,x2,y2 = round(x), round(y), round(x2), round(y2)
     cv.rectangle(frame, (x,y), (x2,y2), color, 2)
     return frame
 
-
+def get_curvature(points, v_des):
+    # calculate curvature 
+    local_traj = points
+    #get length
+    path_length = 0
+    for i in range(len(points)-1):
+        x1,y1 = points[i]
+        x2,y2 = points[i+1]
+        path_length += np.hypot(x2-x1,y2-y1) 
+    #time
+    tot_time = path_length / v_des
+    local_time = np.linspace(0, tot_time, len(local_traj))
+    dx_dt = np.gradient(local_traj[:,0], local_time)
+    dy_dt = np.gradient(local_traj[:,1], local_time)
+    dp_dt = np.gradient(local_traj, local_time, axis=0)
+    v = np.linalg.norm(dp_dt, axis=1)
+    ddx_dt = np.gradient(dx_dt, local_time)
+    ddy_dt = np.gradient(dy_dt, local_time)
+    curv = (dx_dt*ddy_dt-dy_dt*ddx_dt) / np.power(v,1.5)
+    avg_curv = np.mean(curv)
+    return avg_curv
 
 
 

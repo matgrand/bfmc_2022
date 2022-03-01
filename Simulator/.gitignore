@@ -7,3 +7,7 @@ src/CMakeLists.txt
 dl_env/*
 training_imgs/*
 test_imgs/*
+runs/*
+sign_imgs/detection_results/*
+sign_imgs/detection_results2/*
+training/*

@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from  automobile_data import Automobile_Data
 from helper_functions import *
 from PathPlanning_advanced import PathPlanning
-from simple_controller import SimpleController
+from simple_controller2 import SimpleController
 
 
 # map = cv.imread('src/models_pkg/track/materials/textures/2021_Medium.png')
@@ -34,7 +34,7 @@ folder = 'test_imgs'
 sample_time = 0.01 # [s]
 max_angle = 30.0    # [deg]
 max_speed = 0.5  # [m/s]
-desired_speed = 0.2 # [m/s]
+desired_speed = 0.3 # [m/s]
 nodes_ahead = 400 # [nodes] how long the trajectory will be
 samples_per_edge = 100# [steps] how many steps per edge in graph
 path_step_length = 0.01 # [m]
