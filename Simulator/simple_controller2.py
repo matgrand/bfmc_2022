@@ -44,7 +44,6 @@ class SimpleController():
         self.regression_labels = []
         self.classification_labels = []
 
-        
         if training:
             #clear and create file 
             with open(folder+"/input_data.csv", "w") as f:
@@ -72,9 +71,13 @@ class SimpleController():
         return output_speed, output_angle
 
     def get_nn_control(self, frame, vd, action):
-        cv.resize(frame, IMG_SIZE)
+        frame = cv.resize(frame, IMG_SIZE)
         #convert to gray
         frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        #paint gray the top section of the image
+        frame[:int(IMG_SIZE[1]/2),:] = 127
+        #blur
+        frame = cv.GaussianBlur(frame, (5,5), 0)
         blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
         assert blob.shape == (1, 1, 240, 320), f"blob shape: {blob.shape}"
         self.lane_keeper.setInput(blob)

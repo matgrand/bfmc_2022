@@ -346,7 +346,7 @@ class PathPlanning():
         curv = 0.0
 
         #limit the search in a neighborhood of limit_search_to points around the current point
-        max_index = min(self.prev_index + limit_search_to, len(self.path)-1)
+        max_index = min(self.prev_index + limit_search_to, len(self.path)-2)
         if max_index == len(self.path)-1:
             finished = True
         min_index = max(self.prev_index, 0)
