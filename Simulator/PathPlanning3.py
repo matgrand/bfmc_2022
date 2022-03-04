@@ -328,7 +328,7 @@ class PathPlanning():
 
         return ind, Lf
 
-    def get_reference(self, car, v_des, limit_search_to=40, look_ahead=4, frame=None, n=3, training=True): 
+    def get_reference(self, car, v_des, limit_search_to=50, look_ahead=4, frame=None, n=3, training=True): 
         '''
         Returns the reference point, i.e., the point on the path nearest to the vehicle, 
         returns
@@ -347,7 +347,7 @@ class PathPlanning():
 
         #limit the search in a neighborhood of limit_search_to points around the current point
         max_index = min(self.prev_index + limit_search_to, len(self.path)-2)
-        if max_index == len(self.path)-1:
+        if max_index >= len(self.path)-10:
             finished = True
         min_index = max(self.prev_index, 0)
         path_to_analyze = self.path[min_index:max_index+1, :]
@@ -374,37 +374,12 @@ class PathPlanning():
         self.prev_index = min_index + closest_index - (1+look_ahead)
 
         path_ahead = self.get_path_ahead(min_index+closest_index, limit_search_to)
-
-        #get parameters of the curve
-        if len(path_ahead) > 5:
-            aligned_path = align_with_car(path_ahead, car, return_size=2)
-            # aligned_path = path_ahead
-            t_path = np.arange(1,len(aligned_path)+1)
-            spline = CubicSpline(t_path, aligned_path)
-            tn = np.geomspace(1, len(aligned_path)+1, n)
-            gen = spline(tn)
-            assert gen.shape[1] == 2, f"gen3.shape[1] != 2, {gen.shape[1]}"
-            #draw generated points
-            if not training:
-                project_onto_frame(frame, car, points=gen, color=(0,200,200), align_to_car=False)
-
-            splinen = CubicSpline(tn, gen)
-
-            coeffn = splinen.c
-            # print(f'coeff: {coeffn}')
-            
-            t_geom = np.geomspace(1, len(aligned_path)+1, 50)
-            generated = splinen(t_geom)
-            if not training:
-                project_onto_frame(frame, car, points=generated, color=(0,0,255), align_to_car=False)
-
-            # cv.waitKey(0)
         
         avg_curv = get_curvature(path_ahead, v_des)
 
         info = self.path_data[min_index+closest_index]
 
-        return x_des, y_des, yaw_des, avg_curv, finished, path_ahead, info, coeffn
+        return x_des, y_des, yaw_des, avg_curv, finished, path_ahead, info
 
     def get_path_ahead(self, index, look_ahead=100):
         assert index < len(self.path) and index >= 0

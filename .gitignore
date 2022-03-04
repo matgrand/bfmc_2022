@@ -1,0 +1,7 @@
+Simulator/yolov5s.pt
+Simulator/yolov5n.pt
+Simulator/sim_bk.zip
+Simulator/training_imgs.zip
+catkin_ws/build/*
+catkin_ws/devel/*
+

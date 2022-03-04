@@ -1,8 +1,5 @@
 #!/usr/bin/python3
-
-# license removed for brevity
-from tkinter import Frame
-import cv2
+from time import sleep
 import numpy as np
 from cv_bridge import CvBridge, CvBridgeError
 import rospy
@@ -36,26 +33,25 @@ TREAD = 0.09  			            # horizantal distance between the imaginary line th
 #WB = 0.26  			                # distance between the two wheels centers on one side (front and back wheel) [m]
 WB = 0.304
 
-#Camera position and orientation wrt the car frame, change it in src/models_pkg/rcCar_assembly/model.sdf
-CAM_X, CAM_Y, CAM_Z, CAM_ROLL, CAM_PITCH, CAM_YAW = 0, 0, 0.2, 0, 0.3490656, 0#  0, 0, 0.2, 0, 0.2617, 0 #[m, rad]
+#Camera position and orientation wrt the car frame
+CAM_X, CAM_Y, CAM_Z, CAM_ROLL, CAM_PITCH, CAM_YAW = 0, 0, 0.2, 0, 0.2617, 0 #[m, rad]
 CAM_FOV = 1.085594795 #[rad]
 CAM_F = 1.0 # focal length
 CAM_Sx, CAM_Sy, CAM_Ox, CAM_Oy = 10,10,10,10#100, 100, 240, 320 #scaling factors [m]->[pixels], and offsets [pixel]
 
-#  Simulation parameter
-#Qsim = np.diag([0.5, 0.5])**2
-#Rsim = np.diag([1.0, np.deg2rad(30.0)])**2
-
-#response_topic_name="/automobile/feedback"
 class Automobile_Data():
     def __init__(self, trig_control=True, trig_cam=False, trig_gps=False, trig_bno=False):
         """
+
         :param command_topic_name: drive and stop commands are sent on this topic
         :param response_topic_name: "ack" message is received on this topic
         """
         # State of the car
         # sampling time
         self.Ts = 0.1# [s] sampling time
+
+        self.ros_pause = 0.001
+        self.ros_repeat = 15
 
         # position
         self.x = 0.0
@@ -85,6 +81,9 @@ class Automobile_Data():
         self.rear_x = 0.0
         self.rear_y = 0.0
 
+        # PID activation
+        self.PID_active = True
+
         # camera
         self.bridge = CvBridge()
         self.cv_image = np.zeros((640, 480))
@@ -103,6 +102,9 @@ class Automobile_Data():
         if trig_control:
             # control stuff
             self.pub = rospy.Publisher('/automobile/command', String, queue_size=1)
+            rospy.sleep(self.ros_pause)
+            self.activate_PID()
+            rospy.sleep(self.ros_pause)
         if trig_cam:
             # camera stuff
             self.sub_cam = rospy.Subscriber("/automobile/image_raw", Image, self.camera_callback)
@@ -123,9 +125,48 @@ class Automobile_Data():
         # This is a temporary fix. Problem with timing
         rospy.sleep(1)
 
+    def activate_PID(self):
+        data = {}
+        data['action']        =  '4'
+        data['activate']    =  self.PID_active
+        reference = json.dumps(data)
+        self.pub.publish(reference)
+        sleep(self.ros_pause)
+        self.pub.publish(reference)
+        sleep(self.ros_pause)
+        self.pub.publish(reference)
+        sleep(self.ros_pause)
+
+    def drive_speed(self, speed=0.0):
+        """Transmite the command to the remotecontrol receiver. 
+        
+        Parameters
+        ----------
+        inP : Pipe
+            Input pipe. 
+        """
+        data = {}
+        
+        # normalize speed and angle, basically clip them
+        speed = Automobile_Data.normalizeSpeed(speed)
+
+        # self.update_control_action(speed, self.yaw)
+        self.speed = speed
+        self.yawRate = 0.0
+
+        # # speed command
+        data = {}
+        data['action']        =  '1'
+        data['speed']         =  float(speed)
+
+        # publish
+        reference = json.dumps(data)
+        for i in range(self.ros_repeat):
+            self.pub.publish(reference)
+            sleep(self.ros_pause)
 
 
-    def drive(self, speed=0.0, angle=0.0):
+    def drive_angle(self, angle=0.0):
         """Transmite the command to the remotecontrol receiver. 
         
         Parameters
@@ -137,32 +178,17 @@ class Automobile_Data():
         
         # normalize speed and angle, basically clip them
         angle = Automobile_Data.normalizeSteer(angle)
-        speed = Automobile_Data.normalizeSpeed(speed)
 
         # self.update_control_action(speed, self.yaw)
-        self.speed = speed
         self.yawRate = 0.0
 
-        '''
         # steer command
         data['action']        =  '2'
         data['steerAngle']    =  float(angle)
         reference = json.dumps(data)
-        self.pub.publish(reference)
-
-        # speed command
-        data = {}
-        data['action']        =  '1'
-        data['speed']         =  float(speed/100.0)
-        '''
-        # move command
-        data['action']        =  '4'
-        data['speed']         =  speed
-        data['steerAngle']    =  angle
-
-        # publish
-        reference = json.dumps(data)
-        self.pub.publish(reference)
+        for i in range(self.ros_repeat):
+            self.pub.publish(reference)
+            sleep(self.ros_pause)
     
     def stop(self, angle=0.0):
         """
@@ -180,12 +206,15 @@ class Automobile_Data():
         self.yawRate = 0.0
 
         # brake command
-        data['action']        =  '3'
-        data['steerAngle']    =  angle
-
+        # data['action']        =  '3'
+        # data['steerAngle']    =  angle
+        data['action']        =  '1'
+        data['speed']    =  0.0
         # publish
         reference = json.dumps(data)
-        self.pub.publish(reference)
+        for i in range(self.ros_repeat):
+            self.pub.publish(reference)
+            sleep(self.ros_pause)
 
     def camera_callback(self, data):
         """
@@ -216,9 +245,14 @@ class Automobile_Data():
         self.yaw_deg = np.rad2deg(self.yaw)
 
         #true position, for training purposes
-        self.x_true = float(data.posx)
-        self.y_true = float(data.posy)
-        self.time_stamp = float(data.timestamp)
+        if False:
+            self.x_true = float(data.posx)
+            self.y_true = float(data.posy)
+            self.time_stamp = float(data.timestamp)
+        else:
+            self.x_true = 0.0
+            self.y_true = 0.0
+            self.time_stamp = 0.0
 
         self.update_estimated_state()
         self.update_car_parameters()

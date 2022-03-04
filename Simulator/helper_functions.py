@@ -45,25 +45,24 @@ def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
     return map
 
 def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255)):
-    # #debug
-    # proj = np.copy(map)
+    #check if its a single point
+    single_dim = False
+    if points.ndim == 1:
+        points = points[np.newaxis,:]
+        single_dim = True
     num_points = points.shape[0]
     #check shape
     if points[0].shape == (2,):
         #add 0 Z component
         points = np.concatenate((points, -car.cam_z*np.ones((num_points,1))), axis=1)
-    # assert points[0].shape == (3,), "points must be (3,), got {}".format(points[0].shape)
-    
 
     #rotate the points around the z axis
     if align_to_car:
-        diff = align_with_car(points, car, 3)
+        diff = to_car_frame(points, car, 3)
     else:
         diff = points
 
     #get points inside the fov:
-    #translation
-    # diff = points - np.array([car.x_true, car.y_true, car.cam_z])
     #angles
     angles = - np.arctan2(diff[:,1], diff[:,0])
     #calculate angle differences
@@ -88,7 +87,6 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
     # for p in front_points:
     #     cv.circle(map, m2pix(p[:2]), 15, (0,255,255), -1)
 
-
     #rotate the points around the relative y axis, pitch
     beta = -car.cam_pitch
     rot_matrix = np.array([[np.cos(beta), 0, np.sin(beta)],
@@ -96,25 +94,6 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
                             [-np.sin(beta), 0, np.cos(beta)]])
     
     rotated_points = np.matmul(rot_matrix, rel_pos_points.T).T
-
-    # max_x = 100*np.max(rotated_points[:,0])
-    # min_x = 100*np.min(rotated_points[:,0])
-    # max_y = 100*np.max(rotated_points[:,1])
-    # min_y = 100*np.min(rotated_points[:,1])
-    # proj = np.zeros((int(max_y-min_y+1), int(max_x-min_x+1), 3), dtype=np.uint8)
-    # for p in rotated_points:
-    #     x = int(100*p[0]-min_x)
-    #     y = int(100*p[1]-min_y)
-    #     cv.circle(proj, (x,y), 5, (0,255,255), -1)
-
-    # 3d plot the points
-    # fig = plt.figure(figsize=(4,4))
-    # ax = fig.add_subplot(111, projection='3d')
-    # ax.scatter3D(rotated_points[:,0], rotated_points[:,1], rotated_points[:,2], c='r', marker='o')
-    # ax.set_xlabel('X')
-    # ax.set_ylabel('Y')
-    # ax.set_zlabel('Z')
-    # plt.show()
 
     #project the points onto the camera frame
     proj_points = np.array([[p[1]/p[0], -p[2]/p[0]] for p in rotated_points])
@@ -125,9 +104,16 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
     for p in proj_points:
         cv.circle(frame, (round(p[0]), round(p[1])), 2, color, -1)
 
+    if single_dim:
+        return frame, proj_points[0]
     return frame, proj_points
 
-def align_with_car(points, car, return_size=3):
+def to_car_frame(points, car, return_size=3):
+    #check if its a single point
+    single_dim = False
+    if points.ndim == 1:
+        points = points[np.newaxis,:]
+        single_dim = True
     gamma = car.yaw
     if points.shape[1] == 3:
         diff = points - np.array([car.x_true, car.y_true, 0])
@@ -136,7 +122,6 @@ def align_with_car(points, car, return_size=3):
         if return_size == 2:
             out = out[:,:2]
         assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
-        return out
     elif points.shape[1] == 2:
         diff = points - np.array([car.x_true, car.y_true]) 
         rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma)],[np.sin(gamma), np.cos(gamma)]])
@@ -144,9 +129,9 @@ def align_with_car(points, car, return_size=3):
         if return_size == 3:
             out = np.concatenate((out, np.zeros((out.shape[0],1))), axis=1)
         assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
-        return out
-    else:
-        raise ValueError("points must be (2,), or (3,)")
+    else: raise ValueError("points must be (2,), or (3,)")
+    if single_dim: return out[0]
+    else: return out
 
 fo = 'sign_imgs/'
 paths = [fo+'cross_walk.png', fo+'enter_highway.png', fo+'parking.png', fo+'stop.png', fo+'preference_road.png', fo+'roundabout.png']
@@ -175,7 +160,6 @@ def add_sign(frame):
         # draw_bounding_box(frame, bounding_box, (0,0,255))
 
     return bounding_box, frame, sign
-
 
 def draw_bounding_box(frame, bounding_box, color=(0,0,255)):
     x,y,x2,y2 = bounding_box
