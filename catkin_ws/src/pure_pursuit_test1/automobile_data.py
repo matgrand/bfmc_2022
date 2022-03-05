@@ -20,7 +20,7 @@ R = np.diag([0.1, 0.1, 0, 1.0])**2  # predict state covariance
 MIN_SPEED = -0.3                    # minimum speed [m/s]
 MAX_SPEED = 0.5                    # maximum speed [m/s]
 MAX_ACCEL = 0.5                     # maximum accel [m/ss]
-MAX_STEER = np.deg2rad(30.0)        # maximum steering angle [rad]
+MAX_STEER = np.deg2rad(18.0)        # maximum steering angle [rad]
 MAX_DSTEER = np.deg2rad(40.0)       # maximum steering speed [rad/s]
 
 # Vehicle parameters
@@ -50,13 +50,12 @@ class Automobile_Data():
         # sampling time
         self.Ts = 0.1# [s] sampling time
 
+        self.ros_pause = 0.001
+        self.ros_repeat = 15
+
         # position
         self.x = 0.0
         self.y = 0.0
-
-        #true position
-        self.x_true = 0.0
-        self.y_true = 0.0
 
         #simulator time_stamp, prob not nocessary
         self.time_stamp = 0.0
@@ -99,9 +98,9 @@ class Automobile_Data():
         if trig_control:
             # control stuff
             self.pub = rospy.Publisher('/automobile/command', String, queue_size=1)
-            rospy.sleep(0.01)
+            rospy.sleep(self.ros_pause)
             self.activate_PID()
-            rospy.sleep(0.01)
+            rospy.sleep(self.ros_pause)
         if trig_cam:
             # camera stuff
             self.sub_cam = rospy.Subscriber("/automobile/image_raw", Image, self.camera_callback)
@@ -128,11 +127,11 @@ class Automobile_Data():
         data['activate']    =  self.PID_active
         reference = json.dumps(data)
         self.pub.publish(reference)
-        sleep(0.01)
+        sleep(self.ros_pause)
         self.pub.publish(reference)
-        sleep(0.01)
+        sleep(self.ros_pause)
         self.pub.publish(reference)
-        sleep(0.01)
+        sleep(self.ros_pause)
 
     def drive_speed(self, speed=0.0):
         """Transmite the command to the remotecontrol receiver. 
@@ -158,16 +157,10 @@ class Automobile_Data():
 
         # publish
         reference = json.dumps(data)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
+        for i in range(self.ros_repeat):
+            self.pub.publish(reference)
+            sleep(self.ros_pause)
+
 
     def drive_angle(self, angle=0.0):
         """Transmite the command to the remotecontrol receiver. 
@@ -189,16 +182,9 @@ class Automobile_Data():
         data['action']        =  '2'
         data['steerAngle']    =  float(angle)
         reference = json.dumps(data)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
+        for i in range(self.ros_repeat):
+            self.pub.publish(reference)
+            sleep(self.ros_pause)
     
     def stop(self, angle=0.0):
         """
@@ -222,16 +208,9 @@ class Automobile_Data():
         data['speed']    =  0.0
         # publish
         reference = json.dumps(data)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
-        self.pub.publish(reference)
-        sleep(0.01)
+        for i in range(self.ros_repeat):
+            self.pub.publish(reference)
+            sleep(self.ros_pause)
 
     def camera_callback(self, data):
         """
