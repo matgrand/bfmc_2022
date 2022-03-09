@@ -54,6 +54,10 @@ class PathPlanning():
         # define left turns tuples
         #self.left_turns = [(45,42),(43,40),(54,51),(36,33),(34,31),(6,3),(2,7),(2,8),(4,1),(70,67),(72,69),(27,24),(25,22),(16,13),(61,58),(63,60)]
 
+        #define crosswalks 
+        self.crosswalk = [92,96,276,295,170,266,177,162] #note: parking spots are included too (177,162)
+        self.crosswalk = [str(i) for i in self.crosswalk]
+
         # define roundabout nodes
         self.ra = [267,268,269,270,271,302,303,304,305,306,307]
         self.ra = [str(i) for i in self.ra]
@@ -470,6 +474,22 @@ class PathPlanning():
                     junction_yaw.append(yaw)
                     break 
 
+        #crosswalks
+        crosswalk_indexes = []
+        crosswalk_pos = []
+        crosswalk_yaw = []
+        for i in range(len(self.path)-1):
+            curr_x = self.path[i,0]
+            curr_y = self.path[i,1]
+            for n in self.crosswalk:
+                nx, ny = self.get_coord(n)
+                if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
+                    crosswalk_indexes.append(i) 
+                    crosswalk_pos.append((nx, ny))
+                    yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
+                    crosswalk_yaw.append(yaw)
+                    break 
+
         self.path_data = [None for i in range(len(self.path))]
         # self.path_data[0] = ['start', None, None, self.path[0,0], self.path[0,1], 0.0]
         for i, (x,y), yaw in zip(intersection_in_indexes, intersection_in_pos, intersection_in_yaw):
@@ -482,6 +502,8 @@ class PathPlanning():
             self.path_data[i] = ('rou_out', None, None, x, y, yaw, None, None)
         for i, (x,y), yaw in zip(junction_indexes, junction_pos, junction_yaw):
             self.path_data[i] = ('junction', None, None, x, y, yaw, None, None)
+        for i, (x,y), yaw in zip(crosswalk_indexes, crosswalk_pos, crosswalk_yaw):
+            self.path_data[i] = ('crosswalk', None, None, x, y, yaw, None, None)
         
         # print("path_data: ", self.path_data)
         
@@ -509,14 +531,19 @@ class PathPlanning():
                     if self.path_data[curr_index] is None:
                         if prev_event == 'int_in':
                             print('ERROR: Path cannot end inside an intersection')
-                        if prev_event == 'int_out':
+                        elif prev_event == 'int_out':
                             self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
-                        if prev_event == 'rou_in':
+                        elif prev_event == 'rou_in':
                             print('ERROR: Path cannot end inside a roundabout')
-                        if prev_event == 'rou_out':
+                        elif prev_event == 'rou_out':
                             self.path_data[curr_index] = ('road', 'road',  'continue', None, None, None, None)
-                        if prev_event == 'junction':
+                        elif prev_event == 'junction':
                             self.path_data[curr_index] = ('road', 'road',  'continue', None, None, None, None)
+                        elif prev_event == 'crosswalk':
+                            self.path_data[curr_index] = ('road', 'road',  'continue', None, None, None, None)
+                        else:
+                            print('ERROR: Path cannot end at start')
+                            cv.waitKey(0)
                     curr_index += 1
                 print('Done')
                 sleep(1)
@@ -609,6 +636,35 @@ class PathPlanning():
                     self.path_data[curr_index] = ('road', 'junction', action, None, None, None, None)
                     curr_index += 1
                 next_index = curr_index
+                # print(f'curr_index: {curr_index}, next_index: {next_index}')
+            #7. Crosswalk ahead
+            elif next_event == 'crosswalk':
+                # print('CROSSWALK AHEAD')
+                xi, yi = self.path_data[next_index][3], self.path_data[next_index][4] #junction coordinates
+                # assert np.isclose(xi, self.path[next_index,0]) and np.isclose(yi, self.path[next_index,1])
+                yaw_crosswalk = self.path_data[next_index][5]
+                #find yaw ahead 
+                idx_ahead = min(next_index+int(50*(0.03/self.step_length)), len(self.path)-2) 
+                dx = + self.path[idx_ahead,0] - self.path[idx_ahead+1,0]
+                dy = + self.path[idx_ahead,1] - self.path[idx_ahead+1,1]
+                yaw_ahead = -np.arctan2(dy, dx)
+                angle = diff_angle(yaw_crosswalk, yaw_ahead)
+                print(f'angle: {angle}')
+                # print(f'angle = {angle}')
+                action = 'right' if angle > 0.004 else 'left' if angle < -0.60 else 'straight'
+                # print(f'curr_index: {curr_index}, next_index: {next_index}')
+                while curr_index < next_index:
+                    if next_index-curr_index < default_distance:
+                        euclidean_distance = -0.3 + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
+                        self.path_data[curr_index] = ('road', 'crosswalk', action, euclidean_distance, None, None, None)
+                    else:
+                        self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
+                    curr_index += 1
+                # #continue junction for a while
+                # while curr_index < next_index+60: # with path_step_length = 0.01 [m]
+                #     self.path_data[curr_index] = ('road', 'crosswalk', action, None, None, None, None)
+                #     curr_index += 1
+                # next_index = curr_index
                 # print(f'curr_index: {curr_index}, next_index: {next_index}')
             #8. Error case intersection 
             elif prev_event != 'int_in' and next_event == 'int_out':

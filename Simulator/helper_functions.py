@@ -189,6 +189,39 @@ def get_curvature(points, v_des):
     avg_curv = np.mean(curv)
     return avg_curv
 
+#detection functions
+def wrap_detection(output_data):
+    class_ids = []
+    confidences = []
+    boxes = []
+    rows = output_data.shape[0]
+    for r in range(rows):
+        row = output_data[r]
+        confidence = row[4]
+        if confidence >= 0.3:
+            classes_scores = row[5:]
+            _, _, _, max_indx = cv.minMaxLoc(classes_scores)
+            class_id = max_indx[1]
+            if (classes_scores[class_id] > .25):
+                confidences.append(confidence)
+                class_ids.append(class_id)
+                x, y, w, h = row[0].item(), row[1].item(), row[2].item(), row[3].item() 
+                left = int((x - 0.5 * w))
+                top = int((y - 0.5 * h))
+                width = int(w)
+                height = int(h)
+                box = np.array([left, top, width, height])
+                boxes.append(box)
+
+    indexes = cv.dnn.NMSBoxes(boxes, confidences, 0.25, 0.45) 
+    result_class_ids = []
+    result_confidences = []
+    result_boxes = []
+    for i in indexes:
+        result_confidences.append(confidences[i])
+        result_class_ids.append(class_ids[i])
+        result_boxes.append(boxes[i])
+    return result_class_ids, result_confidences, result_boxes
 
 
 
