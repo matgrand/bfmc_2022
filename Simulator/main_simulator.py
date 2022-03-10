@@ -24,7 +24,7 @@ class_list = []
 with open("models/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
-training = True
+training = False
 generate_path = False if not training else True
 # folder = 'training_imgs' 
 folder = 'test_imgs'

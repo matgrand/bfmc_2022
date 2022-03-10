@@ -13,7 +13,8 @@ from sensor_msgs.msg import Image
 import os
 # state estimation
 #from estimation import EKFCar
-from math import cos,sin,pi
+from math import cos,sin,pi, radians
+from helper_functions import *
 
 # Vehicle driving parameters
 MIN_SPEED = -0.3                    # minimum speed [m/s]
@@ -84,6 +85,9 @@ class Automobile_Data():
         self.pitch_deg = 0.0
         self.yaw = 0.0
         self.yaw_deg = 0.0
+        self.delta_yaw = 0.0
+        self.yaw_old = 0.0
+        self.yaw_accumulator = 0.0
 
         # car parameters
         self.rear_x = 0.0
@@ -116,7 +120,7 @@ class Automobile_Data():
         if trig_control:
             # control stuff
             self.pub = rospy.Publisher('/automobile/command', String, queue_size=1)
-            self.activate_PID()
+            self.activate_PID(True)
         if trig_cam:
             # camera stuff
             self.sub_cam = rospy.Subscriber("/automobile/image_raw", Image, self.camera_callback)
@@ -125,7 +129,7 @@ class Automobile_Data():
             self.sub_pos = rospy.Subscriber("/automobile/localisation", localisation, self.position_callback)
         if trig_bno:
             # imu stuff
-            self.sub_imu = rospy.Subscriber('/automobile/IMU', IMU, self.imu_callback)
+            self.sub_imu = rospy.Subscriber('/automobile/imu', IMU, self.imu_callback)
 
         # Create publishers for command acknowledge
         self.steer_feedback_topic = '/steer_feedback'
@@ -177,23 +181,27 @@ class Automobile_Data():
         motor_speed = float(motor_speed)# motor angular speed [rps]
 
         self.speed_meas = motor_speed * 2*pi/GBOX_RATIO * WHEEL_LEN # car speed [m/s]
+
         curr_enc_time = time()
         dt = curr_enc_time - self.last_enc_time
+        self.delta_yaw = diff_angle(self.yaw,self.yaw_old)
+        self.yaw_accumulator += self.delta_yaw
 
-        self.xEst_rel += self.speed_meas * cos(self.yaw) * dt
-        self.yEst_rel += self.speed_meas * sin(self.yaw) * dt
+        self.xEst_rel -= self.speed_meas * sin(self.delta_yaw) * dt
+        self.yEst_rel += self.speed_meas * cos(self.delta_yaw) * dt
 
         self.last_enc_time = curr_enc_time
+        self.yaw_old = self.yaw
 
     def reset_relative_position(self):
         self.xEst_rel = 0.0
         self.yEst_rel = 0.0
         
 
-    def activate_PID(self):
+    def activate_PID(self, activate):
         data = {}
         data['action']        =  '4'
-        data['activate']    =  self.PID_active
+        data['activate']    =  activate
         reference = json.dumps(data)
         for i in range(self.ros_repeat):
             self.pub.publish(reference)
@@ -329,12 +337,13 @@ class Automobile_Data():
         :param msg: a geometry_msgs Twist message
         :return: nothing, but sets the oz, wx, wy, wz class members
         """
-        self.roll = float(data.roll)
-        self.roll_deg = np.rad2deg(self.roll)
-        self.pitch = float(data.pitch)
-        self.pitch_deg = np.rad2deg(self.pitch)
-        self.yaw = float(data.yaw)
-        self.yaw_deg = np.rad2deg(self.yaw)
+        self.roll = np.deg2rad(data.roll)
+        self.pitch = np.deg2rad(data.pitch)
+        self.yaw = np.deg2rad(data.yaw)
+        self.roll_deg = data.roll
+        self.pitch_deg = data.pitch
+        self.yaw_deg = data.yaw
+        
     
     def update_estimated_state(self):
         ''' Updates estimated state according to EKF '''

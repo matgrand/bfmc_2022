@@ -8,11 +8,11 @@ import os
 
 from helper_functions import *
 
-IMG_SIZE = (320, 240)
+IMG_SIZE = (128,64)
 
 class Controller():
     def __init__(self, k1=1.0,k2=1.0,k3=1.0, ff=1.0, cm_ahead=35, folder='training_imgs', 
-                    lane_keeper_path="models/lane_keeper.onnx",
+                    lane_keeper_path="models/lane_keeper_small.onnx",
                     training=True, noise_std=np.deg2rad(20)):
         self.k1 = k1
         self.k2 = k2
@@ -81,15 +81,17 @@ class Controller():
         return output_speed, output_angle, point_ahead
 
     def get_nn_control(self, frame, vd, action):
-        frame = cv.resize(frame, IMG_SIZE)
         #convert to gray
         frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        #paint gray the top section of the image
-        frame[:int(IMG_SIZE[1]/2),:] = 127
+        #keep the bottom 2/3 of the image
+        frame = frame[int(frame.shape[0]/3):,:]
+        # #paint gray the top section of the image
+        # frame[:int(IMG_SIZE[1]/3),:] = 127
+        frame = cv.resize(frame, IMG_SIZE)
         #blur
         frame = cv.GaussianBlur(frame, (5,5), 0)
         blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
-        assert blob.shape == (1, 1, 240, 320), f"blob shape: {blob.shape}"
+        assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
         self.lane_keeper.setInput(blob)
         output = self.lane_keeper.forward()
         # print(f'output: {output.shape}')
@@ -97,12 +99,13 @@ class Controller():
 
         e2,e3,dist,curv = self.unpack_network_output(output)
 
+        self.e2 = e2
         self.e3 = e3
         alpha = e3
         delta = np.arctan((2*self.L*np.sin(alpha))/(self.k3*self.d))
 
         # output_angle = self.ff*curv - self.k2 * e2 - self.k3 * e3
-        output_angle = delta
+        output_angle = delta - self.k2 * e2
         output_speed = vd - self.k1 * self.e1
 
         #calculate estimated of thr point ahead to get visual feedback

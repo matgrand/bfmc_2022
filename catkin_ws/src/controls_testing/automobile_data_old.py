@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-from time import sleep, time
+from time import sleep
 import numpy as np
 from cv_bridge import CvBridge, CvBridgeError
 import rospy
@@ -11,15 +11,18 @@ from utils.msg import localisation
 from utils.srv import subscribing
 from sensor_msgs.msg import Image
 import os
-# state estimation
-#from estimation import EKFCar
-from math import cos,sin,pi
+
+# Estimation parameter of EKF
+Q = np.diag([0.01, 0.01])**2  # Observation x,y position covariance
+#R = np.diag([0.1, 0.1, np.deg2rad(1.0), 1.0])**2  # predict state covariance
+R = np.diag([0.1, 0.1, 0, 1.0])**2  # predict state covariance
+
 
 # Vehicle driving parameters
 MIN_SPEED = -0.3                    # minimum speed [m/s]
 MAX_SPEED = 0.5                    # maximum speed [m/s]
 MAX_ACCEL = 0.5                     # maximum accel [m/ss]
-MAX_STEER = np.deg2rad(22.8)        # maximum steering angle [rad]
+MAX_STEER = np.deg2rad(30.0)        # maximum steering angle [rad]
 MAX_DSTEER = np.deg2rad(40.0)       # maximum steering speed [rad/s]
 
 # Vehicle parameters
@@ -29,8 +32,8 @@ BACKTOWHEEL = 0.10  		        # distance of the wheel and the car body [m]
 WHEEL_LEN = 0.03  			        # wheel raduis [m]
 WHEEL_WIDTH = 0.03  		        # wheel thickness [m]
 TREAD = 0.09  			            # horizantal distance between the imaginary line through the center of the car to where the wheel is on the body (usually width/2) [m]
-WB = 0.26  			                # distance between the two wheels centers on one side (front and back wheel) [m]
-GBOX_RATIO = 28
+#WB = 0.26  			                # distance between the two wheels centers on one side (front and back wheel) [m]
+WB = 0.304
 
 #Camera position and orientation wrt the car frame
 CAM_X, CAM_Y, CAM_Z, CAM_ROLL, CAM_PITCH, CAM_YAW = 0, 0, 0.2, 0, 0.2617, 0 #[m, rad]
@@ -39,7 +42,7 @@ CAM_F = 1.0 # focal length
 CAM_Sx, CAM_Sy, CAM_Ox, CAM_Oy = 10,10,10,10#100, 100, 240, 320 #scaling factors [m]->[pixels], and offsets [pixel]
 
 class Automobile_Data():
-    def __init__(self, trig_control=True, trig_cam=False, trig_gps=False, trig_bno=False, trig_stateEst=False):
+    def __init__(self, trig_control=True, trig_cam=False, trig_gps=False, trig_bno=False):
         """
 
         :param command_topic_name: drive and stop commands are sent on this topic
@@ -63,19 +66,10 @@ class Automobile_Data():
         #simulator time_stamp, prob not nocessary
         self.time_stamp = 0.0
 
-        # EKF estimation
-        self.trig_stateEst = trig_stateEst
-        if self.trig_stateEst:
-            x0=np.array([1.5, 15-6.0,0.9*pi]).reshape(-1,1) # initial state
-            self.ekf = EKFCar(x0 = x0, WB = WB)             # EKF declaration
-            
-            self.fist_stateEst_callback = True                  # bool to check first call of estimator
-            self.last_stateEst_time = 0.0               # used to compute sampling time of estimator
-            self.xEst = 0.0                             # estimated x [m]
-            self.yEst = 0.0                             # estimated y [m]
-            self.yawEst = 0.0                           # estimated yaw [rad]
-            self.rear_xEst = 0.0                        # estimated rear axis x [m]
-            self.rear_yEst = 0.0                        # estimated rear axis y [m]
+        # EKF estimation of position
+        self.xEst = np.zeros((4, 1))
+        self.xTrue = np.zeros((4, 1))
+        self.PEst = np.eye(4)
 
         # orientation
         self.roll = 0.0
@@ -105,11 +99,30 @@ class Automobile_Data():
         self.cam_K = np.array([[CAM_F*CAM_Sx, 0, CAM_Ox], [ 0, CAM_F*CAM_Sy, CAM_Oy], [ 0, 0, 1.0]])
         assert self.cam_K.shape == (3,3) # make sure the matrix is 3x3
 
-        # encoder
-        self.speed_meas = 0.0       # [m/s] car speed measure from encoder
-        self.last_enc_time = 0.0    # [s] used to compute encoder sampling time
-        self.xEst_rel = 0.0
-        self.yEst_rel = 0.0
+        self.steer_feedback_topic = '/steer_feedback'
+        self.stop_feedback_topic = '/break_feedback'
+        self.speed_feedback_topic = '/speed_feedback'
+        self.encoder_feedback_topic = '/encoder_feedback'
+        self.steer_ack = False
+        self.speed_ack = False
+        self.stop_ack = False
+
+        self.enc_speed = 0.0
+
+        # Create publishers for command acknoledge
+        # os.system('rosservice call /command_feedback_en \"subscribing: true\ncode:\'2:ac\'\ntopic:\''+self.steer_feedback_topic+'\'\"')
+        caller = rospy.ServiceProxy('/command_feedback_en', subscribing)
+        caller(subscribing=True,code='2:ac',topic=self.steer_feedback_topic)
+        caller(subscribing=True,code='3:ac',topic=self.stop_feedback_topic)
+        caller(subscribing=True,code='1:ac',topic=self.speed_feedback_topic)
+        caller(subscribing=True,code='ENPB',topic=self.encoder_feedback_topic)
+
+        # Create subscribers for drive and stop commands
+        self.steer_command_sub = rospy.Subscriber(self.steer_feedback_topic, String, self.steer_command_callback)
+        self.stop_command_sub = rospy.Subscriber(self.stop_feedback_topic, String, self.stop_command_callback)
+        self.speed_command_sub = rospy.Subscriber(self.speed_feedback_topic, String, self.speed_command_callback)
+        self.encoder_command_sub = rospy.Subscriber(self.encoder_feedback_topic, String, self.encoder_command_callback)
+
 
         # Publisher node : Send command to the car
         rospy.init_node('automobile_data', anonymous=False)  
@@ -126,32 +139,11 @@ class Automobile_Data():
         if trig_bno:
             # imu stuff
             self.sub_imu = rospy.Subscriber('/automobile/IMU', IMU, self.imu_callback)
-
-        # Create publishers for command acknowledge
-        self.steer_feedback_topic = '/steer_feedback'
-        self.stop_feedback_topic = '/break_feedback'
-        self.speed_feedback_topic = '/speed_feedback'
-        self.encoder_feedback_topic = '/encoder_feedback'
-        self.steer_ack = False
-        self.speed_ack = False
-        self.stop_ack = False
-
-        # os.system('rosservice call /command_feedback_en \"subscribing: true\ncode:\'2:ac\'\ntopic:\''+self.steer_feedback_topic+'\'\"')
-        caller = rospy.ServiceProxy('/command_feedback_en', subscribing)
-        caller(subscribing=True,code='2:ac',topic=self.steer_feedback_topic)
-        caller(subscribing=True,code='3:ac',topic=self.stop_feedback_topic)
-        caller(subscribing=True,code='1:ac',topic=self.speed_feedback_topic)
-        caller(subscribing=True,code='ENPB',topic=self.encoder_feedback_topic)
-
-        # Create subscribers for drive and stop commands
-        self.steer_command_sub = rospy.Subscriber(self.steer_feedback_topic, String, self.steer_command_callback)
-        self.stop_command_sub = rospy.Subscriber(self.stop_feedback_topic, String, self.stop_command_callback)
-        self.speed_command_sub = rospy.Subscriber(self.speed_feedback_topic, String, self.speed_command_callback)
-        self.encoder_command_sub = rospy.Subscriber(self.encoder_feedback_topic, String, self.encoder_command_callback)
-
+            
         # control action
         self.speed = 0.0
         self.steer = 0.0
+        self.yawRate = 0.0
         #rospy.spin() # spin() simply keeps python from exiting until this node is stopped
 
         # Wait for publisher to register to roscore -
@@ -173,21 +165,10 @@ class Automobile_Data():
 
     def encoder_command_callback(self, data):
         data = data.data
-        motor_speed = data[6:-2]
-        motor_speed = float(motor_speed)# motor angular speed [rps]
-
-        self.speed_meas = motor_speed * 2*pi/GBOX_RATIO * WHEEL_LEN # car speed [m/s]
-        curr_enc_time = time()
-        dt = curr_enc_time - self.last_enc_time
-
-        self.xEst_rel += self.speed_meas * cos(self.yaw) * dt
-        self.yEst_rel += self.speed_meas * sin(self.yaw) * dt
-
-        self.last_enc_time = curr_enc_time
-
-    def reset_relative_position(self):
-        self.xEst_rel = 0.0
-        self.yEst_rel = 0.0
+        num = data[6:9]
+        num = float(num)
+        self.enc_speed = num
+        # print(f'encoder ack received, {num} ')
         
 
     def activate_PID(self):
@@ -215,6 +196,7 @@ class Automobile_Data():
 
         # self.update_control_action(speed, self.yaw)
         self.speed = speed
+        self.yawRate = 0.0
 
         # # speed command
         data = {}
@@ -249,6 +231,7 @@ class Automobile_Data():
         angle = Automobile_Data.normalizeSteer(angle)
 
         # self.update_control_action(speed, self.yaw)
+        self.yawRate = 0.0
 
         # steer command
         data['action']        =  '2'
@@ -256,7 +239,6 @@ class Automobile_Data():
         reference = json.dumps(data)
         self.steer_ack = False
         cnt = 0
-        print(f'angle command sent {angle}')
         while not self.steer_ack and cnt < 200:
             self.pub.publish(reference)
             sleep(self.ros_pause)
@@ -277,6 +259,7 @@ class Automobile_Data():
 
         # update control action
         self.speed = 0.0
+        self.yawRate = 0.0
 
         # brake command
         # data['action']        =  '3'
@@ -321,8 +304,8 @@ class Automobile_Data():
         self.x = data.posA
         self.y = data.posB 
 
-        if self.trig_stateEst:
-            self.update_estimated_state()
+        self.update_estimated_state()
+        self.update_car_parameters()
 
     def imu_callback(self, data):
         """
@@ -335,51 +318,39 @@ class Automobile_Data():
         self.pitch_deg = np.rad2deg(self.pitch)
         self.yaw = float(data.yaw)
         self.yaw_deg = np.rad2deg(self.yaw)
+
+        #true position, for training purposes
+        if False:
+            self.x_true = float(data.posx)
+            self.y_true = float(data.posy)
+            self.time_stamp = float(data.timestamp)
+        else:
+            self.x_true = 0.0
+            self.y_true = 0.0
+            self.time_stamp = 0.0
+
+        self.update_estimated_state()
+        self.update_car_parameters()
     
     def update_estimated_state(self):
         ''' Updates estimated state according to EKF '''
-        # Sampling time of the estimator
-        callback_time = rospy.get_time()
+        # noised input
+        # ud1 = speed
+        # ud2 = yawrate
+        ud1 = self.speed#u[0, 0] + np.random.randn() * Rsim[0, 0]
+        ud2 = self.yawRate#u[1, 0] + np.random.randn() * Rsim[1, 1]
+        ud = np.array([[ud1, ud2]]).T
 
-        if self.fist_stateEst_callback:
-            self.fist_stateEst_callback = False
-            self.last_stateEst_time = callback_time
-            return
-        else:
-            DT = rospy.get_time() - self.last_stateEst_time
-            self.last_stateEst_time = callback_time
-            
-        if DT>0:            
-            # INPUT: [SPEED, STEER]
-            u0 = self.speed
-            u1 = self.steer
-            u = np.array([u0, u1]).reshape(-1,1)
+        # output measurements
+        zx = self.x#xTrue[0, 0] + np.random.randn() * Qsim[0, 0]
+        zy = self.y#xTrue[1, 0] + np.random.randn() * Qsim[1, 1]
+        z = np.array([[zx, zy]])
 
-            # OUTPUT: [GPS:x, GPS:y, IMU:yaw]
-            zx = self.x
-            zy = 15 - self.y# change of coordinates to bottom-left reference frame
-            zth = self.yaw
-            z = np.array([zx, zy, zth]).reshape(-1,1)
-            #print('z:  ',z)
+        self.xEst, self.PEst = ekf_estimation(self.xEst, self.PEst, z, ud, self.Ts)
 
-            # *******************************************
-            # PREDICT STEP
-            self.ekf.predict(u=u, dt=DT)
-            # UPDATE STEP
-            self.ekf.update(z=z, HJacobian=self.HJacobian, Hx=self.Hx, residual=self.residual)
-
-            # *******************************************
-            # ESTIMATED STATE
-            xxEst = np.copy(self.ekf.x)
-            # x: CoM
-            self.xEst = xxEst[0,0]
-            # y: CoM
-            self.yEst = 15-xxEst[1,0]# change of coordinates to top-left reference frame
-            # Yaw
-            self.yawEst = xxEst[2,0]
-
-            self.rear_xEst = self.xEst - ((WB / 2) * np.cos(self.yawEst))
-            self.rear_yEst = self.yEst + ((WB / 2) * np.sin(self.yawEst)) 
+    def update_car_parameters(self):
+        self.rear_x = self.x - ((WB / 2) * np.cos(self.yaw))
+        self.rear_y = self.y + ((WB / 2) * np.sin(self.yaw))
     
     def calc_distance(self, point_x, point_y):
         dx = self.rear_x - point_x
@@ -408,45 +379,84 @@ class Automobile_Data():
             val = np.rad2deg(MAX_STEER)
         return val
 
-    @staticmethod
-    def residual(a,b):
-        """compute residual between two output measurements and normalize yaw angle
-        Args:
-            a (ndarray): first measurement
-            b (ndarray): second measurement
+def jacobF(x, u, DT):
+        """
+        Jacobian of Motion Model
+        motion model
+        x_{t+1} = x_t+v*dt*cos(yaw)
+        y_{t+1} = y_t+v*dt*sin(yaw)
+        yaw_{t+1} = yaw_t+omega*dt
+        v_{t+1} = v{t}
+        so
+        dx/dyaw = -v*dt*sin(yaw)
+        dx/dv = dt*cos(yaw)
+        dy/dyaw = v*dt*cos(yaw)
+        dy/dv = dt*sin(yaw)
+        """
+        yaw = x[2, 0]
+        v = u[0, 0]
+        jF = np.array([
+            [1.0, 0.0, -DT * v * np.sin(yaw), DT * np.cos(yaw)],
+            [0.0, 1.0, DT * v * np.cos(yaw), DT * np.sin(yaw)],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]])
 
-        Returns:
-            ndarray: normalized residual of two measurements, i.e. a-b
-        """    
-        y = a - b
-        if y[2] > np.pi:
-            y[2] -= 2*np.pi
-        if y[2] < -np.pi:
-            y[2] += 2*np.pi
-        return y
+        return jF
 
-    @staticmethod
-    def HJacobian(x):
-        '''
-        Compute Jacobian of the output map h(x)
-        '''
-        H = np.array([[1,0,0],
-                    [0,1,0],
-                    [0,0,1]])
-        return H
 
-    @staticmethod
-    def Hx(x):
-        '''
-        Compute the output, given a state
-        '''
-        H = np.array([[1,0,0],
-                    [0,1,0],
-                    [0,0,1]])
-        z = H @ x
+def jacobH(x):
+    # Jacobian of Observation Model
+    jH = np.array([
+        [1, 0, 0, 0],
+        [0, 1, 0, 0]
+    ])
+
+    return jH
+
+def observation_model(x):
+        ''' Returns 2-dim nparray with [x,y] '''
+        #  Observation Model
+        H = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0]
+        ])
+
+        z = H.dot(x) 
         return z
 
+def motion_model(x, u, DT):
 
+    F = np.array([[1.0, 0, 0, 0],
+                [0, 1.0, 0, 0],
+                [0, 0, 1.0, 0],
+                [0, 0, 0, 0]])
+
+    B = np.array([[DT * np.cos(x[2, 0]), 0],
+                [DT * np.sin(x[2, 0]), 0],
+                [0.0, DT],
+                [1.0, 0.0]])
+
+    x = F.dot(x) + B.dot(u)
+
+    return x
+
+def ekf_estimation(xEst, PEst, z, u, DT):
+
+    #  Predict
+    xPred = motion_model(xEst, u, DT)
+    jF = jacobF(xPred, u, DT)
+    PPred = jF.dot(PEst).dot(jF.T) + R
+
+    #  Update
+    jH = jacobH(xPred)
+    zPred = observation_model(xPred)
+    y = z.T - zPred
+    S = jH.dot(PPred).dot(jH.T) + Q
+    K = PPred.dot(jH.T).dot(np.linalg.inv(S))
+    xEst = xPred + K.dot(y)
+    PEst = (np.eye(len(xEst)) - K.dot(jH)).dot(PPred)
+
+    return xEst, PEst
 
 
 

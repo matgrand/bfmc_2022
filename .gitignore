@@ -5,3 +5,13 @@ Simulator/training_imgs.zip
 catkin_ws/build/*
 catkin_ws/devel/*
 
+catkin_ws/src/controls_testing/__pycache__/automobile_data.cpython-37.pyc
+catkin_ws/src/controls_testing/__pycache__/automobile_data.cpython-38.pyc
+catkin_ws/src/controls_testing/__pycache__/simple_controller2.cpython-38.pyc
+catkin_ws/src/controls_testing/__pycache__/helper_functions.cpython-38.pyc
+catkin_ws/src/controls_testing/__pycache__/helper_functions.cpython-37.pyc
+catkin_ws/src/controls_testing/__pycache__/estimation.cpython-37.pyc
+catkin_ws/src/controls_testing/__pycache__/automobile_data.cpython-38.pyc
+catkin_ws/src/controls_testing/__pycache__/helper_functions.cpython-38.pyc
+catkin_ws/src/controls_testing/__pycache__/helper_functions.cpython-38.pyc
+
