@@ -7,3 +7,7 @@ catkin_ws/devel/*
 
 catkin_ws/src/controls_testing/__pycache__/*
 catkin_ws/src/pure_pursuit_test2/__pycache__/*
+Simulator/my_trajectory.png
+Simulator/sign_imgs/pdf2png.zip
+Simulator/training_imgs2.zip
+

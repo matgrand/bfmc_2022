@@ -71,6 +71,9 @@ class PathPlanning():
         self.junctions = [467,314]
         self.junctions = [str(i) for i in self.junctions]
 
+        #stop points
+        self.stop_points = np.load('models/stop_points.npy')
+
         # import nodes and edges
         self.list_of_nodes = list(self.G.nodes)
         self.list_of_edges = list(self.G.edges)
@@ -389,6 +392,16 @@ class PathPlanning():
         assert index < len(self.path) and index >= 0
         return np.array(self.path[index:min(index + look_ahead, len(self.path)-1), :])
 
+    def get_closest_stop_point(self, nx, ny):
+        """
+        Returns the closest stop point to the given point
+        """
+        index_closest = np.argmin(np.hypot(nx - self.stop_points[:,0], ny - self.stop_points[:,1]))
+        print(f'Closest stop point is {self.stop_points[index_closest, :]}, Point is {nx, ny}')
+        #draw a circle around the closest stop point
+        cv.circle(self.map, (m2pix(self.stop_points[index_closest, 0]), m2pix(self.stop_points[index_closest, 1])), 8, (0, 255, 0), 4)
+        return self.stop_points[index_closest, 0], self.stop_points[index_closest, 1]
+
     def augment_path(self, default_distance=100, tol=0.01):
         print("Augmenting path...")
         #intersection ins
@@ -401,6 +414,7 @@ class PathPlanning():
             for n in self.intersection_in:
                 nx, ny = self.get_coord(n)
                 if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
+                    nx, ny = self.get_closest_stop_point(nx, ny)
                     intersection_in_indexes.append(i) 
                     intersection_in_pos.append((nx, ny))
                     yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
@@ -434,6 +448,7 @@ class PathPlanning():
                 nx, ny = self.get_coord(n)
                 #and = workaround, ra exits and entrance must be outside the ra
                 if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2: # and len(roundabout_in_indexes) < 1: #and = workaround 
+                    nx, ny = self.get_closest_stop_point(nx, ny)
                     roundabout_in_indexes.append(i) 
                     roundabout_in_pos.append((nx, ny))
                     yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
@@ -484,6 +499,7 @@ class PathPlanning():
             for n in self.crosswalk:
                 nx, ny = self.get_coord(n)
                 if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
+                    nx, ny = self.get_closest_stop_point(nx, ny)
                     crosswalk_indexes.append(i) 
                     crosswalk_pos.append((nx, ny))
                     yaw = - np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
@@ -603,7 +619,7 @@ class PathPlanning():
                 action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
                 while curr_index < next_index:
                     if next_index-curr_index < default_distance:
-                        euclidean_distance = -0.3 + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
+                        euclidean_distance = -0.2 + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
                         self.path_data[curr_index] = ('road', 'roundabout', action, euclidean_distance, None, None, None)
                     else:
                         self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
@@ -626,7 +642,7 @@ class PathPlanning():
                 # print(f'curr_index: {curr_index}, next_index: {next_index}')
                 while curr_index < next_index:
                     if next_index-curr_index < default_distance:
-                        euclidean_distance = -0.3 + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
+                        euclidean_distance = -0.2 + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
                         self.path_data[curr_index] = ('road', 'junction', action, euclidean_distance, None, None, None)
                     else:
                         self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
@@ -655,7 +671,7 @@ class PathPlanning():
                 # print(f'curr_index: {curr_index}, next_index: {next_index}')
                 while curr_index < next_index:
                     if next_index-curr_index < default_distance:
-                        euclidean_distance = -0.3 + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
+                        euclidean_distance = -0.2 + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
                         self.path_data[curr_index] = ('road', 'crosswalk', action, euclidean_distance, None, None, None)
                     else:
                         self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)

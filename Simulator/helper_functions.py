@@ -11,11 +11,14 @@ from mpl_toolkits.mplot3d import Axes3D
 def diff_angle(angle1, angle2):
     return np.arctan2(np.sin(angle1-angle2), np.cos(angle1-angle2))
 
+#const_simple = 196.5
+#const_med = 14164/15.0
+const_verysmall = 3541/15.0
 def m2pix(m):
-    #const_simple = 196.5
-    #const_med = 14164/15.0
-    const_verysmall = 3541/15.0
     return np.int32(m*const_verysmall)
+
+def pix2m(pix):
+    return 1.0*pix/const_verysmall
 
 def yaw2world(angle):
         return -(angle + np.pi/2)
@@ -133,34 +136,6 @@ def to_car_frame(points, car, return_size=3):
     if single_dim: return out[0]
     else: return out
 
-fo = 'sign_imgs/'
-paths = [fo+'cross_walk.png', fo+'enter_highway.png', fo+'parking.png', fo+'stop.png', fo+'preference_road.png', fo+'roundabout.png']
-sign_imgs = [cv.imread(path) for path in paths]
-
-def add_sign(frame):
-    bounding_box = (0,0,0,0)
-    sign = 'no_sign'
-    if np.random.rand() < 0.3:
-        signs = ['cross_walk', 'highway', 'park', 'stop', 'preference_road', 'roundabout']
-        #pick a random indeces from 0 to 7
-        idx = np.random.randint(0, len(signs))
-        sign = signs[idx]
-        img = sign_imgs[idx]
-        new_size = np.random.randint(50, 100)
-        img = cv.resize(img, (new_size, new_size))
-        y= np.random.randint(100, frame.shape[0]-new_size-100)
-        x = np.random.randint(300, frame.shape[1]-new_size)
-        bounding_box = (x,y,x+new_size,y+new_size)
-        #add random rotation 
-        angle = np.random.rand()*np.pi/16
-        rot_matrix = np.array([[np.cos(angle), -np.sin(angle), 0.9*np.random.rand()],[np.sin(angle), np.cos(angle), .9*np.random.rand()]])
-        img = cv.warpAffine(img, rot_matrix, (new_size, new_size))
-        frame[y:y+new_size, x:x+new_size] = img
-
-        # draw_bounding_box(frame, bounding_box, (0,0,255))
-
-    return bounding_box, frame, sign
-
 def draw_bounding_box(frame, bounding_box, color=(0,0,255)):
     x,y,x2,y2 = bounding_box
     x,y,x2,y2 = round(x), round(y), round(x2), round(y2)
@@ -223,7 +198,12 @@ def wrap_detection(output_data):
         result_boxes.append(boxes[i])
     return result_class_ids, result_confidences, result_boxes
 
-
+def my_softmax(x):
+    x = x.reshape(-1, 1)
+    return np.exp(x) / np.sum(np.exp(x), axis=0)
+    y = np.exp(x - np.max(x), axis=1)
+    f_x = y / np.sum(np.exp(x))
+    return f_x
 
 
 
