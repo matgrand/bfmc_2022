@@ -37,8 +37,8 @@ desired_speed = 0.4 # [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #4.0 gain error parallel to direction (speed)
-k2 = 0.0 #2.0 perpedndicular error gain
-k3 = 1.5 #1.5 yaw error gain
+k2 = 2.0 #2.0 perpedndicular error gain
+k3 = 1.0 #1.5 yaw error gain
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
 noise_std = np.deg2rad(3.0) # [rad] noise in the steering angle
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     # cv.namedWindow('Detection', cv.WINDOW_NORMAL)
     
     # init the car data
-    car = Automobile_Data(trig_control=True, trig_cam=True, trig_gps=False, trig_bno=True)
+    car = Automobile_Data(simulator=True, trig_cam=True, trig_gps=True, trig_bno=True, trig_enc=False, trig_control=True, trig_estimation=False)
 
     # init trajectory
     path = PathPlanning(map) #254 463
@@ -109,9 +109,11 @@ if __name__ == '__main__':
     os.system('rosservice call /gazebo/reset_simulation')
 
     try:
-
         while car.time_stamp < 1:
+            print('time:', car.time_stamp)
+            print(f'x_true: {car.x_true} y_true: {car.y_true}')    
             sleep(0.1)
+        print('start')
 
         start_time_stamp = car.time_stamp
 
@@ -258,7 +260,7 @@ if __name__ == '__main__':
             key = cv.waitKey(1)
             if key == 27:
                 break
-            rospy.sleep(0.1)
+            rospy.sleep(0.15)
     except rospy.ROSInterruptException:
         pass
       
