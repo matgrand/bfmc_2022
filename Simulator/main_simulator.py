@@ -29,11 +29,13 @@ generate_path = False if not training else True
 # folder = 'training_imgs' 
 folder = 'test_imgs'
 
+os.system('rosservice call /gazebo/reset_simulation')
+
 # PARAMETERS
 sample_time = 0.01 # [s]
 max_angle = 30.0    # [deg]
 max_speed = 0.5  # [m/s]
-desired_speed = 0.4 # [m/s]
+desired_speed = 0.2 # [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #4.0 gain error parallel to direction (speed)
@@ -106,7 +108,7 @@ if __name__ == '__main__':
     # test_yolo = cv.dnn.readNetFromONNX("models/yolov5s_128_320.onnx")
 
     car.stop()
-    os.system('rosservice call /gazebo/reset_simulation')
+    # os.system('rosservice call /gazebo/reset_simulation')
 
     try:
         while car.time_stamp < 1:
@@ -161,7 +163,7 @@ if __name__ == '__main__':
                 dist = info[3]
                 if dist is not None and 0.0 < dist < 0.5:
                     mod_dist = ((1.0-dist)*10.0)**3
-                    speed_ref = 0.2 * speed_ref
+                    speed_ref = 0.8 * speed_ref
             else:
                 #Neural network control
                 # action = info[2]
@@ -173,7 +175,7 @@ if __name__ == '__main__':
                 # #stopping logic
                 if dist > 1.0:
                     print('Slowing down')
-                    speed_ref = desired_speed / 3.
+                    speed_ref = desired_speed * 0.8
                     if dist > 3.0:
                         print('Stopping')
                         car.stop()
@@ -209,7 +211,7 @@ if __name__ == '__main__':
             print(f"x : {car.x_true:.3f}, y : {car.y_true:.3f}, yaw : {np.rad2deg(car.yaw):.3f}") 
             print(f"xd: {xd:.3f}, yd: {yd:.3f}, yawd: {np.rad2deg(yawd):.3f}, curv: {curv:.3f}") if generate_path else None
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
-            print(f"speed_ref: {speed_ref:.3f},    angle_ref: {angle_ref:.3f}")
+            print(f'desired_speed = {desired_speed:.3f}, speed_ref = {speed_ref:.3f}, angle_ref = {np.rad2deg(angle_ref):.3f}')
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}") if generate_path else None
             print(f'MOD_DIST: {mod_dist:.3f}') if dist is not None and 0.0 < dist < 0.5 and training else None
             # print(f"Coeffs:\n{coeffs}")
@@ -234,6 +236,7 @@ if __name__ == '__main__':
             #test sign classifier
             SIZE = (32, 32)
             signs_roi = car.cv_image[60:160, -100:, :]
+            # signs_roi = car.cv_image[50:200, -150:, :]
             signs_roi = cv.cvtColor(signs_roi, cv.COLOR_BGR2GRAY)
             # signs_roi = cv.equalizeHist(signs_roi)
             signs_roi = cv.blur(signs_roi, (5,5))
@@ -251,7 +254,7 @@ if __name__ == '__main__':
                 predicted_sign = sign_names[sign_index]
                 if predicted_sign != 'no_sign':
                     print(f'Predicted sign: {predicted_sign}, confidence: {float(soft_preds[sign_index]):.2f}')
-                    car.stop()
+                    car.drive_speed(speed= desired_speed * 0.1)
                     sleep(.5)
 
             cv.imshow("Frame preview", frame)

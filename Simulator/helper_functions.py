@@ -199,11 +199,11 @@ def wrap_detection(output_data):
     return result_class_ids, result_confidences, result_boxes
 
 def my_softmax(x):
-    x = x.reshape(-1, 1)
+    # x = x.reshape(-1, 1)
     return np.exp(x) / np.sum(np.exp(x), axis=0)
-    y = np.exp(x - np.max(x), axis=1)
-    f_x = y / np.sum(np.exp(x))
-    return f_x
+    # y = np.exp(x - np.max(x))
+    # f_x = y / np.sum(np.exp(x), axis=0)
+    # return f_x
 
 
 

@@ -80,6 +80,10 @@ ROS_REPEAT = 50             # []    number of times to send enbaling commands, t
 SPEED_COMPENSATION = 1.0
 STEER_COMPENSATION = 0.79
 
+#controls paramters
+STEER_UPDATE_TIME = 0.01
+STEER_INCREMENT = 1 #[deg]
+
 
 class Automobile_Data():
     def __init__(self, simulator=False, trig_cam=False, trig_gps=False, trig_bno=False, trig_enc=False, trig_control=True, trig_estimation=False):
@@ -144,8 +148,11 @@ class Automobile_Data():
         self.cam_yaw = CAM_YAW
         self.cam_fov = CAM_FOV
         self.cam_K = CAM_K
-        
 
+        #control
+        self.target_steer = 0.0
+        self.prev_steer = 0.0
+        
         #self.prev_est_time = 0.0    # [s]   used to compute estimator sampling time
         #self.fist_stateEst_callback = True                  # bool to check first call of estimator
         
@@ -177,6 +184,10 @@ class Automobile_Data():
             self.sub_speed_ack = rospy.Subscriber(FDBK_SPEED_TOPIC, String, self.speed_callback) if not self.simulator_flag else None
             self.sub_steer_ack = rospy.Subscriber(FDBK_STEER_TOPIC, String, self.steer_callback) if not self.simulator_flag else None
             self.sub_break_ack = rospy.Subscriber(FDBK_BREAK_TOPIC, String, self.break_callback) if not self.simulator_flag else None
+
+            #set control callbacks
+            rospy.Timer(rospy.Duration(STEER_UPDATE_TIME), self.update_angle_callback)
+
         if trig_cam:
             # camera stuff
             self.sub_cam = rospy.Subscriber("/automobile/image_raw", Image, self.camera_callback)
@@ -277,6 +288,39 @@ class Automobile_Data():
 
         #self.speed_meas = 2*pi*wheel_speed * WHEEL_LEN  # [m/s] car speed
         self.speed_meas = motor_speed /154.0
+
+    def update_angle_callback(self, event):
+        """Callback to update the angle of the car
+
+        :param data: angle from IMU message
+        :type data: object
+        """ 
+
+        if np.isclose(self.target_steer, self.prev_steer):
+            return
+        else:
+            if self.target_steer > self.prev_steer:
+                set_steer = min(self.target_steer, self.prev_steer+STEER_INCREMENT)
+            else:
+                set_steer = max(self.target_steer, self.prev_steer-STEER_INCREMENT)
+
+            # steer command
+            data = {}
+            data['action']        =  '2'
+            data['steerAngle']    =  float(set_steer)*STEER_COMPENSATION
+            reference = json.dumps(data)
+
+            self.steer_ack = False
+            cnt = 0
+            while not self.steer_ack and cnt < ROS_REPEAT:
+                self.pub.publish(reference)
+                cnt += 1
+                sleep(ROS_PAUSE)
+                if self.simulator_flag: break
+            if cnt >= ROS_REPEAT:
+                raise Exception('steer command not acknowledged')
+
+            self.prev_steer = set_steer
     
     # ACTIVATE ACTIONS
     def activate_encoder(self, encoder_enable=True):
@@ -344,23 +388,7 @@ class Automobile_Data():
         :raises Exception: if the command is not acknowledged
         """        
         angle = Automobile_Data.normalizeSteer(angle)   # normalize steer
-        self.steer = angle
-
-        # steer command
-        data = {}
-        data['action']        =  '2'
-        data['steerAngle']    =  float(angle)*STEER_COMPENSATION
-        reference = json.dumps(data)
-
-        self.steer_ack = False
-        cnt = 0
-        while not self.steer_ack and cnt < ROS_REPEAT:
-            self.pub.publish(reference)
-            cnt += 1
-            sleep(ROS_PAUSE)
-            if self.simulator_flag: break
-        if cnt >= ROS_REPEAT:
-            raise Exception('steer command not acknowledged')
+        self.target_steer = angle
 
     def drive(self, speed=0.0, angle=0.0):
         """Publish the SPEED and STEER command to the command topic
@@ -511,10 +539,10 @@ class Automobile_Data():
         :return: clamped steer value
         :rtype: double
         """        
-        if val < -MAX_STEER:
-            val = -MAX_STEER
-        elif val > MAX_STEER:
-            val = MAX_STEER
+        if val < -MAX_STEER/STEER_COMPENSATION:
+            val = -MAX_STEER/STEER_COMPENSATION
+        elif val > MAX_STEER/STEER_COMPENSATION:
+            val = MAX_STEER/STEER_COMPENSATION
         return val
 
     @staticmethod
