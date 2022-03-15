@@ -24,6 +24,8 @@ class_list = []
 with open("models/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
+# MAIN CONTROLS
+simulator_flag = True # True: run simulator, False: run real car
 training = False
 generate_path = False if not training else True
 # folder = 'training_imgs' 
@@ -90,7 +92,7 @@ if __name__ == '__main__':
     # cv.namedWindow('Detection', cv.WINDOW_NORMAL)
     
     # init the car data
-    car = Automobile_Data(simulator=True, trig_cam=True, trig_gps=True, trig_bno=True, trig_enc=False, trig_control=True, trig_estimation=False)
+    car = Automobile_Data(simulator=simulator_flag, trig_cam=True, trig_gps=True, trig_bno=True, trig_enc=False, trig_control=True, trig_estimation=False)
 
     # init trajectory
     path = PathPlanning(map) #254 463
@@ -108,7 +110,7 @@ if __name__ == '__main__':
     # test_yolo = cv.dnn.readNetFromONNX("models/yolov5s_128_320.onnx")
 
     car.stop()
-    # os.system('rosservice call /gazebo/reset_simulation')
+    os.system('rosservice call /gazebo/reset_simulation') if simulator_flag else None
 
     try:
         while car.time_stamp < 1:
