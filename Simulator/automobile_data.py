@@ -136,7 +136,7 @@ class Automobile_Data():
         self.yLoc = 0.0             # [m]       local:y local coordinate
         self.yawLoc = 0.0           # [rad]     local:yaw local
         self.yawLoc_o = 0.0         # [rad]     local:yaw offset
-        self.distLoc = 0.0
+        self.distLoc = 0.0          # [m]       local:absolute distance, length of local trajectory
 
         self.bridge = CvBridge()
         self.cv_image = np.zeros((640, 480))
