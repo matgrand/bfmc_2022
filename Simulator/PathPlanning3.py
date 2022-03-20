@@ -33,7 +33,7 @@ class PathPlanning():
         self.prev_index = 0
 
         # read graph
-        self.G = nx.read_graphml('Competition_track.graphml')
+        self.G = nx.read_graphml('random_stuff/Competition_track.graphml')
         # initialize route subgraph and list for interpolation
         self.route_graph = nx.DiGraph()
         self.route_list = []

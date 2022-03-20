@@ -89,7 +89,7 @@ class Controller():
         # frame[:int(IMG_SIZE[1]/3),:] = 127
         frame = cv.resize(frame, IMG_SIZE)
         #blur
-        frame = cv.GaussianBlur(frame, (5,5), 0)
+        frame = cv.GaussianBlur(frame, (3,3), 0)
         blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
         assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
         self.lane_keeper.setInput(blob)
@@ -102,10 +102,21 @@ class Controller():
         self.e2 = e2
         self.e3 = e3
         alpha = e3
-        delta = np.arctan((2*self.L*np.sin(alpha))/(self.k3*self.d))
+
+        #adaptive controller
+        curv100 = 100 * curv
+        if 0.7 < np.abs(curv100) < 5.0: #big curvature, pure pursuit is too aggressive
+            print(f'HIGH CURVATURE: {curv100}')
+            k2 = 5.0
+            k3 = 5.0
+        else:
+            k2 = self.k2
+            k3 = self.k3
+        
 
         # output_angle = self.ff*curv - self.k2 * e2 - self.k3 * e3
-        output_angle = delta - self.k2 * e2
+        delta = np.arctan((2*self.L*np.sin(alpha))/(k3*self.d))
+        output_angle = delta - k2 * e2
         output_speed = vd - self.k1 * self.e1
 
         #calculate estimated of thr point ahead to get visual feedback

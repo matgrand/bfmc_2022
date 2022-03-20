@@ -12,3 +12,5 @@ sign_imgs/detection_results/*
 sign_imgs/detection_results2/*
 training/*
 random_stuff/*.zip
+pedestrian_roadblock_imgs/*
+traffic_light_imgs/*

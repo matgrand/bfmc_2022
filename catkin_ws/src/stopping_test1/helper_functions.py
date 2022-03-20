@@ -11,14 +11,11 @@ from mpl_toolkits.mplot3d import Axes3D
 def diff_angle(angle1, angle2):
     return np.arctan2(np.sin(angle1-angle2), np.cos(angle1-angle2))
 
-#const_simple = 196.5
-#const_med = 14164/15.0
-const_verysmall = 3541/15.0
 def m2pix(m):
+    #const_simple = 196.5
+    #const_med = 14164/15.0
+    const_verysmall = 3541/15.0
     return np.int32(m*const_verysmall)
-
-def pix2m(pix):
-    return 1.0*pix/const_verysmall
 
 def yaw2world(angle):
         return -(angle + np.pi/2)
@@ -105,7 +102,7 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
 
     # draw the points
     for p in proj_points:
-        cv.circle(frame, (round(p[0]), round(p[1])), 2, color, -1)
+        cv.circle(frame, (int(p[0]), int(p[1])), 2, color, -1)
 
     if single_dim:
         return frame, proj_points[0]
@@ -136,12 +133,6 @@ def to_car_frame(points, car, return_size=3):
     if single_dim: return out[0]
     else: return out
 
-def draw_bounding_box(frame, bounding_box, color=(0,0,255)):
-    x,y,x2,y2 = bounding_box
-    x,y,x2,y2 = round(x), round(y), round(x2), round(y2)
-    cv.rectangle(frame, (x,y), (x2,y2), color, 2)
-    return frame
-
 def get_curvature(points, v_des):
     # calculate curvature 
     local_traj = points
@@ -164,67 +155,6 @@ def get_curvature(points, v_des):
     avg_curv = np.mean(curv)
     return avg_curv
 
-#detection functions
-def wrap_detection(output_data):
-    class_ids = []
-    confidences = []
-    boxes = []
-    rows = output_data.shape[0]
-    for r in range(rows):
-        row = output_data[r]
-        confidence = row[4]
-        if confidence >= 0.3:
-            classes_scores = row[5:]
-            _, _, _, max_indx = cv.minMaxLoc(classes_scores)
-            class_id = max_indx[1]
-            if (classes_scores[class_id] > .25):
-                confidences.append(confidence)
-                class_ids.append(class_id)
-                x, y, w, h = row[0].item(), row[1].item(), row[2].item(), row[3].item() 
-                left = int((x - 0.5 * w))
-                top = int((y - 0.5 * h))
-                width = int(w)
-                height = int(h)
-                box = np.array([left, top, width, height])
-                boxes.append(box)
-
-    indexes = cv.dnn.NMSBoxes(boxes, confidences, 0.25, 0.45) 
-    result_class_ids = []
-    result_confidences = []
-    result_boxes = []
-    for i in indexes:
-        result_confidences.append(confidences[i])
-        result_class_ids.append(class_ids[i])
-        result_boxes.append(boxes[i])
-    return result_class_ids, result_confidences, result_boxes
-
-def my_softmax(x):
-    return np.exp(x) / np.sum(np.exp(x), axis=0)
-
-def project_curvature(frame, car, curv):
-    start_from = 0.0
-    d_ahead = 0.8 # [m]
-    num_points = 20
-    #multiply by constant, to be tuned
-    curv = curv * 30.
-    #get radius from curvature
-    r = 1. / curv
-    print("r: {}".format(r))
-    x = np.linspace(start_from, start_from + d_ahead, num_points)
-    y = - np.sqrt(r**2 - x**2) * np.sign(curv) + r
-    #stack x and y into one array
-    points = np.stack((x,y), axis=1)
-    #project points onto car frame, note: they are already inn car frame
-    frame, proj_points = project_onto_frame(frame=frame, car=car, points=points, align_to_car=False, color=(0,0,255))
-    #draw a line connecting the points
-    if proj_points is not None:
-        #convert proj to int32
-        proj_points = proj_points.astype(np.int32)
-        # print(proj_points)
-        cv.polylines(frame, [proj_points], False, (0,0,255), 2)
-
-def project_stop_line():
-    pass
 
 
 

@@ -24,7 +24,7 @@ class_list = []
 with open("models/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
-# MAIN CONTROLS
+# MAIN CONTROLSd
 simulator_flag = True # True: run simulator, False: run real car
 training = False
 generate_path = False if not training else True
@@ -37,16 +37,15 @@ os.system('rosservice call /gazebo/reset_simulation')
 sample_time = 0.01 # [s]
 max_angle = 30.0    # [deg]
 max_speed = 0.5  # [m/s]
-desired_speed = 0.2 # [m/s]
+desired_speed = 0.35 # [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #4.0 gain error parallel to direction (speed)
-k2 = 2.0 #2.0 perpedndicular error gain
-k3 = 1.0 #1.5 yaw error gain
+k2 = 0.0 #2.0 perpedndicular error gain
+k3 = 1.2 #1.5 yaw error gain
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
 noise_std = np.deg2rad(3.0) # [rad] noise in the steering angle
-
 
 # # mouse callback function
 # map2 = map.copy()
@@ -67,6 +66,10 @@ noise_std = np.deg2rad(3.0) # [rad] noise in the steering angle
 #test sign classification
 sign_classifier =  cv.dnn.readNetFromONNX('models/sign_classifier_small.onnx')
 sign_names = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'no_sign']
+
+#test frontal obstacles classifications
+obstacle_classifier = cv.dnn.readNetFromONNX('models/pedestrian_classifier_small.onnx')
+front_obstacle_names = ['pedestrian', 'roadblock', 'free_road'] #add cars
 
 if __name__ == '__main__':
 
@@ -95,7 +98,7 @@ if __name__ == '__main__':
     car = Automobile_Data(simulator=simulator_flag, trig_cam=True, trig_gps=True, trig_bno=True, trig_enc=False, trig_control=True, trig_estimation=False)
 
     # init trajectory
-    path = PathPlanning(map) #254 463
+    path = PathPlanning(map) 
 
     # init controller
     controller = Controller(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, 
@@ -110,7 +113,7 @@ if __name__ == '__main__':
     # test_yolo = cv.dnn.readNetFromONNX("models/yolov5s_128_320.onnx")
 
     car.stop()
-    os.system('rosservice call /gazebo/reset_simulation') if simulator_flag else None
+    # os.system('rosservice call /gazebo/reset_simulation') if simulator_flag else None
 
     try:
         while car.time_stamp < 1:
@@ -169,7 +172,6 @@ if __name__ == '__main__':
             else:
                 #Neural network control
                 # action = info[2]
-
                 action = None
                 speed_ref, angle_ref, net_out, point_ahead = controller.get_nn_control(frame, desired_speed, action)
                 e2, e3, dist, curv = net_out
@@ -203,7 +205,6 @@ if __name__ == '__main__':
             # cv.imshow('Detection', img)
             # cv.waitKey(1)
 
-
             car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
 
             #prints
@@ -218,8 +219,7 @@ if __name__ == '__main__':
             print(f'MOD_DIST: {mod_dist:.3f}') if dist is not None and 0.0 < dist < 0.5 and training else None
             # print(f"Coeffs:\n{coeffs}")
             print(f'Net out:\n {net_out}') if not training else None
-            print(f'e_yaw: {e3}\ndist: {dist}\ncurv: {curv}') if not training else None
-
+            print(f'e_yaw: {e3}\ndist: {dist}\ncurv: {100*curv}') if not training else None
 
             #project path ahead
             if generate_path:
@@ -232,40 +232,74 @@ if __name__ == '__main__':
                 proj = (int(proj[0]), int(proj[1]))
                 #draw line from bottmo half to proj
                 cv.line(frame, (320,479), proj, (200, 200, 100), 2)
+            
+            #draw curvature
+            project_curvature(frame, car, curv)
 
-
-
-            #test sign classifier
-            SIZE = (32, 32)
-            signs_roi = car.cv_image[60:160, -100:, :]
-            # signs_roi = car.cv_image[50:200, -150:, :]
-            signs_roi = cv.cvtColor(signs_roi, cv.COLOR_BGR2GRAY)
-            # signs_roi = cv.equalizeHist(signs_roi)
-            signs_roi = cv.blur(signs_roi, (5,5))
-            signs_roi = cv.resize(signs_roi, SIZE)
+            # #test sign classifier
+            # SIZE = (32, 32)
+            # signs_roi = car.cv_image[60:160, -100:, :]
+            # # signs_roi = car.cv_image[50:200, -150:, :]
+            # signs_roi = cv.cvtColor(signs_roi, cv.COLOR_BGR2GRAY)
+            # # signs_roi = cv.equalizeHist(signs_roi)
             # signs_roi = cv.blur(signs_roi, (5,5))
-            blob = cv.dnn.blobFromImage(signs_roi, 1.0, SIZE, 0)
-            # print(blob.shape)
-            sign_classifier.setInput(blob)
-            preds = sign_classifier.forward()[0]
-            # print(f'before softmax: {preds.shape}')
-            #softmax preds
-            soft_preds = my_softmax(preds)
-            sign_index = np.argmax(preds)
-            if soft_preds[sign_index] > 0.9:
-                predicted_sign = sign_names[sign_index]
-                if predicted_sign != 'no_sign':
-                    print(f'Predicted sign: {predicted_sign}, confidence: {float(soft_preds[sign_index]):.2f}')
-                    car.drive_speed(speed= desired_speed * 0.1)
-                    sleep(.5)
+            # signs_roi = cv.resize(signs_roi, SIZE)
+            # # signs_roi = cv.blur(signs_roi, (5,5))
+            # blob = cv.dnn.blobFromImage(signs_roi, 1.0, SIZE, 0)
+            # # print(blob.shape)
+            # sign_classifier.setInput(blob)
+            # preds = sign_classifier.forward()[0]
+            # # print(f'before softmax: {preds.shape}')
+            # #softmax preds
+            # soft_preds = my_softmax(preds)
+            # sign_index = np.argmax(preds)
+            # if soft_preds[sign_index] > 0.9:
+            #     predicted_sign = sign_names[sign_index]
+            #     if predicted_sign != 'no_sign':
+            #         print(f'Predicted sign: {predicted_sign}, confidence: {float(soft_preds[sign_index]):.2f}')
+            #         car.drive_speed(speed= desired_speed * 0.1)
+            #         sleep(.5)
 
+            # #Pedestrian detection
+            # IMG_SIZE = (480, 640)
+            # SIZE = (32,32)
+            # ROI = [int(IMG_SIZE[0]/4), int(IMG_SIZE[0]*3/4), 
+            #     int((IMG_SIZE[1]-IMG_SIZE[0]/2)/2), int(IMG_SIZE[1]-(IMG_SIZE[1]-IMG_SIZE[0]/2)/2)] #[a,b,c,d] ==> [a:b, c:d]
+            # front_obstacle_roi = car.cv_image[ROI[0]:ROI[1], ROI[2]:ROI[3], :]
+            # # signs_roi = car.cv_image[50:200, -150:, :]
+            # front_obstacle_roi = cv.cvtColor(front_obstacle_roi, cv.COLOR_BGR2GRAY)
+            # # signs_roi = cv.equalizeHist(signs_roi)
+            # front_obstacle_roi = cv.blur(front_obstacle_roi, (5,5))
+            # front_obstacle_roi = cv.resize(front_obstacle_roi, SIZE)
+            # front_obstacle_roi = cv.blur(front_obstacle_roi, (5,5))
+            # blob = cv.dnn.blobFromImage(front_obstacle_roi, 1.0, SIZE, 0)
+            # # blob = cv.dnn.blobFromImage(front_obstacle_roi, 1.0, SIZE, 0.0, swapRB=True, crop=False)
+            # # print(blob.shape)
+            # obstacle_classifier.setInput(blob)
+            # preds = obstacle_classifier.forward()
+            # print(f'Obstacle preds: {preds}')
+            # preds = preds[0]
+            # # print(f'before softmax: {preds.shape}')
+            # #softmax preds
+            # soft_preds = my_softmax(preds)
+            # front_obstacle_index = np.argmax(preds)
+            # if soft_preds[front_obstacle_index] > 0.5:
+            #     predicted_obstacle = front_obstacle_names[front_obstacle_index]
+            #     if predicted_obstacle != 'free_road':
+            #         print(f'Predicted obstacle: {predicted_obstacle}, confidence: {float(soft_preds[front_obstacle_index]):.2f}')
+            #         # car.drive_speed(speed= desired_speed * 0.1)
+            #         # sleep(.5)
+
+
+            
             cv.imshow("Frame preview", frame)
-            cv.imshow('SIGNS ROI', signs_roi)
+            # cv.imshow('SIGNS ROI', signs_roi)
+            # cv.imshow('FRONT ROI', front_obstacle_roi)
             cv.imshow("2D-MAP", tmp) if generate_path else None
             key = cv.waitKey(1)
             if key == 27:
                 break
-            rospy.sleep(0.15)
+            rospy.sleep(0.1)
     except rospy.ROSInterruptException:
         pass
       
