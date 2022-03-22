@@ -1,101 +1,63 @@
 #!/usr/bin/python3
-# import torch
-# #tests 
-# # detector = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True) #faster but less accurate
-# detector = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True) 
-# detector.eval()
 
 import os
 import cv2 as cv
+from zmq import CURVE
 import rospy
 import numpy as np
-from time import sleep
-
+from time import sleep, time
 os.system('clear')
+print('Main simulator starting...')
 from automobile_data import Automobile_Data
 from helper_functions import *
 from PathPlanning3 import PathPlanning
 from controller3 import Controller
-
-
+from detection import Detection
 
 map = cv.imread('src/models_pkg/track/materials/textures/2021_VerySmall.png')
 class_list = []
 with open("models/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
-# MAIN CONTROLSd
+# MAIN CONTROLS
 simulator_flag = True # True: run simulator, False: run real car
 training = False
 generate_path = False if not training else True
 # folder = 'training_imgs' 
 folder = 'test_imgs'
 
-os.system('rosservice call /gazebo/reset_simulation')
+# os.system('rosservice call /gazebo/reset_simulation')
+
+LOOP_DELAY = 0.0001
+ACTUATION_DELAY = 0.15#0.15
+VISION_DELAY = 0.03#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-max_angle = 30.0    # [deg]
-max_speed = 0.5  # [m/s]
-desired_speed = 0.35 # [m/s]
+desired_speed = 0.5# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
-k1 = 0.0 #4.0 gain error parallel to direction (speed)
-k2 = 0.0 #2.0 perpedndicular error gain
-k3 = 1.2 #1.5 yaw error gain
+k1 = 0.0 #0.0 gain error parallel to direction (speed)
+k2 = 0.0 #0.0 perpenddicular error gain
+k3 = .99 #1.0 yaw error gain .8 with ff 
+
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
-noise_std = np.deg2rad(3.0) # [rad] noise in the steering angle
+noise_std = np.deg2rad(0.0) # [rad] noise in the steering angle
 
-# # mouse callback function
-# map2 = map.copy()
-# stop_points = []
-# def add_coordinates(event,x,y,flags,param):
-#     if event == cv.EVENT_LBUTTONDBLCLK:
-#         cv.circle(map2,(x,y),10,(255,0,255),2)
-#         #convert x y in map coordinates
-#         xm = pix2m(x)
-#         ym = pix2m(y)
-#         stop_points.append([xm,ym])
-#         print('x:',xm,'y:',ym)
-#         #convert back to pixel coordinates
-#         x = m2pix(xm)
-#         y = m2pix(ym)
-#         cv.circle(map2,(x,y),5,(0,0,255),-1)
-
-#test sign classification
-sign_classifier =  cv.dnn.readNetFromONNX('models/sign_classifier_small.onnx')
-sign_names = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'no_sign']
-
-#test frontal obstacles classifications
-obstacle_classifier = cv.dnn.readNetFromONNX('models/pedestrian_classifier_small.onnx')
-front_obstacle_names = ['pedestrian', 'roadblock', 'free_road'] #add cars
 
 if __name__ == '__main__':
 
-    # #map with the mouse click every stop_line in the map
-    # cv.namedWindow('map', cv.WINDOW_NORMAL)
-    # cv.setMouseCallback('map', add_coordinates)
-    # while True:
-    #     cv.imshow('map',map2)
-    #     key = cv.waitKey(1)
-    #     if key == 27:
-    #         break
-    # cv.destroyAllWindows()
-    # #save stop_points
-    # stop_points = np.array(stop_points)
-    # np.save('models/stop_points.npy', stop_points)
-
-    #load stop_points
-    # stop_points = np.load('models/stop_points.npy')
-    # print(stop_points.shape)
-
     #init windows
-    cv.namedWindow("2D-MAP", cv.WINDOW_NORMAL) if generate_path else None
+    cv.namedWindow("2D-MAP", cv.WINDOW_NORMAL) if simulator_flag else None
+
     # cv.namedWindow('Detection', cv.WINDOW_NORMAL)
     
     # init the car data
-    car = Automobile_Data(simulator=simulator_flag, trig_cam=True, trig_gps=True, trig_bno=True, trig_enc=False, trig_control=True, trig_estimation=False)
+    os.system('rosservice call /gazebo/reset_simulation') if simulator_flag else None
+    car = Automobile_Data(simulator=simulator_flag, trig_cam=True, trig_gps=True, trig_bno=True, 
+                            trig_enc=False, trig_control=True, trig_estimation=False)
+    car.stop()
 
     # init trajectory
     path = PathPlanning(map) 
@@ -104,66 +66,49 @@ if __name__ == '__main__':
     controller = Controller(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, 
                                     training=training, noise_std=noise_std)
 
-    start_time_stamp = 0.0
+    #initiliaze all the neural networks for detection and lane following
+    detect = Detection()
 
-    # #tests 
-    # # detector = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True) #faster but less accurate
-    # detector = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True) 
-    # detector.eval()
-    # test_yolo = cv.dnn.readNetFromONNX("models/yolov5s_128_320.onnx")
-
-    car.stop()
-    # os.system('rosservice call /gazebo/reset_simulation') if simulator_flag else None
 
     try:
-        while car.time_stamp < 1:
-            print('time:', car.time_stamp)
-            print(f'x_true: {car.x_true} y_true: {car.y_true}')    
-            sleep(0.1)
-        print('start')
-
-        start_time_stamp = car.time_stamp
-
         #generate path
         if generate_path:
             path_nodes = [86,436,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                             97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
-            path_nodes = [86,436,273,136,321,262]
+            path_nodes = [86,110,436,467] #,273,136,321,262]
             path.generate_path_passing_through(path_nodes, path_step_length) #[86,110,310,254,463] ,[86,436, 273,136,321,262,105,350,451,265]
             # [86,436, 273,136,321,262,105,350,373,451,265,145,160,353]
             path.draw_path()
             path.print_path_info()
 
-        #tests
-    
-
-        # cv.waitKey(0)
-
         while not rospy.is_shutdown():
+            loop_start_time = time()
+
             tmp = np.copy(map)
             # Get the image from the camera
             frame = car.cv_image.copy()
-
-            #draw true car position
-            draw_car(tmp, car.x_true, car.y_true, car.yaw, color=(0, 255, 0))
+            sleep(VISION_DELAY)
 
             #FOLLOW predefined trajectory
             if generate_path:
-                xd, yd, yawd, curv, finished, path_ahead, info = path.get_reference(car, desired_speed, 
-                                                                                        frame=frame, training=training)
+                reference = path.get_reference(car, desired_speed, frame=frame, training=training)
+                xd, yd, yawd, curv, finished, path_ahead, info = reference
                 #controller training data generation        
                 controller.curr_data = [xd,yd,yawd,curv,path_ahead,info]
                 if finished:
                     print("Reached end of trajectory")
                     car.stop()
+                    sleep(.8)
                     break
                 #draw refrence car
                 draw_car(tmp, xd, yd, yawd, color=(0, 0, 255))
 
-            #car control, unrealistic: uses the true position
+
+            ## CONTROL
             if training:
+                #car control, unrealistic: uses the true position
                 #training
-                speed_ref, angle_ref, point_ahead = controller.get_control(car, path_ahead, desired_speed, curv)
+                speed_ref, angle_ref, point_ahead = controller.get_training_control(car, path_ahead, desired_speed, curv)
                 controller.save_data(frame, folder)
                 dist = info[3]
                 if dist is not None and 0.0 < dist < 0.5:
@@ -171,45 +116,49 @@ if __name__ == '__main__':
                     speed_ref = 0.8 * speed_ref
             else:
                 #Neural network control
-                # action = info[2]
-                action = None
-                speed_ref, angle_ref, net_out, point_ahead = controller.get_nn_control(frame, desired_speed, action)
-                e2, e3, dist, curv = net_out
+                lane_info = detect.detect_lane(frame)
+                e2, e3, dist, curv, point_ahead = lane_info
 
-                # #stopping logic
-                if dist > 1.0:
-                    print('Slowing down')
-                    speed_ref = desired_speed * 0.8
-                    if dist > 3.0:
-                        print('Stopping')
-                        car.stop()
-                        sleep(1)
-                        speed_ref = desired_speed
-                        car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
-                        sleep(0.3)
+                speed_ref, angle_ref = controller.get_control(e2, e3, curv, desired_speed)
 
-            # #test yolo
-            # img = car.cv_image.copy()
-            # img = cv.resize(img, (320,240))
-            # img = img[:128,:]
-            # blob = cv.dnn.blobFromImage(img, 1/255.0, (320, 128), swapRB=True, crop=False)
-            # test_yolo.setInput(blob)
-            # preds = test_yolo.forward()
-            # class_ids, confidences, boxes = wrap_detection(preds[0])
-            # for (classid, confidence, box) in zip(class_ids, confidences, boxes):
-            #     print(f'{classid} , {confidence} , {box}')
-            #     color = (150,150,20)
-            #     cv.rectangle(img, box, color, 1)
-            #     # cv.rectangle(img, (box[0], box[1] - 20), (box[0] + box[2], box[1]), color, -1)
-            #     cv.putText(img, class_list[classid], (box[0], box[1]), cv.FONT_HERSHEY_SIMPLEX, .25, color)
-            # cv.imshow('Detection', img)
-            # cv.waitKey(1)
+                # # #stopping logic
+                # if dist > 1.0:
+                #     print('Slowing down')
+                #     speed_ref = desired_speed * 0.8
+                #     if dist > 3.0:
+                #         print('Stopping')
+                #         car.stop()
+                #         sleep(1)
+                #         speed_ref = desired_speed
+                #         car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
+                #         sleep(0.3)
 
+            ## ACTUATION
+            sleep(ACTUATION_DELAY)
             car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
 
-            #prints
-            # clear stdout for a smoother display
-            # sleep(0.05)
+            ## VISUALIZATION
+            #project path ahead
+            if generate_path:
+                frame, proj = project_onto_frame(frame, car, path_ahead, color=(0,0,100))
+            #project point ahead
+            frame, proj = project_onto_frame(frame, car, point_ahead, False, color=(200, 200, 100))
+            if proj is not None:
+                #convert proj to cv2 point
+                proj = (int(proj[0]), int(proj[1]))
+                #draw line from bottmo half to proj
+                cv.line(frame, (320,479), proj, (200, 200, 100), 2)
+            
+            #draw true car position
+            draw_car(tmp, car.x_true, car.y_true, car.yaw, color=(0, 255, 0))
+
+            #draw lateral error
+            frame = cv.line(frame, (320,479), (320-int(np.clip(controller.e2*1000, -319, 319)),479), (0,200,0), 3)  
+            
+            #draw curvature
+            radius = project_curvature(frame, car, curv)
+
+            ## DEBUG INFO
             os.system('cls' if os.name=='nt' else 'clear')
             print(f"x : {car.x_true:.3f}, y : {car.y_true:.3f}, yaw : {np.rad2deg(car.yaw):.3f}") 
             print(f"xd: {xd:.3f}, yd: {yd:.3f}, yawd: {np.rad2deg(yawd):.3f}, curv: {curv:.3f}") if generate_path else None
@@ -218,88 +167,30 @@ if __name__ == '__main__':
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}") if generate_path else None
             print(f'MOD_DIST: {mod_dist:.3f}') if dist is not None and 0.0 < dist < 0.5 and training else None
             # print(f"Coeffs:\n{coeffs}")
-            print(f'Net out:\n {net_out}') if not training else None
+            print(f'Net out:\n {lane_info}') if not training else None
             print(f'e_yaw: {e3}\ndist: {dist}\ncurv: {100*curv}') if not training else None
+            print(f'Curvature radius = {radius:.2f}')
+            print(f'FPS = {1/(time()-loop_start_time):.3f}')
 
-            #project path ahead
-            if generate_path:
-                frame, proj = project_onto_frame(frame, car, path_ahead, color=(0,0,100))
-            #project point ahead
-            print(f"point_ahead: {point_ahead}")
-            frame, proj = project_onto_frame(frame, car, point_ahead, False, color=(200, 200, 100))
-            if proj is not None:
-                #convert proj to cv2 point
-                proj = (int(proj[0]), int(proj[1]))
-                #draw line from bottmo half to proj
-                cv.line(frame, (320,479), proj, (200, 200, 100), 2)
-            
-            #draw curvature
-            project_curvature(frame, car, curv)
-
-            # #test sign classifier
-            # SIZE = (32, 32)
-            # signs_roi = car.cv_image[60:160, -100:, :]
-            # # signs_roi = car.cv_image[50:200, -150:, :]
-            # signs_roi = cv.cvtColor(signs_roi, cv.COLOR_BGR2GRAY)
-            # # signs_roi = cv.equalizeHist(signs_roi)
-            # signs_roi = cv.blur(signs_roi, (5,5))
-            # signs_roi = cv.resize(signs_roi, SIZE)
-            # # signs_roi = cv.blur(signs_roi, (5,5))
-            # blob = cv.dnn.blobFromImage(signs_roi, 1.0, SIZE, 0)
-            # # print(blob.shape)
-            # sign_classifier.setInput(blob)
-            # preds = sign_classifier.forward()[0]
-            # # print(f'before softmax: {preds.shape}')
-            # #softmax preds
-            # soft_preds = my_softmax(preds)
-            # sign_index = np.argmax(preds)
-            # if soft_preds[sign_index] > 0.9:
-            #     predicted_sign = sign_names[sign_index]
-            #     if predicted_sign != 'no_sign':
-            #         print(f'Predicted sign: {predicted_sign}, confidence: {float(soft_preds[sign_index]):.2f}')
-            #         car.drive_speed(speed= desired_speed * 0.1)
-            #         sleep(.5)
-
-            # #Pedestrian detection
-            # IMG_SIZE = (480, 640)
-            # SIZE = (32,32)
-            # ROI = [int(IMG_SIZE[0]/4), int(IMG_SIZE[0]*3/4), 
-            #     int((IMG_SIZE[1]-IMG_SIZE[0]/2)/2), int(IMG_SIZE[1]-(IMG_SIZE[1]-IMG_SIZE[0]/2)/2)] #[a,b,c,d] ==> [a:b, c:d]
-            # front_obstacle_roi = car.cv_image[ROI[0]:ROI[1], ROI[2]:ROI[3], :]
-            # # signs_roi = car.cv_image[50:200, -150:, :]
-            # front_obstacle_roi = cv.cvtColor(front_obstacle_roi, cv.COLOR_BGR2GRAY)
-            # # signs_roi = cv.equalizeHist(signs_roi)
-            # front_obstacle_roi = cv.blur(front_obstacle_roi, (5,5))
-            # front_obstacle_roi = cv.resize(front_obstacle_roi, SIZE)
-            # front_obstacle_roi = cv.blur(front_obstacle_roi, (5,5))
-            # blob = cv.dnn.blobFromImage(front_obstacle_roi, 1.0, SIZE, 0)
-            # # blob = cv.dnn.blobFromImage(front_obstacle_roi, 1.0, SIZE, 0.0, swapRB=True, crop=False)
-            # # print(blob.shape)
-            # obstacle_classifier.setInput(blob)
-            # preds = obstacle_classifier.forward()
-            # print(f'Obstacle preds: {preds}')
-            # preds = preds[0]
-            # # print(f'before softmax: {preds.shape}')
-            # #softmax preds
-            # soft_preds = my_softmax(preds)
-            # front_obstacle_index = np.argmax(preds)
-            # if soft_preds[front_obstacle_index] > 0.5:
-            #     predicted_obstacle = front_obstacle_names[front_obstacle_index]
-            #     if predicted_obstacle != 'free_road':
-            #         print(f'Predicted obstacle: {predicted_obstacle}, confidence: {float(soft_preds[front_obstacle_index]):.2f}')
-            #         # car.drive_speed(speed= desired_speed * 0.1)
-            #         # sleep(.5)
-
-
-            
             cv.imshow("Frame preview", frame)
             # cv.imshow('SIGNS ROI', signs_roi)
             # cv.imshow('FRONT ROI', front_obstacle_roi)
-            cv.imshow("2D-MAP", tmp) if generate_path else None
+            cv.imshow("2D-MAP", tmp) if simulator_flag else None
             key = cv.waitKey(1)
             if key == 27:
+                car.stop()
+                sleep(.5)
+                cv.destroyAllWindows()
                 break
-            rospy.sleep(0.1)
+
+            sleep(LOOP_DELAY)
+
+    except KeyboardInterrupt:
+        print("Shutting down")
+        car.stop()
+        sleep(.5)
+        cv.destroyAllWindows()
+        exit(0)
     except rospy.ROSInterruptException:
         pass
       

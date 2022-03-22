@@ -828,5 +828,5 @@ class PathPlanning():
         cv.namedWindow('Path', cv.WINDOW_NORMAL)
         cv.imshow('Path', self.map)
         # save current image
-        cv.imwrite('my_trajectory.png', self.map)
+        # cv.imwrite('my_trajectory.png', self.map)
         cv.waitKey(1)

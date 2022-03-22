@@ -23,9 +23,9 @@ import os
 
 # Vehicle driving parameters
 MIN_SPEED = -0.3                    # [m/s]     minimum speed
-MAX_SPEED = 0.5                     # [m/s]     maximum speed
-MAX_ACCEL = 0.5                     # [m/ss]    maximum accel
-MAX_STEER = 22.8                    # [deg]     maximum steering angle
+MAX_SPEED = 3.5                     # [m/s]     maximum speed
+MAX_ACCEL = 10.0                     # [m/ss]    maximum accel
+MAX_STEER = 27.0                    # [deg]     maximum steering angle
 MAX_DSTEER = np.deg2rad(40.0)       # [rad/s]   maximum steering speed
 
 # Vehicle parameters
@@ -295,29 +295,35 @@ class Automobile_Data():
         :param data: a geometry_msgs Twist message
         :type data: object
         """        
-        self.roll_deg = float(data.roll)
-        self.pitch_deg = float(data.pitch)
-        self.yaw_deg = float(data.yaw)
-
-        self.roll = np.deg2rad(data.roll)
-        self.pitch = np.deg2rad(data.pitch)
-        self.yaw = np.deg2rad(data.yaw) if data.yaw>=0 else self.yaw
-
-        self.accel_x = data.accelx
-        self.accel_y = data.accely
-        self.accel_z = data.accelz
-
-        self.gyrox = 0.0         
-        self.gyroy = 0.0          
-        self.gyroz = 0.0  
-
-
-
         #imu gives true coordinates in the simulator
         if self.simulator_flag:
+            self.roll = float(data.roll)
+            self.roll_deg = np.rad2deg(self.roll)
+            self.pitch = float(data.pitch)
+            self.pitch_deg = np.rad2deg(self.pitch)
+            self.yaw = float(data.yaw)
+            self.yaw_deg = np.rad2deg(self.yaw)
+            #true position, for training purposes
             self.x_true = float(data.posx)
             self.y_true = float(data.posy)
             self.time_stamp = float(data.timestamp)
+        else:
+            self.roll_deg = float(data.roll)
+            self.pitch_deg = float(data.pitch)
+            self.yaw_deg = float(data.yaw)
+
+            self.roll = np.deg2rad(data.roll)
+            self.pitch = np.deg2rad(data.pitch)
+            self.yaw = np.deg2rad(data.yaw) if data.yaw>=0 else self.yaw
+
+            self.accel_x = data.accelx
+            self.accel_y = data.accely
+            self.accel_z = data.accelz
+
+            self.gyrox = 0.0         
+            self.gyroy = 0.0          
+            self.gyroz = 0.0  
+
 
 
     def encoder_callback(self, data):
@@ -451,12 +457,10 @@ class Automobile_Data():
             while not self.steer_ack and cnt < ROS_REPEAT:
                 self.pub.publish(reference)
                 cnt += 1
-                #print(f'waiting for ack:{cnt*ROS_PAUSE} seconds')
                 if self.simulator_flag: break
                 sleep(ROS_PAUSE)
 
             if cnt >= ROS_REPEAT:
-                # raise Exception('steer command not acknowledged')
                 pass
 
 
@@ -480,28 +484,30 @@ class Automobile_Data():
         :type angle: float, optional
         :raises Exception: if the command is not acknowledged
         """
-        angle = Automobile_Data.normalizeSteer(angle)   # normalize steer
-        self.speed = 0.0
-        self.steer = angle
+        self.drive_speed(0.0)
+        self.drive_angle(angle)
+        # angle = Automobile_Data.normalizeSteer(angle)   # normalize steer
+        # self.speed = 0.0
+        # self.steer = angle
 
-        data = {}
-        if not self.simulator_flag:
-            data['action']        =  '3'
-            data['brake (steerAngle)']    =  float(angle)*STEER_COMPENSATION
-        else:
-            data['action']        =  '3'
-            data['steerAngle']    =  float(angle)*STEER_COMPENSATION
-        reference = json.dumps(data)
+        # data = {}
+        # if not self.simulator_flag:
+        #     data['action']        =  '3'
+        #     data['brake (steerAngle)']    =  float(angle)*STEER_COMPENSATION
+        # else:
+        #     data['action']        =  '3'
+        #     data['steerAngle']    =  float(angle)*STEER_COMPENSATION
+        # reference = json.dumps(data)
 
-        self.break_ack = False
-        cnt = 0
-        while not self.break_ack and cnt < ROS_REPEAT:
-            self.pub.publish(reference)
-            cnt += 1
-            sleep(ROS_PAUSE)
-            if self.simulator_flag: break
-        if cnt >= ROS_REPEAT:
-            raise Exception('break command not acknowledged')
+        # self.break_ack = False
+        # cnt = 0
+        # while not self.break_ack and cnt < ROS_REPEAT:
+        #     self.pub.publish(reference)
+        #     cnt += 1
+        #     sleep(ROS_PAUSE)
+        #     if self.simulator_flag: break
+        # if cnt >= ROS_REPEAT:
+        #     raise Exception('break command not acknowledged')
 
     # ESTIMATION
     def reset_rel_pose(self):
@@ -544,17 +550,7 @@ class Automobile_Data():
             dt = dt.to_sec() #floating point
         else:
             dt = EST_EKF_STATE_TS
-        
-        # callback_time = rospy.get_time()
 
-        # if self.fist_stateEst_callback:
-        #     self.fist_stateEst_callback = False
-        #     self.prev_est_time = callback_time
-        #     return
-        # else:
-        #     DT = rospy.get_time() - self.prev_est_time
-        #     self.prev_est_time = callback_time
-            
         if dt > 0:            
             # Input: [SPEED, STEER]
             u0 = self.speed

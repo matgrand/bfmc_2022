@@ -1,19 +1,22 @@
 #!/usr/bin/python3
-
-from cgi import print_environ
-from importlib.resources import path
 import numpy as np
 import cv2 as cv
 import os
 
 from helper_functions import *
+from time import sleep, time
 
+# IMG_SIZE = (128,64)
 IMG_SIZE = (128,64)
 
+POINT_AHEAD_CM = 35 #distance of the point ahead in cm
+L = 0.4  #length of the car, matched with lane_detection
+
 class Controller():
-    def __init__(self, k1=1.0,k2=1.0,k3=1.0, ff=1.0, cm_ahead=35, folder='training_imgs', 
-                    lane_keeper_path="models/lane_keeper_small.onnx",
+    def __init__(self, k1=1.0,k2=1.0,k3=1.0, ff=1.0, cm_ahead=35, folder='training_imgs',
                     training=True, noise_std=np.deg2rad(20)):
+        
+        #controller paramters
         self.k1 = k1
         self.k2 = k2
         self.k3 = k3
@@ -22,29 +25,22 @@ class Controller():
         self.e3 = 0.0
         self.ff = ff
 
-        self.cm_ahead = cm_ahead
-        self.L = 0.4
-        self.d = self.cm_ahead*0.01 #meters ahead
+        self.prev_delta = 0.0
+        self.prev_time = 0.0
 
-        self.cnt = 0
-        self.noise = 0.0
-        self.data_cnt = 0
-
-        self.noise_std = noise_std
-
-        #load neural network
-        # self.detector =  cv.dnn.readNetFromONNX(detector_path) 
-        # self.feature_extractor = cv.dnn.readNetFromONNX(feature_extractor_path)
-        self.lane_keeper = cv.dnn.readNetFromONNX(lane_keeper_path)
-
-        #training
-        self.folder = folder
-        self.curr_data = []
-        self.input_data = []
-        self.regression_labels = []
-        self.classification_labels = []
+        self.training = training
 
         if training:
+            #training
+            self.folder = folder
+            self.curr_data = []
+            self.input_data = []
+            self.regression_labels = []
+            self.classification_labels = []
+            self.cnt = 0
+            self.noise = 0.0
+            self.data_cnt = 0   
+            self.noise_std = noise_std
             #clear and create file 
             with open(folder+"/input_data.csv", "w") as f:
                 f.write("")
@@ -56,74 +52,73 @@ class Controller():
             for file in os.listdir(folder):
                 if file.endswith(".png"):
                     os.remove(os.path.join(folder, file))
-        
-    def get_control(self, car, path_ahead, vd, curvature_ahead):
-
-        #add e2 (lateral error), not used in the controller
-        ex = path_ahead[0][0] - car.x_true #x error
-        ey = path_ahead[0][1] - car.y_true #y error
-        self.e2 = -ex * np.sin(car.yaw) - ey * np.cos(car.yaw) #y error in the body frame
-
-        #get point ahead
-        assert len(path_ahead) > 0, "path_ahead is empty"
-        point_ahead = path_ahead[min(self.cm_ahead, len(path_ahead)-1),:]
-        #translate to car coordinates
-        point_ahead = to_car_frame(point_ahead, car, return_size=2)
-
-        #pure pursuit control 
-        alpha = np.arctan2(point_ahead[1], point_ahead[0]+self.L/2) 
-        self.e3 = alpha
-        delta = np.arctan((2*self.L*np.sin(alpha))/(self.k3*self.d))
-
-        output_angle = delta
-        output_speed = vd - self.k1 * self.e1
-        output_angle = output_angle + self.get_random_noise(std=self.noise_std) #add noise for training
-        return output_speed, output_angle, point_ahead
-
-    def get_nn_control(self, frame, vd, action):
-        #convert to gray
-        frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        #keep the bottom 2/3 of the image
-        frame = frame[int(frame.shape[0]/3):,:]
-        # #paint gray the top section of the image
-        # frame[:int(IMG_SIZE[1]/3),:] = 127
-        frame = cv.resize(frame, IMG_SIZE)
-        #blur
-        frame = cv.GaussianBlur(frame, (3,3), 0)
-        blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
-        assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
-        self.lane_keeper.setInput(blob)
-        output = self.lane_keeper.forward()
-        # print(f'output: {output.shape}')
-        output = output[0]
-
-        e2,e3,dist,curv = self.unpack_network_output(output)
+    
+    def get_control(self, e2, e3, curv, desired_speed):
 
         self.e2 = e2
         self.e3 = e3
         alpha = e3
 
+        if not self.training:
+            curv = curv*30
+        r = 1.0 / ( curv*6.28 ) #radius of curvature
+
         #adaptive controller
         curv100 = 100 * curv
-        if 0.7 < np.abs(curv100) < 5.0: #big curvature, pure pursuit is too aggressive
+        if 0.7 < np.abs(curv100) < 2.0: #big curvature, pure pursuit is too aggressive
             print(f'HIGH CURVATURE: {curv100}')
-            k2 = 5.0
-            k3 = 5.0
+            # k2 = 5.0
+            # k3 = 5.0
+            k2 = self.k2
+            k3 = self.k3
         else:
             k2 = self.k2
             k3 = self.k3
+
+        # yaw error (e3), proportional term
+        d = POINT_AHEAD_CM/100.0 #distance point ahead, matched with lane_detection
+        delta = np.arctan((2*L*np.sin(alpha))/(1.0*d))
+        proportional_term = k3 * delta
+        print(f'proportional term: {np.rad2deg(proportional_term):.2f}')
+
+        #derivative term
+        k3D = 0.08 #0.3
+        curr_time = time()
+        dt = curr_time - self.prev_time
+        self.prev_time = curr_time
+        diff3 = (delta - self.prev_delta) / dt
+        self.prev_delta = delta
+        derivative_term = - k3D * diff3
+        print(f'derivative term: {np.rad2deg(derivative_term):.2f}')
+
+        #feedforward term
+        k3FF = 0. #0.2 #higher for high speeds
+        ff_term = k3FF * np.arctan(L/r) #from ackerman geometry
+        print(f'Feedforward term: {np.rad2deg(ff_term):2f}')
+    
+        output_angle = ff_term + proportional_term - k2 * e2 - derivative_term
+        output_speed = desired_speed - self.k1 * self.e1
+
+        return output_speed, output_angle
         
+    def get_training_control(self, car, path_ahead, vd, curvature_ahead):
 
-        # output_angle = self.ff*curv - self.k2 * e2 - self.k3 * e3
-        delta = np.arctan((2*self.L*np.sin(alpha))/(k3*self.d))
-        output_angle = delta - k2 * e2
-        output_speed = vd - self.k1 * self.e1
+        #add e2 (lateral error)
+        ex = path_ahead[0][0] - car.x_true #x error
+        ey = path_ahead[0][1] - car.y_true #y error
+        e2 = -ex * np.sin(car.yaw) - ey * np.cos(car.yaw) #y error in the body frame
 
-        #calculate estimated of thr point ahead to get visual feedback
-        est_point_ahead = np.array([np.cos(alpha)*self.d, np.sin(alpha)*self.d])
+        #get point ahead
+        assert len(path_ahead) > 0, "path_ahead is empty"
+        point_ahead = path_ahead[min(POINT_AHEAD_CM, len(path_ahead)-1),:]
+        #translate to car coordinates
+        point_ahead = to_car_frame(point_ahead, car, return_size=2)
 
-        net_out = (e2,e3,dist,curv)
-        return output_speed, output_angle, net_out, est_point_ahead
+        alpha = np.arctan2(point_ahead[1], point_ahead[0]+L/2) 
+        output_speed, output_angle = self.get_control(e2, alpha, curvature_ahead, vd)
+
+        output_angle = output_angle + self.get_random_noise(std=self.noise_std) #add noise for training
+        return output_speed, output_angle, point_ahead
     
     def pack_input_data(self):
         data = [0,0,0,0]
@@ -156,23 +151,7 @@ class Controller():
             for i in range(len(reg_label)-1):
                 f.write(str(reg_label[i])+",")
             f.write(str(reg_label[-1])+"\n")
-    
-    def unpack_network_output(self, output, bb_const=1000.0):
-        #first 4 regression + 7 classification
-        #4 regression [0:4]: 
-        e2 = output[0]
-        e3 = output[1]
-        dist = output[2]
-        curv = output[3]
-        # # 7 classification: [4:11]
-        # states = ['road', 'intersection', 'roundabout', 'junction']
-        # state_vec = output[8:12]
-        # state_index = np.argmax(state_vec)
-        # state = states[state_index]
-        # next_vec = output[12:16]
-        # next_index = np.argmax(next_vec)
-        # next = states[next_index]
-        return e2,e3,dist,curv
+
     
 
     def pack_classification_labels(self):

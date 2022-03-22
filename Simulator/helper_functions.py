@@ -202,11 +202,13 @@ def my_softmax(x):
     return np.exp(x) / np.sum(np.exp(x), axis=0)
 
 def project_curvature(frame, car, curv):
+    color = (0,255,0) 
     start_from = 0.0
-    d_ahead = 0.8 # [m]
+    d_ahead = 0.4 # [m]
     num_points = 20
     #multiply by constant, to be tuned
-    curv = curv * 30.
+    curv = curv * 1.0 #30.
+    # curv = curv * 30 #30.
     #get radius from curvature
     r = 1. / curv
     print("r: {}".format(r))
@@ -215,13 +217,14 @@ def project_curvature(frame, car, curv):
     #stack x and y into one array
     points = np.stack((x,y), axis=1)
     #project points onto car frame, note: they are already inn car frame
-    frame, proj_points = project_onto_frame(frame=frame, car=car, points=points, align_to_car=False, color=(0,0,255))
+    frame, proj_points = project_onto_frame(frame=frame, car=car, points=points, align_to_car=False, color=color)
     #draw a line connecting the points
     if proj_points is not None:
         #convert proj to int32
         proj_points = proj_points.astype(np.int32)
         # print(proj_points)
-        cv.polylines(frame, [proj_points], False, (0,0,255), 2)
+        cv.polylines(frame, [proj_points], False, color, 2)
+    return r
 
 def project_stop_line():
     pass

@@ -1,0 +1,1 @@
+1- Blur is ultra effective in generating a smooth output for the neural net
