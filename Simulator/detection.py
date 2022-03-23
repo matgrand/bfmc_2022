@@ -58,9 +58,11 @@ class Detection:
         #keep the bottom 2/3 of the image
         frame = frame[int(frame.shape[0]/3):,:]
         #blur
-        frame = cv.blur(frame, (9,9), 0) #worse than blur after(3,3)
+        frame = cv.blur(frame, (11,11), 0) #worse than blur after 9,9
         frame = cv.resize(frame, IMG_SIZE)
-        frame = cv.blur(frame, (7,7), 0)  #both is best
+        frame = cv.blur(frame, (7,7), 0)  #7,7 both is best
+        cv.imshow('lane_detection', frame)
+        cv.waitKey(1)
 
         # # add noise 
         # std = 10
@@ -78,15 +80,15 @@ class Detection:
 
         e2 = output[0]
         e3 = output[1]
-        inv_dist = output[2]
-        curv = output[3]
+        # inv_dist = output[2]
+        curv = output[2]
 
         #calculate estimated of thr point ahead to get visual feedback
         d = DISTANCE_POINT_AHEAD
         est_point_ahead = np.array([np.cos(e3)*d, np.sin(e3)*d])
         
-        return e2, e3, inv_dist, curv, est_point_ahead
-
+        # return e2, e3, inv_dist, curv, est_point_ahead
+        return e2, e3, curv, est_point_ahead
 
     def classify_traffic_light(self, frame, conf_threshold=0.8, show_ROI=False):
         SIZE = (32, 32)

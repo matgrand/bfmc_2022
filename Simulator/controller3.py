@@ -59,8 +59,8 @@ class Controller():
         self.e3 = e3
         alpha = e3
 
-        if not self.training:
-            curv = curv*30
+        # if not self.training:
+        #     curv = curv*30
         r = 1.0 / ( curv*6.28 ) #radius of curvature
 
         #adaptive controller

@@ -34,7 +34,7 @@ VISION_DELAY = 0.03#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-desired_speed = 0.5# [m/s]
+desired_speed = 0.4# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -117,7 +117,8 @@ if __name__ == '__main__':
             else:
                 #Neural network control
                 lane_info = detect.detect_lane(frame)
-                e2, e3, dist, curv, point_ahead = lane_info
+                e2, e3, curv, point_ahead = lane_info
+                dist = 0.0 
 
                 speed_ref, angle_ref = controller.get_control(e2, e3, curv, desired_speed)
 
