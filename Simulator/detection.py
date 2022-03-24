@@ -52,15 +52,15 @@ class Detection:
         - the angular error around the yaw axis wrt a fixed point ahead (e3),
         - the ditance from the next stop line (1/dist)
         """
-        IMG_SIZE = (128,64)
+        IMG_SIZE = (32,32) #match with trainer
         #convert to gray
         frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         #keep the bottom 2/3 of the image
         frame = frame[int(frame.shape[0]/3):,:]
         #blur
-        frame = cv.blur(frame, (11,11), 0) #worse than blur after 9,9
+        frame = cv.blur(frame, (11,11), 0) #worse than blur after 11,11
         frame = cv.resize(frame, IMG_SIZE)
-        frame = cv.blur(frame, (7,7), 0)  #7,7 both is best
+        frame = cv.blur(frame, (3,3), 0)  #7,7 both is best
         cv.imshow('lane_detection', frame)
         cv.waitKey(1)
 
