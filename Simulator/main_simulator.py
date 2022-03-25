@@ -172,6 +172,7 @@ if __name__ == '__main__':
             print(f'e_yaw: {e3}\ndist: {dist}\ncurv: {100*curv}') if not training else None
             print(f'Curvature radius = {radius:.2f}')
             print(f'FPS = {1/(time()-loop_start_time):.3f}')
+            print(f'Lane detection time = {detect.avg_lane_detection_time:.2f} ms')
 
             cv.imshow("Frame preview", frame)
             # cv.imshow('SIGNS ROI', signs_roi)
