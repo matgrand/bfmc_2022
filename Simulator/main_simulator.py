@@ -29,7 +29,7 @@ folder = 'test_imgs'
 # os.system('rosservice call /gazebo/reset_simulation')
 
 LOOP_DELAY = 0.0001
-ACTUATION_DELAY = 0.0#0.15
+ACTUATION_DELAY = 0.15#0.15
 VISION_DELAY = 0.03#0.08
 
 # PARAMETERS
