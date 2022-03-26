@@ -11,6 +11,7 @@ LANE_KEEPER_PATH = "models/lane_keeper_small.onnx"
 DISTANCE_POINT_AHEAD = 0.35
 CAR_LENGTH = 0.4
 
+STOP_LINE_ESTIMATOR_PATH = "models/stop_line_estimator.onnx"
 
 TRAFFICLIGHT_CLASSIFIER_PATH = 'models/trafficlight_classifier_small.onnx'
 TRAFFIC_LIGHT_NAMES = ['traffic_light', 'NO_traffic_light']
@@ -30,6 +31,11 @@ class Detection:
         self.lane_keeper = cv.dnn.readNetFromONNX(LANE_KEEPER_PATH)
         self.lane_cnt = 0
         self.avg_lane_detection_time = 0
+
+        #stop line detection
+        self.stop_line_estimator = cv.dnn.readNetFromONNX(STOP_LINE_ESTIMATOR_PATH)
+        self.est_dist_to_stop_line = 1.0
+        self.avg_stop_line_detection_time = 0
 
         #traffic light classifier #trafficlight is abbreviated in tl
         self.tl_classifier =  cv.dnn.readNetFromONNX(TRAFFICLIGHT_CLASSIFIER_PATH)
@@ -60,7 +66,7 @@ class Detection:
         #convert to gray
         frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         #keep the bottom 2/3 of the image
-        frame = frame[int(frame.shape[0]/3):,:]
+        frame = frame[int(frame.shape[0]/3):,:] #/3
         #blur
         # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
         frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
@@ -99,6 +105,48 @@ class Detection:
         cv.imshow('lane_detection', frame)
         cv.waitKey(1)
         return e2, e3, curv, est_point_ahead
+
+    def detect_stop_line(self, frame):
+        """
+        Estimates the distance to the next stop line
+        """
+        start_time = time()
+        IMG_SIZE = (32,32) #match with trainer
+        #convert to gray
+        frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        #keep the bottom 2/3 of the image
+        frame = frame[int(frame.shape[0]*(2/5)):,:]
+        #blur
+        # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
+        frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
+        frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
+        frame = cv.resize(frame, IMG_SIZE)
+        frame = cv.blur(frame, (2,2), 0)  #7,7 both is best
+
+        # # add noise 1.5 ms 
+        std = 50
+        # std = np.random.randint(1, std)
+        noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        frame = cv.subtract(frame, noisem)
+        noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        frame = cv.add(frame, noisep)
+
+        blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
+        # assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
+        self.stop_line_estimator.setInput(blob)
+        output = self.stop_line_estimator.forward()
+        dist = output[0]
+        self.est_dist_to_stop_line = dist
+
+        # return e2, e3, inv_dist, curv, est_point_ahead
+        # print(f"lane_detection: {1000*(time()-start_time):.2f} ms")
+        stop_line_detection_time = 1000*(time()-start_time)
+        self.avg_stop_line_detection_time = (self.avg_stop_line_detection_time*self.lane_cnt + stop_line_detection_time)/(self.lane_cnt+1)
+        self.lane_cnt += 1
+        cv.imshow('stop_line_detection', frame)
+        cv.waitKey(1)
+        print(f"stop_line_detection dist: {dist}, in {stop_line_detection_time:.2f} ms")
+        return dist
 
     def classify_traffic_light(self, frame, conf_threshold=0.8, show_ROI=False):
         SIZE = (32, 32)

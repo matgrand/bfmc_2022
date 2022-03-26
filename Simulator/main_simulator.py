@@ -29,7 +29,7 @@ folder = 'test_imgs'
 # os.system('rosservice call /gazebo/reset_simulation')
 
 LOOP_DELAY = 0.0001
-ACTUATION_DELAY = 0.15#0.15
+ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.03#0.08
 
 # PARAMETERS
@@ -112,27 +112,27 @@ if __name__ == '__main__':
                 controller.save_data(frame, folder)
                 dist = info[3]
                 if dist is not None and 0.0 < dist < 0.5:
-                    mod_dist = ((1.0-dist)*10.0)**3
                     speed_ref = 0.8 * speed_ref
             else:
                 #Neural network control
                 lane_info = detect.detect_lane(frame)
                 e2, e3, curv, point_ahead = lane_info
-                dist = 0.0 
-
                 speed_ref, angle_ref = controller.get_control(e2, e3, curv, desired_speed)
 
-                # # #stopping logic
-                # if dist > 1.0:
-                #     print('Slowing down')
-                #     speed_ref = desired_speed * 0.8
-                #     if dist > 3.0:
-                #         print('Stopping')
-                #         car.stop()
-                #         sleep(1)
-                #         speed_ref = desired_speed
-                #         car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
-                #         sleep(0.3)
+                dist = detect.detect_stop_line(frame)
+
+                # #stopping logic
+                if 0.0 < dist < 0.25:
+                    print('Slowing down')
+                    speed_ref = desired_speed * 0.2
+                    if 0.0 < dist < 0.1:
+                        speed_ref = desired_speed * 0.02
+                        # print('Stopping')
+                        # car.stop()
+                        # sleep(0.4)
+                        # speed_ref = desired_speed
+                        # car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
+                        # sleep(0.2)
 
             ## ACTUATION
             sleep(ACTUATION_DELAY)
@@ -166,10 +166,9 @@ if __name__ == '__main__':
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
             print(f'desired_speed = {desired_speed:.3f}, speed_ref = {speed_ref:.3f}, angle_ref = {np.rad2deg(angle_ref):.3f}')
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}") if generate_path else None
-            print(f'MOD_DIST: {mod_dist:.3f}') if dist is not None and 0.0 < dist < 0.5 and training else None
-            # print(f"Coeffs:\n{coeffs}")
+            print(f'DIST: {float(dist):.3f}')
             print(f'Net out:\n {lane_info}') if not training else None
-            print(f'e_yaw: {e3}\ndist: {dist}\ncurv: {100*curv}') if not training else None
+            print(f'e_yaw: {e3}\ncurv: {100*curv}') if not training else None
             print(f'Curvature radius = {radius:.2f}')
             print(f'FPS = {1/(time()-loop_start_time):.3f}')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.2f} ms')
