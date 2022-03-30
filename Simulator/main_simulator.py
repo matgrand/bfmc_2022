@@ -28,22 +28,22 @@ folder = 'test_imgs'
 
 # os.system('rosservice call /gazebo/reset_simulation')
 
-LOOP_DELAY = 0.0001
+LOOP_DELAY = 0.000
 ACTUATION_DELAY = 0.0#0.15
-VISION_DELAY = 0.03#0.08
+VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-desired_speed = 0.8# [m/s]
+desired_speed = 0.6# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
-k2 = 0.0 #0.0 perpenddicular error gain
-k3 = .99 #1.0 yaw error gain .8 with ff 
+k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
+k3 = 0.6 #1.0 yaw error gain .8 with ff 
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
-noise_std = np.deg2rad(0.0) # [rad] noise in the steering angle
+noise_std = np.deg2rad(25) # [rad] noise in the steering angle
 
 
 if __name__ == '__main__':
@@ -71,11 +71,12 @@ if __name__ == '__main__':
 
 
     try:
+        car.stop()
         #generate path
         if generate_path:
-            path_nodes = [86,436,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
+            path_nodes = [86,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                             97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
-            path_nodes = [86,110,436,467] #,273,136,321,262]
+            # path_nodes = [86,110,428,467] #,273,136,321,262]
             path.generate_path_passing_through(path_nodes, path_step_length) #[86,110,310,254,463] ,[86,436, 273,136,321,262,105,350,451,265]
             # [86,436, 273,136,321,262,105,350,373,451,265,145,160,353]
             path.draw_path()
@@ -98,7 +99,7 @@ if __name__ == '__main__':
                 if finished:
                     print("Reached end of trajectory")
                     car.stop()
-                    sleep(.8)
+                    sleep(1.8)
                     break
                 #draw refrence car
                 draw_car(tmp, xd, yd, yawd, color=(0, 0, 255))
@@ -116,10 +117,13 @@ if __name__ == '__main__':
             else:
                 #Neural network control
                 lane_info = detect.detect_lane(frame)
-                e2, e3, curv, point_ahead = lane_info
+                e2, e3, point_ahead = lane_info
+                curv = 0.0001
                 speed_ref, angle_ref = controller.get_control(e2, e3, curv, desired_speed)
 
                 dist = detect.detect_stop_line(frame)
+
+                points_local_path, _ = detect.estimate_local_path(frame)
 
                 # #stopping logic
                 if 0.0 < dist < 0.25:
@@ -149,6 +153,12 @@ if __name__ == '__main__':
                 proj = (int(proj[0]), int(proj[1]))
                 #draw line from bottmo half to proj
                 cv.line(frame, (320,479), proj, (200, 200, 100), 2)
+
+            #project seq of points ahead
+            if training:
+                frame, proj = project_onto_frame(frame, car, np.array(controller.seq_points_ahead), False, color=(100, 200, 100))
+            else: 
+                frame, proj = project_onto_frame(frame, car, points_local_path, False, color=(100, 200, 100))
             
             #draw true car position
             draw_car(tmp, car.x_true, car.y_true, car.yaw, color=(0, 255, 0))
@@ -165,8 +175,9 @@ if __name__ == '__main__':
             print(f"xd: {xd:.3f}, yd: {yd:.3f}, yawd: {np.rad2deg(yawd):.3f}, curv: {curv:.3f}") if generate_path else None
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
             print(f'desired_speed = {desired_speed:.3f}, speed_ref = {speed_ref:.3f}, angle_ref = {np.rad2deg(angle_ref):.3f}')
+            print(f"Sequence Yaws = {np.rad2deg(np.array(controller.seq_yaws_ahead))}") if False else None ###########################
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}") if generate_path else None
-            print(f'DIST: {float(dist):.3f}')
+            print(f'DIST: {float(dist):.3f}') if not training else None
             print(f'Net out:\n {lane_info}') if not training else None
             print(f'e_yaw: {e3}\ncurv: {100*curv}') if not training else None
             print(f'Curvature radius = {radius:.2f}')

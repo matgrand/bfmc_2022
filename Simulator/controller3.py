@@ -6,10 +6,9 @@ import os
 from helper_functions import *
 from time import sleep, time
 
-# IMG_SIZE = (128,64)
-IMG_SIZE = (128,64)
-
 POINT_AHEAD_CM = 35 #distance of the point ahead in cm
+SEQ_POINTS_INTERVAL = 20 #interval between points in the sequence in cm 
+NUM_POINTS = 5 #number of points in the sequence
 L = 0.4  #length of the car, matched with lane_detection
 
 class Controller():
@@ -41,6 +40,8 @@ class Controller():
             self.noise = 0.0
             self.data_cnt = 0   
             self.noise_std = noise_std
+            self.seq_points_ahead = []
+            self.seq_yaws_ahead = []
             #clear and create file 
             with open(folder+"/input_data.csv", "w") as f:
                 f.write("")
@@ -106,13 +107,18 @@ class Controller():
         #add e2 (lateral error)
         ex = path_ahead[0][0] - car.x_true #x error
         ey = path_ahead[0][1] - car.y_true #y error
-        e2 = -ex * np.sin(car.yaw) - ey * np.cos(car.yaw) #y error in the body frame
+        e2 = -(ex * np.sin(car.yaw) + ey * np.cos(car.yaw)) #y error in the body frame
 
         #get point ahead
-        assert len(path_ahead) > 0, "path_ahead is empty"
+        assert len(path_ahead) > max(NUM_POINTS * SEQ_POINTS_INTERVAL, POINT_AHEAD_CM), f"path_ahead is not long enough, len: {len(path_ahead)}"
         point_ahead = path_ahead[min(POINT_AHEAD_CM, len(path_ahead)-1),:]
         #translate to car coordinates
         point_ahead = to_car_frame(point_ahead, car, return_size=2)
+
+        self.seq_points_ahead = [path_ahead[(i)*SEQ_POINTS_INTERVAL,:] for i in range(NUM_POINTS+1)]
+        self.seq_points_ahead = [to_car_frame(p, car, return_size=2) for p in self.seq_points_ahead]
+        #yaws should be changed: they should be calculated wrt the car's not wrt to each other
+        self.seq_yaws_ahead = [np.arctan2(self.seq_points_ahead[i+1][1]-self.seq_points_ahead[i][1], self.seq_points_ahead[i+1][0]-self.seq_points_ahead[i][0]) for i in range(NUM_POINTS)]
 
         alpha = np.arctan2(point_ahead[1], point_ahead[0]+L/2) 
         output_speed, output_angle = self.get_control(e2, alpha, curvature_ahead, vd)
@@ -144,8 +150,9 @@ class Controller():
             dist = 10
         # print(f'bounding box: {bounding_box}')
         reg_label = [self.e2, self.e3, dist, curv]
+        for i in range(NUM_POINTS):
+            reg_label.append(self.seq_yaws_ahead[i])
         np_arr = np.array(reg_label)
-        # print(f'reg_label: {np_arr}')
         #append to file
         with open(self.folder+"/regression_labels.csv", "a") as f:
             for i in range(len(reg_label)-1):

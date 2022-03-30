@@ -10,4 +10,5 @@
   </include>
  
   <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg car.launch" name="car" output="screen"/>
+  <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg ramp.launch"                name="ramp"                 output="screen"/>
   </launch>

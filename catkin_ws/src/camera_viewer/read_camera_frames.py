@@ -10,8 +10,8 @@ import os
 from sensor_msgs.msg import Image
 
 
-ROI = [30,260,-100,640]
-# ROI = [0,480,0,640]
+# ROI = [30,260,-100,640]
+ROI = [0,480,0,640]
 
 
 def camera_callback(data):

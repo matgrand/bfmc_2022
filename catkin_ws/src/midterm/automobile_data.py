@@ -7,9 +7,13 @@ from math import cos,sin,pi
 from cv_bridge import CvBridge
 import json
 from helper_functions import *
+import collections
+
+from gpiozero import Servo
+from gpiozero.pins.pigpio import PiGPIOFactory
 
 # Messages for topic and service communication
-from std_msgs.msg import String
+from std_msgs.msg import String, Float32
 from utils.msg import IMU
 from utils.msg import localisation
 #from utils.srv import subscribing
@@ -73,20 +77,34 @@ FDBK_SPEED_TOPIC = '/speed_feedback'
 FDBK_ENC_TOPIC = '/encoder_feedback'
 
 # ROS constants
-ROS_PAUSE = 0.001           # [s]   pause after publicing on a ROS topic
+ROS_PAUSE = 0.0001           # [s]   pause after publicing on a ROS topic
 ROS_REPEAT = 50             # []    number of times to send enbaling commands, to be sure command arrives
 
 # Control compensation
 SPEED_COMPENSATION = 1.0
-STEER_COMPENSATION = 0.79
+STEER_COMPENSATION = 1.0 #0.79
 
 #controls paramters
-STEER_UPDATE_TIME = 0.01
-STEER_INCREMENT = 1 #[deg]
+# STEER_UPDATE_TIME = 1.0
+# STEER_INCREMENT = 20 #[deg]
 
+STEER_UPDATE_TIME = 0.05 #[s]
+STEER_INCREMENT = 5 #[deg]
+
+SPEED_UPDATE_TIME = 0.2 # [s]
+SPEED_INCREMENT = 0.1 # [m/s]
 
 class Automobile_Data():
-    def __init__(self, simulator=False, trig_cam=False, trig_gps=False, trig_bno=False, trig_enc=False, trig_control=True, trig_estimation=False):
+    def __init__(self,
+                simulator=False,
+                trig_cam=False,
+                trig_gps=False,
+                trig_bno=False,
+                trig_enc=False,
+                trig_control=True,
+                trig_estimation=False,
+                trig_sonar=False,
+                speed_buff_len = 40):
         """Manage flow of data with the car
 
         :param trig_control: trigger on commands, defaults to True
@@ -106,6 +124,9 @@ class Automobile_Data():
         
         :param trig_enc: trigger on encoder, defaults to False
         :type trig_enc: bool, optional
+
+        :param speed_buff_len: length of the speed buffer
+        :type speed_buff_len: int, optional
         """        
 
         self.simulator_flag = simulator # flag to know if we are in simulator or not'
@@ -124,7 +145,14 @@ class Automobile_Data():
         self.pitch_deg = 0.0        # [deg]     IMU:pitch angle of the car
         self.yaw = 0.0              # [rad]     IMU:yaw angle of the car
         self.yaw_deg = 0.0          # [deg]     IMU:yaw angle of the car
+        self.accel_x = 0.0          # [m/ss]    IMU:accelx angle of the car
+        self.accel_y = 0.0          # [m/ss]    IMU:accely angle of the car
+        self.accel_z = 0.0          # [m/ss]    IMU:accelz angle of the car
+        self.cv_image = np.zeros((FRAME_WIDTH, FRAME_HEIGHT))
+                                    # [ndarray] CAM:image of the camera
         self.speed_meas = 0.0       # [m/s]     ENC:speed measure of the car from encoder
+        self.speed_meas_buffer = collections.deque(maxlen=speed_buff_len)   # FIFO queue for median filter on the encoder speed measurement
+        self.speed_meas_median = 0.0
 
         self.xEst = 0.0             # [m]       EST:x EKF estimated global coordinate
         self.yEst = 0.0             # [m]       EST:y EKF estimated global coordinate
@@ -136,9 +164,16 @@ class Automobile_Data():
         self.yawLoc_o = 0.0         # [rad]     local:yaw offset
         self.distLoc = 0.0          # [m]       local:absolute distance, length of local trajectory
 
-        #camera
+        #velocity control feedback
+        self.dist_from_last_call = 0.0    # [m]       local:distance traveed from last drive speed command
+        self.time_last_call = 0.0         # [s]       local:time from last drive speed command
+
+        self.obstacle_ahead = 0.0   # [m]       SONAR:distance of an obstacle ahead
+        self.obstacle_ahead_buffer = collections.deque(maxlen=20)   # FIFO queue for median filter on the encoder speed measurement
+        self.obstacle_ahead_median = 3.0
+
         self.bridge = CvBridge()
-        self.cv_image = np.zeros((FRAME_WIDTH, FRAME_HEIGHT))
+        self.cv_image = np.zeros((640, 480))
         self.cam_x = CAM_X
         self.cam_y = CAM_Y
         self.cam_z = CAM_Z
@@ -149,7 +184,15 @@ class Automobile_Data():
         self.cam_K = CAM_K
 
         #control
+        self.target_steer = 0.0
+        self.prev_steer = 0.0
+        self.target_speed = 0.0
+        self.prev_speed = 0.0
+
+        factory = PiGPIOFactory() #to activate this do: sudo pigpiod 
+        self.servo = Servo(26, pin_factory=factory)
         
+
         #self.prev_est_time = 0.0    # [s]   used to compute estimator sampling time
         #self.fist_stateEst_callback = True                  # bool to check first call of estimator
         
@@ -157,8 +200,6 @@ class Automobile_Data():
         #self.rear_yEst = 0.0                        # estimated rear axis y [m]
 
         # Input to the car (control action)
-        self.target_steer = 0.0     # [deg]     SERVO:target steering angle
-        self.prev_steer = 0.0       # [deg]     SERVO:previous steering angle
         self.speed = 0.0            # [m/s]     MOTOR:speed
         self.steer = 0.0            # [rad]     SERVO:steering angle
         self.steer_ack = False      # [bool]    acknowledge trigger on STEER command
@@ -185,7 +226,8 @@ class Automobile_Data():
             self.sub_break_ack = rospy.Subscriber(FDBK_BREAK_TOPIC, String, self.break_callback) if not self.simulator_flag else None
 
             #set control callbacks
-            rospy.Timer(rospy.Duration(STEER_UPDATE_TIME), self.update_angle_callback)
+            # rospy.Timer(rospy.Duration(STEER_UPDATE_TIME), self.update_angle_callback)
+            rospy.Timer(rospy.Duration(SPEED_UPDATE_TIME), self.update_speed_callback)
 
         if trig_cam:
             # camera stuff
@@ -209,6 +251,9 @@ class Automobile_Data():
             # activate relative positioning
             self.reset_rel_pose()
             rospy.Timer(rospy.Duration(EST_REL_POS_TS), self.update_rel_pose)
+        if trig_sonar:
+            self.sub_son = rospy.Subscriber("/automobile/sonar", Float32, self.sonar_callback)
+
    
     # COMMAND CALLBACKS
     def steer_callback(self, data):  
@@ -244,6 +289,11 @@ class Automobile_Data():
         """        
         self.cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
 
+    def sonar_callback(self, data):
+        self.obstacle_ahead = data.data if data.data>0 else self.obstacle_ahead
+        self.obstacle_ahead_buffer.append(self.obstacle_ahead)
+        self.obstacle_ahead_median = np.median(np.array(list(self.obstacle_ahead_buffer)))
+
     def position_callback(self, data):
         """Receive and store global coordinates from GPS
 
@@ -267,6 +317,10 @@ class Automobile_Data():
         self.pitch = np.deg2rad(data.pitch)
         self.yaw = np.deg2rad(data.yaw) if data.yaw>=0 else self.yaw
 
+        self.accel_x = data.accelx
+        self.accel_y = data.accely
+        self.accel_z = data.accelz
+
         #imu gives true coordinates in the simulator
         if self.simulator_flag:
             self.x_true = float(data.posx)
@@ -286,7 +340,10 @@ class Automobile_Data():
         #wheel_speed = motor_speed/GBOX_RATIO    # [rps] speed at wheel side
 
         #self.speed_meas = 2*pi*wheel_speed * WHEEL_LEN  # [m/s] car speed
-        self.speed_meas = motor_speed /154.0
+        self.speed_meas = motor_speed /154.0# see Embedded Platform code
+
+        self.speed_meas_buffer.append(self.speed_meas)
+        self.speed_meas_median = np.median(np.array(list(self.speed_meas_buffer)))
 
     def update_angle_callback(self, event):
         """Callback to update the angle of the car
@@ -303,23 +360,80 @@ class Automobile_Data():
             else:
                 set_steer = max(self.target_steer, self.prev_steer-STEER_INCREMENT)
 
-            # steer command
-            data = {}
-            data['action']        =  '2'
-            data['steerAngle']    =  float(set_steer)*STEER_COMPENSATION
-            reference = json.dumps(data)
+            # # steer command
+            # data = {}
+            # data['action']        =  '2'
+            # data['steerAngle']    =  float(set_steer)*STEER_COMPENSATION
+            # reference = json.dumps(data)
 
-            self.steer_ack = False
-            cnt = 0
-            while not self.steer_ack and cnt < ROS_REPEAT:
-                self.pub.publish(reference)
-                cnt += 1
-                sleep(ROS_PAUSE)
-                if self.simulator_flag: break
-            if cnt >= ROS_REPEAT:
-                raise Exception('steer command not acknowledged')
+            # self.steer_ack = False
+            # cnt = 0
+            # while not self.steer_ack and cnt < ROS_REPEAT:
+            #     self.pub.publish(reference)
+            #     cnt += 1
+            #     #print(f'waiting for ack:{cnt*ROS_PAUSE} seconds')
+            #     sleep(ROS_PAUSE)
+
+            #     if self.simulator_flag: break
+            # if cnt >= ROS_REPEAT:
+            #     raise Exception('steer command not acknowledged')
+
+            val = deg2pwm(set_steer)
+            assert -0.58 < val < 0.8, 'ANGLE IS TOO BIG'
+
+            self.servo.value = val
+
 
             self.prev_steer = set_steer
+
+    def update_speed_callback(self, event):
+        """Callback to update the speed of the car
+
+        :param data: speed from encoder message
+        :type data: object
+        """ 
+        if np.isclose(self.target_speed, self.prev_speed):
+            if np.abs(self.speed_meas-self.target_speed) > 0.05:
+                print(f'Car didnt move, resending the speed command meas = {self.speed_meas} target = {self.target_speed}')
+                self.publish_speed(self.target_speed)
+            else:
+                # print(f'speed is close, meas = {self.speed_meas} target = {self.target_speed}')
+                # print(np.abs(self.speed_meas-self.target_speed))
+                pass
+            return
+        else:
+            #reset dist from last call
+            self.dist_from_last_call = 0.0
+            self.time_last_call = time()
+
+            if self.target_speed > self.prev_speed:
+                set_speed = min(self.target_speed, self.prev_speed+SPEED_INCREMENT)
+            else:
+                set_speed = max(self.target_speed, self.prev_speed-SPEED_INCREMENT)
+
+            self.speed = set_speed
+            self.publish_speed(set_speed)
+
+            self.prev_speed = set_speed
+
+    def publish_speed(self, set_speed):
+        # Create and publish a SPEED command until speed_ack is received
+        data = {}
+        data['action']        =  '1'
+        data['speed']         =  SPEED_COMPENSATION * float(set_speed)
+        reference = json.dumps(data)
+
+        self.speed_ack = False
+        cnt = 0
+        while not self.speed_ack and cnt < ROS_REPEAT:
+            self.pub.publish(reference)
+            cnt += 1 
+            sleep(ROS_PAUSE)
+            if self.simulator_flag: break
+        if cnt >= ROS_REPEAT:
+            #raise Exception('speed command not acknowledged')
+            print('speed command not acknowledged')
+
     
     # ACTIVATE ACTIONS
     def activate_encoder(self, encoder_enable=True):
@@ -348,9 +462,9 @@ class Automobile_Data():
         data['activate']    =  pid_enable
         reference = json.dumps(data)
 
-        for i in range(ROS_REPEAT):
+        for i in range(50):
             self.pub.publish(reference)
-            sleep(10.0*ROS_PAUSE)
+            sleep(0.01)
 
     # COMMAND ACTIONS
     def drive_speed(self, speed=0.0):
@@ -361,25 +475,26 @@ class Automobile_Data():
         :raises Exception: if the command is not acknowledged
         """                
         speed = Automobile_Data.normalizeSpeed(speed)   # normalize speed
-        self.speed = speed
+        # self.speed = speed
 
-        # Create and publish a SPEED command until speed_ack is received
-        data = {}
-        data['action']        =  '1'
-        data['speed']         =  SPEED_COMPENSATION * float(speed)
-        reference = json.dumps(data)
+        # # Create and publish a SPEED command until speed_ack is received
+        # data = {}
+        # data['action']        =  '1'
+        # data['speed']         =  SPEED_COMPENSATION * float(speed)
+        # reference = json.dumps(data)
 
-        self.speed_ack = False
-        cnt = 0
-        while not self.speed_ack and cnt < ROS_REPEAT:
-            self.pub.publish(reference)
-            cnt += 1 
-            sleep(ROS_PAUSE)
-            if self.simulator_flag: break
-        if cnt >= ROS_REPEAT:
-            raise Exception('speed command not acknowledged')
+        # self.speed_ack = False
+        # cnt = 0
+        # while not self.speed_ack and cnt < ROS_REPEAT:
+        #     self.pub.publish(reference)
+        #     cnt += 1 
+        #     sleep(ROS_PAUSE)
+        #     if self.simulator_flag: break
+        # if cnt >= ROS_REPEAT:
+        #     raise Exception('speed command not acknowledged')
+        self.target_speed = speed
 
-    def drive_angle(self, angle=0.0):
+    def drive_angle(self, angle=0.0, direct=True):
         """Publish the STEER command to the command topic
 
         :param angle: [rad] desired angle, defaults to 0.0
@@ -387,7 +502,34 @@ class Automobile_Data():
         :raises Exception: if the command is not acknowledged
         """        
         angle = Automobile_Data.normalizeSteer(angle)   # normalize steer
+        # if not direct:
+        #     self.target_steer = angle
+        # else:
+        #     data = {}
+        #     data['action']        =  '2'
+        #     data['steerAngle']    =  float(angle)*STEER_COMPENSATION
+        #     reference = json.dumps(data)
+        
+        #     self.steer_ack = False
+        #     cnt = 0
+        #     while not self.steer_ack and cnt < ROS_REPEAT:
+        #         self.pub.publish(reference)
+        #         cnt += 1
+        #         #print(f'waiting for ack:{cnt*ROS_PAUSE} seconds')
+        #         if self.simulator_flag: break
+        #         sleep(ROS_PAUSE)
+
+        #     if cnt >= ROS_REPEAT:
+        #         # raise Exception('steer command not acknowledged')
+        #         pass
         self.target_steer = angle
+        val = deg2pwm(angle)
+        # # print(f'val is {val}')
+        # # print(f'angle ref is {angle_ref}')
+        # # print('-----')
+        self.servo.value = val
+
+
 
     def drive(self, speed=0.0, angle=0.0):
         """Publish the SPEED and STEER command to the command topic
@@ -442,6 +584,9 @@ class Automobile_Data():
         self.yawLoc = 0.0
         self.distLoc = 0.0
     
+    def reset_rel_dist(self):
+        self.distLoc = 0.0
+    
     def update_rel_pose(self,event):
         """Update relative pose of the car
 
@@ -454,12 +599,15 @@ class Automobile_Data():
         else:
             dt = EST_REL_POS_TS      
         
-        self.yawLoc = diff_angle(self.yaw ,self.yawLoc_o)
+        self.yawLoc = diff_angle(self.yaw, self.yawLoc_o)
         #rint(f'yaw: {self.yaw:.2f}, Loc: {self.yawLoc:.2f}, origin: {self.yawLoc_o:.2f}')
         self.xLoc += self.speed_meas * sin(self.yawLoc) * dt
         self.yLoc += self.speed_meas * cos(self.yawLoc) * dt
 
-        self.distLoc += self.speed_meas * dt
+        dist_increment = abs(self.speed_meas) * dt
+
+        self.distLoc += dist_increment
+        self.dist_from_last_call += dist_increment
 
     def update_estimated_state(self,event):
         """Update estimated state according to EKF
@@ -592,6 +740,14 @@ class Automobile_Data():
         return z
     
 
+def deg2pwm(f_angle):
+    # pwm_nucleo = 0.0009505 * f_angle + 0.07525# deg-> pwm in 0-1
+    # pwm_nucleo = pwm_nucleo * 10.0#57.29577951/10.0
+    f_angle += 3.0 #offset
+    # pwm_raspi = 0.033925 * f_angle  ##02313
+    pwm_raspi = 0.050634/2.0 * f_angle# AFTER CALIBRATION WITH CIRCLE PATH
+    # pwm_raspi = (pwm_nucleo * 2.0) - 1.0
+    return pwm_raspi
 
 
 

@@ -335,7 +335,7 @@ class PathPlanning():
 
         return ind, Lf
 
-    def get_reference(self, car, v_des, limit_search_to=50, look_ahead=4, frame=None, n=3, training=True): 
+    def get_reference(self, car, v_des, limit_search_to=160, look_ahead=4, frame=None, n=3, training=True): 
         '''
         Returns the reference point, i.e., the point on the path nearest to the vehicle, 
         returns
