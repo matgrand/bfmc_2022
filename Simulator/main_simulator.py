@@ -34,7 +34,7 @@ VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-desired_speed = 0.6# [m/s]
+DESIRED_SPEED = 0.7# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -92,7 +92,7 @@ if __name__ == '__main__':
 
             #FOLLOW predefined trajectory
             if generate_path:
-                reference = path.get_reference(car, desired_speed, frame=frame, training=training)
+                reference = path.get_reference(car, DESIRED_SPEED, frame=frame, training=training)
                 xd, yd, yawd, curv, finished, path_ahead, info = reference
                 #controller training data generation        
                 controller.curr_data = [xd,yd,yawd,curv,path_ahead,info]
@@ -109,7 +109,7 @@ if __name__ == '__main__':
             if training:
                 #car control, unrealistic: uses the true position
                 #training
-                speed_ref, angle_ref, point_ahead = controller.get_training_control(car, path_ahead, desired_speed, curv)
+                speed_ref, angle_ref, point_ahead = controller.get_training_control(car, path_ahead, DESIRED_SPEED, curv)
                 controller.save_data(frame, folder)
                 dist = info[3]
                 if dist is not None and 0.0 < dist < 0.5:
@@ -119,7 +119,7 @@ if __name__ == '__main__':
                 lane_info = detect.detect_lane(frame)
                 e2, e3, point_ahead = lane_info
                 curv = 0.0001
-                speed_ref, angle_ref = controller.get_control(e2, e3, curv, desired_speed)
+                speed_ref, angle_ref = controller.get_control(e2, e3, curv, DESIRED_SPEED)
 
                 dist = detect.detect_stop_line(frame)
 
@@ -128,15 +128,18 @@ if __name__ == '__main__':
                 # #stopping logic
                 if 0.0 < dist < 0.25:
                     print('Slowing down')
-                    speed_ref = desired_speed * 0.2
+                    speed_ref = DESIRED_SPEED * 0.2
                     if 0.0 < dist < 0.1:
-                        speed_ref = desired_speed * 0.02
+                        speed_ref = DESIRED_SPEED * 0.02
                         # print('Stopping')
                         # car.stop()
                         # sleep(0.4)
-                        # speed_ref = desired_speed
+                        # speed_ref = DESIRED_SPEED
                         # car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
                         # sleep(0.2)
+
+                #Traffic signs
+                sign = detect.detect_sign(frame, show_ROI=True)
 
             ## ACTUATION
             sleep(ACTUATION_DELAY)
@@ -174,7 +177,7 @@ if __name__ == '__main__':
             print(f"x : {car.x_true:.3f}, y : {car.y_true:.3f}, yaw : {np.rad2deg(car.yaw):.3f}") 
             print(f"xd: {xd:.3f}, yd: {yd:.3f}, yawd: {np.rad2deg(yawd):.3f}, curv: {curv:.3f}") if generate_path else None
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
-            print(f'desired_speed = {desired_speed:.3f}, speed_ref = {speed_ref:.3f}, angle_ref = {np.rad2deg(angle_ref):.3f}')
+            print(f'DESIRED_SPEED = {DESIRED_SPEED:.3f}, speed_ref = {speed_ref:.3f}, angle_ref = {np.rad2deg(angle_ref):.3f}')
             print(f"Sequence Yaws = {np.rad2deg(np.array(controller.seq_yaws_ahead))}") if False else None ###########################
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}") if generate_path else None
             print(f'DIST: {float(dist):.3f}') if not training else None
@@ -183,6 +186,7 @@ if __name__ == '__main__':
             print(f'Curvature radius = {radius:.2f}')
             print(f'FPS = {1/(time()-loop_start_time):.3f}')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.2f} ms')
+            print(f'Sign detection time = {detect.avg_sign_detection_time:.2f} ms')
 
             cv.imshow("Frame preview", frame)
             # cv.imshow('SIGNS ROI', signs_roi)

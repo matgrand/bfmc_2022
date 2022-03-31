@@ -105,7 +105,7 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
 
     # draw the points
     for p in proj_points:
-        cv.circle(frame, (round(p[0]), round(p[1])), 2, color, -1)
+        cv.circle(frame, (int(p[0]), int(p[1])), 2, color, -1)
 
     if single_dim:
         return frame, proj_points[0]

@@ -20,7 +20,7 @@ DISTANCE_BETWEEN_POINTS = 0.2
 TRAFFICLIGHT_CLASSIFIER_PATH = 'models/trafficlight_classifier_small.onnx'
 TRAFFIC_LIGHT_NAMES = ['traffic_light', 'NO_traffic_light']
 
-SIGN_CLASSIFIER_PATH = 'models/sign_classifier_small.onnx'
+SIGN_CLASSIFIER_PATH = 'models/sign_classifier.onnx'
 SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
 
 OBSTACLE_CLASSIFIER_PATH = 'models/pedestrian_classifier_small.onnx'
@@ -40,6 +40,7 @@ class Detection:
         self.stop_line_estimator = cv.dnn.readNetFromONNX(STOP_LINE_ESTIMATOR_PATH)
         self.est_dist_to_stop_line = 1.0
         self.avg_stop_line_detection_time = 0
+        self.stop_line_cnt = 0
 
         #local path estimation
         self.local_path_estimator = cv.dnn.readNetFromONNX(LOCAL_PATH_ESTIMATOR_PATH)
@@ -55,6 +56,8 @@ class Detection:
         self.sign_names = SIGN_NAMES
         self.last_sign_detected = self.sign_names[-1]
         self.last_sign_conf = 0.0
+        self.avg_sign_detection_time = 0.0
+        self.sign_detection_count = 0.0
 
         #test frontal obstacles classifications
         self.obstacle_classifier = cv.dnn.readNetFromONNX(OBSTACLE_CLASSIFIER_PATH)
@@ -213,9 +216,6 @@ class Detection:
         yaws = np.array(yaws)
         return points, yaws
             
-
-
-
     def classify_traffic_light(self, frame, conf_threshold=0.8, show_ROI=False):
         SIZE = (32, 32)
         ROI = [30,260,-100,640]
@@ -244,44 +244,100 @@ class Detection:
                 print(f'{predicted_trafficlight} {tl_color} detected, confidence: {float(soft_preds[trafficlight_index]):.2f}')
         else:
             return None, 0.0
-                
 
-    def classify_sign(self, frame, conf_threshold=0.8, show_ROI=False):
+    ## SIGN DETECTION
+    def tile_image(self, image, x,y,w,h, rows, cols, tile_side, return_size=(32,32)):
+        assert image.shape[0] >= y + h, f'Image height is {image.shape[0]} but y is {y} and h is {h}'
+        assert image.shape[1] >= x + w, f'Image width is {image.shape[1]} but x is {x} and w is {w}'
+        assert tile_side < w, f'Tile width is {tile_side} but w is {w}'
+        #check x,y,w,h,rows,cols,tile_width are all ints
+        assert isinstance(x, int), f'x is {x}'
+        assert isinstance(y, int), f'y is {y}'
+        assert isinstance(w, int), f'w is {w}'
+        assert isinstance(h, int), f'h is {h}'
+        assert isinstance(rows, int), f'rows is {rows}'
+        assert isinstance(cols, int), f'cols is {cols}'
+        assert isinstance(tile_side, int), f'tile_width is {tile_side}'
+        img = image[y:y+h, x:x+w].copy()
+        img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+        region_width = int(1.0 * w / cols)
+        region_height = int(1.0 * h / rows)
+        centers_x = np.linspace(int(tile_side/2), w-int(tile_side/2), cols, dtype=int)
+        centers_y = np.linspace(int(tile_side/2), h-int(tile_side/2), rows, dtype=int)
+        # centers = np.stack([centers_x, centers_y], axis=1)
+        imgs = np.zeros((rows*cols, return_size[0], return_size[1]), dtype=np.uint8)
+        centers = []
+        idx = 0
+        for i in range(rows):
+            for j in range(cols):
+                # img = image[y:y+h, x:x+w]
+                im = img[centers_y[i]-tile_side//2:centers_y[i]+tile_side//2, centers_x[j]-tile_side//2:centers_x[j]+tile_side//2].copy()
+                im = cv.resize(im, return_size)
+                imgs[idx] = im
+                centers.append([x+centers_x[j], y+centers_y[i]])
+                idx += 1
+        return imgs, centers 
+                
+    def detect_sign(self, frame, conf_threshold=0.5, show_ROI=False):
         """
         Sign classifiier:
         takes the whole frame as input and returns the sign name and classification
         confidence. If the network is not confident enough, it returns None sign name and 0.0 confidence
         """
+        start_time = time()
         #test sign classifier
         SIZE = (32, 32)
-        signs_roi = frame[60:160, -100:640, :]
-        # signs_roi = car.cv_image[50:200, -150:, :]
-        signs_roi = cv.cvtColor(signs_roi, cv.COLOR_BGR2GRAY)
-        # signs_roi = cv.equalizeHist(signs_roi)
-        signs_roi = cv.blur(signs_roi, (5,5))
-        signs_roi = cv.resize(signs_roi, SIZE)
+        ROWS = 8
+        COLS = 8
+        TILE_WIDTH = 76
+        ROI_X = 400
+        ROI_Y = 50
+        ROI_WIDTH = 240
+        ROI_HEIGHT = 100
+        TOT_TILES = ROWS*COLS
+        VOTES_MAJORITY = 5 
+
+        imgs, centers = self.tile_image(frame, ROI_X, ROI_Y, ROI_WIDTH, ROI_HEIGHT, ROWS, COLS, TILE_WIDTH, return_size=SIZE)
+
         if show_ROI:
-            cv.imshow('signs_roi', signs_roi)
-            cv.waitKey(1)
-        # signs_roi = cv.blur(signs_roi, (5,5))
-        blob = cv.dnn.blobFromImage(signs_roi, 1.0, SIZE, 0)
+            canvas = frame.copy()
+
+        blob = cv.dnn.blobFromImages(imgs, 1.0, SIZE, 0)
         # print(blob.shape)
         self.sign_classifier.setInput(blob)
-        preds = self.sign_classifier.forward()[0]
-        # print(f'before softmax: {preds.shape}')
-        #softmax preds
-        soft_preds = my_softmax(preds)
-        sign_index = np.argmax(preds)
-        sign_conf = soft_preds[sign_index]
-        if soft_preds[sign_index] > conf_threshold:
-            predicted_sign = self.sign_names[sign_index]
-            if predicted_sign != self.sign_names[-1]:
-                print(f'Sign: {predicted_sign} detected, confidence: {float(soft_preds[sign_index]):.2f}')
-                self.last_sign_conf = sign_conf
-                self.last_sign_detected = predicted_sign
-                return predicted_sign, sign_conf
-        else:
-            return None, 0.0
+        preds = self.sign_classifier.forward()
+
+        votes = np.zeros(len(SIGN_NAMES))
+        box_centers = np.zeros((len(SIGN_NAMES), 2))
+        for i in range(TOT_TILES):
+            soft_preds = my_softmax(preds[i])
+            sign_index = np.argmax(preds[i])
+            if soft_preds[sign_index] > conf_threshold:
+                predicted_sign = self.sign_names[sign_index]
+                if predicted_sign != self.sign_names[-1]:
+                    box_centers[sign_index] = (box_centers[sign_index]*votes[sign_index] + centers[i]) / (votes[sign_index] + 1.0)
+                    votes[sign_index] += 1
+
+        winner = np.argmax(votes)
+        final_box_center = box_centers[winner].astype(int)
+        if votes[winner] > VOTES_MAJORITY:
+            if show_ROI:
+                canvas = cv.rectangle(canvas, (final_box_center[0]-TILE_WIDTH//2, final_box_center[1]-TILE_WIDTH//2), (final_box_center[0]+TILE_WIDTH//2, final_box_center[1]+TILE_WIDTH//2), (0,255,0), 3)
+                #put text
+                font = cv.FONT_HERSHEY_SIMPLEX
+                canvas = cv.putText(canvas, self.sign_names[winner], (final_box_center[0]-TILE_WIDTH//2, final_box_center[1]-TILE_WIDTH//2), font, 1, (0,255,0), 2, cv.LINE_AA)
+
+        self.avg_sign_detection_time = (self.avg_sign_detection_time * self.sign_detection_count + (time() - start_time)) / (self.sign_detection_count + 1)
+        self.sign_detection_count += 1
+
+        print(f'{self.sign_names[winner]} detected, confidence: {float(votes[winner]/TOT_TILES):.2f}')
+
+        # sleep(0.1)
+        if show_ROI:
+            cv.imshow('Sign detection', canvas)   
+            cv.waitKey(1)
+        return self.sign_names[winner]
+
 
     def classify_frontal_obstacle(self, frame, conf_threshold=0.5, show_ROI=False):
         """
