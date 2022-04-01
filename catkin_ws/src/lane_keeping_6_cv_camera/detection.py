@@ -1,10 +1,11 @@
 #!/usr/bin/python3
 
-from turtle import width
 import numpy as np
 import cv2 as cv
 import os
 from time import time, sleep
+
+from scipy.__config__ import show
 
 from helper_functions import *
 
@@ -194,13 +195,13 @@ class Detection:
         frame = cv.resize(frame, IMG_SIZE)
         frame = cv.blur(frame, (2,2), 0)  #7,7 both is best
 
-        # add noise 1.5 ms 
-        std = 50
-        # std = np.random.randint(1, std)
-        noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
-        frame = cv.subtract(frame, noisem)
-        noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
-        frame = cv.add(frame, noisep)
+        # # add noise 1.5 ms 
+        # std = 50
+        # # std = np.random.randint(1, std)
+        # noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.subtract(frame, noisem)
+        # noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.add(frame, noisep)
 
         blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
         # assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
@@ -248,10 +249,10 @@ class Detection:
             return None, 0.0
 
     ## SIGN DETECTION
-    def tile_image(self, image, x,y,w,h, rows, cols, tile_widths, return_size=(32,32)):
+    def tile_image(self, image, x,y,w,h, rows, cols, tile_side, return_size=(32,32)):
         assert image.shape[0] >= y + h, f'Image height is {image.shape[0]} but y is {y} and h is {h}'
         assert image.shape[1] >= x + w, f'Image width is {image.shape[1]} but x is {x} and w is {w}'
-        assert [ws < w for ws in tile_widths], f'Tile width is {tile_widths} but w is {w}'
+        assert tile_side < w, f'Tile width is {tile_side} but w is {w}'
         #check x,y,w,h,rows,cols,tile_width are all ints
         assert isinstance(x, int), f'x is {x}'
         assert isinstance(y, int), f'y is {y}'
@@ -259,29 +260,28 @@ class Detection:
         assert isinstance(h, int), f'h is {h}'
         assert isinstance(rows, int), f'rows is {rows}'
         assert isinstance(cols, int), f'cols is {cols}'
-        num_scales = len(tile_widths)
-        idx = 0
+        assert isinstance(tile_side, int), f'tile_width is {tile_side}'
         img = image[y:y+h, x:x+w].copy()
         img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-        imgs = np.zeros((num_scales*rows*cols, return_size[0], return_size[1]), dtype=np.uint8)
+        region_width = int(1.0 * w / cols)
+        region_height = int(1.0 * h / rows)
+        centers_x = np.linspace(int(tile_side/2), w-int(tile_side/2), cols, dtype=int)
+        centers_y = np.linspace(int(tile_side/2), h-int(tile_side/2), rows, dtype=int)
         # centers = np.stack([centers_x, centers_y], axis=1)
+        imgs = np.zeros((rows*cols, return_size[0], return_size[1]), dtype=np.uint8)
         centers = []
-        widths = []
-        for s in range(num_scales):
-            centers_x = np.linspace(int(tile_widths[s]/2), w-int(tile_widths[s]/2), cols, dtype=int)
-            centers_y = np.linspace(int(tile_widths[s]/2), h-int(tile_widths[s]/2), rows, dtype=int)
-            for i in range(rows):
-                for j in range(cols):
-                    # img = image[y:y+h, x:x+w]
-                    im = img[centers_y[i]-tile_widths[s]//2:centers_y[i]+tile_widths[s]//2, centers_x[j]-tile_widths[s]//2:centers_x[j]+tile_widths[s]//2].copy()
-                    im = cv.resize(im, return_size)
-                    imgs[idx] = im
-                    centers.append([x+centers_x[j], y+centers_y[i]])
-                    widths.append(tile_widths[s])
-                    idx += 1
-        return imgs, centers, widths
+        idx = 0
+        for i in range(rows):
+            for j in range(cols):
+                # img = image[y:y+h, x:x+w]
+                im = img[centers_y[i]-tile_side//2:centers_y[i]+tile_side//2, centers_x[j]-tile_side//2:centers_x[j]+tile_side//2].copy()
+                im = cv.resize(im, return_size)
+                imgs[idx] = im
+                centers.append([x+centers_x[j], y+centers_y[i]])
+                idx += 1
+        return imgs, centers 
                 
-    def detect_sign(self, frame, show_ROI=False):
+    def detect_sign(self, frame, conf_threshold=0.5, show_ROI=False):
         """
         Sign classifiier:
         takes the whole frame as input and returns the sign name and classification
@@ -290,22 +290,20 @@ class Detection:
         start_time = time()
         #test sign classifier
         SIZE = (16, 16)
-        ROWS = 4
-        COLS = 8
-        TILE_WIDTHS = [76] #assuming a frame is 640x480
-        ROI_X = 440
-        ROI_Y = 10
-        ROI_WIDTH = 200
-        ROI_HEIGHT = 140
+        ROWS = 10
+        COLS = 10
+        TILE_WIDTH = 75
+        ROI_X = 400
+        ROI_Y = 0
+        ROI_WIDTH = 240
+        ROI_HEIGHT = 150
         TOT_TILES = ROWS*COLS
-        VOTES_MAJORITY = 1
-        CONFIDENCE_THRESHOLD = 0.95
+        VOTES_MAJORITY = 5
 
-        imgs, centers, widths = self.tile_image(frame, ROI_X, ROI_Y, ROI_WIDTH, ROI_HEIGHT, ROWS, COLS, TILE_WIDTHS, return_size=SIZE)
+        imgs, centers = self.tile_image(frame, ROI_X, ROI_Y, ROI_WIDTH, ROI_HEIGHT, ROWS, COLS, TILE_WIDTH, return_size=SIZE)
 
         if show_ROI:
             canvas = frame.copy()
-            canvas = cv.rectangle(canvas, (ROI_X, ROI_Y), (ROI_X+ROI_WIDTH, ROI_Y+ROI_HEIGHT), (0,255,0), 2)
 
         blob = cv.dnn.blobFromImages(imgs, 1.0, SIZE, 0)
         # print(blob.shape)
@@ -317,7 +315,7 @@ class Detection:
         for i in range(TOT_TILES):
             soft_preds = my_softmax(preds[i])
             sign_index = np.argmax(preds[i])
-            if soft_preds[sign_index] > CONFIDENCE_THRESHOLD:
+            if soft_preds[sign_index] > conf_threshold:
                 predicted_sign = self.sign_names[sign_index]
                 if predicted_sign != self.sign_names[-1]:
                     box_centers[sign_index] = (box_centers[sign_index]*votes[sign_index] + centers[i]) / (votes[sign_index] + 1.0)
@@ -325,19 +323,19 @@ class Detection:
 
         winner = np.argmax(votes)
         final_box_center = box_centers[winner].astype(int)
-        final_width = widths[winner]
         if votes[winner] > VOTES_MAJORITY:
             if show_ROI:
-                canvas = cv.rectangle(canvas, (final_box_center[0]-final_width//2, final_box_center[1]-final_width//2), (final_box_center[0]+final_width//2, final_box_center[1]+final_width//2), (0,255,0), 3)
+                canvas = cv.rectangle(canvas, (final_box_center[0]-TILE_WIDTH//2, final_box_center[1]-TILE_WIDTH//2), (final_box_center[0]+TILE_WIDTH//2, final_box_center[1]+TILE_WIDTH//2), (0,255,0), 3)
                 #put text
                 font = cv.FONT_HERSHEY_SIMPLEX
-                canvas = cv.putText(canvas, self.sign_names[winner], (final_box_center[0]-final_width//2, final_box_center[1]-final_width//2), font, 1, (0,255,0), 2, cv.LINE_AA)
+                canvas = cv.putText(canvas, self.sign_names[winner], (final_box_center[0]-TILE_WIDTH//2, final_box_center[1]-TILE_WIDTH//2), font, 1, (0,255,0), 2, cv.LINE_AA)
 
-        sign_detection_time = 1000*(time() - start_time)
-        self.avg_sign_detection_time = (self.avg_sign_detection_time*self.sign_detection_count + sign_detection_time) / (self.sign_detection_count + 1)
+        self.avg_sign_detection_time = (self.avg_sign_detection_time * self.sign_detection_count + (time() - start_time)) / (self.sign_detection_count + 1)
         self.sign_detection_count += 1
 
         print(f'{self.sign_names[winner]} detected, confidence: {float(votes[winner]/TOT_TILES):.2f}')
+
+
 
         # sleep(0.1)
         if show_ROI:
