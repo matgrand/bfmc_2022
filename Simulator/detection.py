@@ -66,7 +66,7 @@ class Detection:
         self.last_obstacle_detected = self.front_obstacle_names[-1]
         self.last_obstacle_conf = 0.0
 
-    def detect_lane(self, frame, show_ROI=True, faster=False):
+    def detect_lane(self, frame, show_ROI=True, faster=True):
         """
         Estimates:
         - the lateral error wrt the center of the lane (e2), 
@@ -81,18 +81,19 @@ class Detection:
         frame = frame[int(frame.shape[0]/3):,:] #/3
         #blur
         # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
-        # frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
-        # frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
+        frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
+        frame = cv.Canny(frame, 100, 200)
+        frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
         frame = cv.resize(frame, IMG_SIZE)
-        frame = cv.blur(frame, (2,2), 0)  #7,7 both is best
+        # frame = cv.blur(frame, (2,2), 0)  #7,7 both is best
 
-        # add noise 1.5 ms 
-        std = 50
-        # std = np.random.randint(1, std)
-        noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
-        frame = cv.subtract(frame, noisem)
-        noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
-        frame = cv.add(frame, noisep)
+        # # add noise 1.5 ms 
+        # std = 50
+        # # std = np.random.randint(1, std)
+        # noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.subtract(frame, noisem)
+        # noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.add(frame, noisep)
         
         
         images = frame
@@ -129,6 +130,8 @@ class Detection:
         self.avg_lane_detection_time = (self.avg_lane_detection_time*self.lane_cnt + lane_detection_time)/(self.lane_cnt+1)
         self.lane_cnt += 1
         if show_ROI:
+            #edge
+            # frame = cv.Canny(frame, 150, 180)
             cv.imshow('lane_detection', frame)
             cv.waitKey(1)
         return e2, e3, est_point_ahead
