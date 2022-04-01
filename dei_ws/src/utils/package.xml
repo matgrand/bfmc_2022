@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>utils</name>
+  <version>0.0.0</version>
+  <description>The utils package</description>
+
+  <maintainer email="futuremobilitychallenge@bosch.com">BFMC</maintainer>
+
+  <license>BSD-3</license>
+
+  <url type="website">boschfuturemobility.com</url>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>std_msgs</build_depend>
+  <build_depend>message_generation</build_depend>
+
+  <build_export_depend>std_msgs</build_export_depend>
+
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>message_runtime</exec_depend>
+
+</package>

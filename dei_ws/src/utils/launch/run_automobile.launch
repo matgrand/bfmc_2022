@@ -1,0 +1,10 @@
+<launch>
+    <node pkg="input" type="cameraNODE.py" 				name="camaeraNODE"  			output="screen"/>
+    <node pkg="input" type="imuNODE.py" 				name="imuNODE"  				output="screen"/>
+    <?ignore <node pkg="input" type="gpstrackerNODE.py" 			name="gpstrackerNODE"  			output="screen"/> ?>
+    <node pkg="input" type="semaphoreNODE.py" 			name="semaphoreNODE"  			output="screen"/>
+    <node pkg="input" type="vehicletovehicleNODE.py" 	name="vehicletovehicleNODE"  	output="screen"/>
+
+    <node pkg="output" type="serialNODE.py" 			name="serialNODE"  				output="screen"/>
+    <?ignore <node pkg="output" type="environmentalNODE.py" 		name="environmentalNODE"  		output="screen"/> ?>
+</launch>

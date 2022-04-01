@@ -1,0 +1,6 @@
+<launch>
+    <include file="$(find utils)/launch/run_automobile.launch" />
+    
+    <node pkg="input" type="cameraDealerNODE.py" 		name="cameraDealerNODE"  		output="screen"/>
+    <node pkg="output" type="serialDealerNODE.py" 		name="serialDealerNODE"  		output="screen"/>
+</launch>
