@@ -56,6 +56,20 @@
       <pose>-0.024 0.0 -0.028 0 0.0 0</pose>
       <name>car_body</name>
     </include>
+    
+    <!-- INCLUDING THE ULTRASONIC SENSOR 1 -->
+    <include>
+      <uri>model://sonar1</uri>
+      <pose>0.2 0 0.01 0 0.0 0</pose>
+      <name>sonar1</name>
+    </include>	   
+    
+    <!-- INCLUDING THE ULTRASONIC SENSOR 2 -->
+    <include>
+      <uri>model://sonar2</uri>
+      <pose>0 -0.08 0.01 0.0 0.0 -1.5708 </pose>
+      <name>sonar2</name>
+    </include>	  
 
     <!-- LIST OF JOINTS -->
     <joint name='joint_leftrear_rim' type='revolute'>
@@ -303,6 +317,45 @@
         </ode>
       </physics>
     </joint>
+    
+    <!-- fixed joint for the ultrasonic sensor 1 -->
+    <joint name='joint_sonar1' type='fixed'>
+      <parent>chassis::link</parent>
+      <child>sonar1::link_sonar1</child>
+      <pose frame=''>0 0 0 0 -0 0</pose>
+      <physics>
+        <ode>
+          <limit>
+            <cfm>0</cfm>
+            <erp>0.2</erp>
+          </limit>
+          <suspension>
+            <cfm>0</cfm>
+            <erp>0.2</erp>
+          </suspension>
+        </ode>
+      </physics>
+    </joint>
+    
+    <!-- fixed joint for the ultrasonic sensor 2 -->
+    <joint name='joint_sonar2' type='fixed'>
+      <parent>chassis::link</parent>
+      <child>sonar2::link_sonar2</child>
+      <pose frame=''>0 0 0 0 -0 0</pose>
+      <physics>
+        <ode>
+          <limit>
+            <cfm>0</cfm>
+            <erp>0.2</erp>
+          </limit>
+          <suspension>
+            <cfm>0</cfm>
+            <erp>0.2</erp>
+          </suspension>
+        </ode>
+      </physics>
+    </joint>
+
 
     <!-- Plugin  -->
     <plugin name='CarLikeRobotPlugin' filename='libcar_plugin.so'>
