@@ -101,8 +101,8 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
     #project the points onto the camera frame
     proj_points = np.array([[p[1]/p[0], -p[2]/p[0]] for p in rotated_points])
     #convert to pixel coordinates
-    proj_points = 490*proj_points + np.array([320, 240])
-
+    # proj_points = 490*proj_points + np.array([320, 240]) #640x480
+    proj_points = 240*proj_points + np.array([320//2, 240//2]) #320x240
     # draw the points
     for p in proj_points:
         cv.circle(frame, (int(p[0]), int(p[1])), 2, color, -1)

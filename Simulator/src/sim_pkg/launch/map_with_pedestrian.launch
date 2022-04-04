@@ -6,7 +6,7 @@
     <arg name="paused"       value="false"/>    
     <arg name="use_sim_time" value="true"/>
     <arg name="debug"        value="false"/>
-    <arg name="gui"          value="true"/>
+    <arg name="gui"          value="false"/>
   </include>
  
   <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg car.launch" name="car" output="screen"/>
@@ -20,4 +20,6 @@
   <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg oneway_signs.launch"        name="oneway_signs"         output="screen"/>
   <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg parking_signs.launch"       name="parking_signs"        output="screen"/>
   <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg pedestrian_objects.launch"  name="pedestrian_objects"   output="screen"/>
+  <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg roadblock.launch"           name="roadblock"            output="screen"/>
+  <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg traffic_lights.launch"      name="traffic_lights"       output="screen"/>
   </launch>

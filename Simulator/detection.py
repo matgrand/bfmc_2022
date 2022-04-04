@@ -223,7 +223,8 @@ class Detection:
             
     def classify_traffic_light(self, frame, conf_threshold=0.8, show_ROI=False):
         SIZE = (32, 32)
-        ROI = [30,260,-100,640]
+        # ROI = [30,260,-100,640] #if img size is 480x640
+        ROI = [30//2,260//2,-100//2,640//2] #if img size is 240x320
         trafficlight_roi = frame[ROI[0]:ROI[1], ROI[2]:ROI[3]]
         trafficlight_roi = cv.cvtColor(trafficlight_roi, cv.COLOR_BGR2GRAY)
         # trafficlight_roi = cv.equalizeHist(trafficlight_roi)
@@ -295,11 +296,11 @@ class Detection:
         SIZE = (16, 16)
         ROWS = 4
         COLS = 8
-        TILE_WIDTHS = [76] #assuming a frame is 640x480
-        ROI_X = 440
-        ROI_Y = 10
-        ROI_WIDTH = 200
-        ROI_HEIGHT = 140
+        TILE_WIDTHS = [76//2] #assuming a frame is 640x480//320x240
+        ROI_X = 440//2
+        ROI_Y = 10//2
+        ROI_WIDTH = 200//2
+        ROI_HEIGHT = 140//2
         TOT_TILES = ROWS*COLS
         VOTES_MAJORITY = 1
         CONFIDENCE_THRESHOLD = 0.95
@@ -356,7 +357,6 @@ class Detection:
         confidence. If the network is not confident enough, it returns None obstacle name and 0.0 confidence
         """
         SIZE = (32,32)
-        IMG_SIZE = (480, 640)
         ROI = [120, 360, 200, 440] #[a,b,c,d] ==> [a:b, c:d]
         front_obstacle_roi = frame[ROI[0]:ROI[1], ROI[2]:ROI[3], :]
         # signs_roi = car.cv_image[50:200, -150:, :]

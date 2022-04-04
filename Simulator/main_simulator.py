@@ -50,13 +50,14 @@ if __name__ == '__main__':
 
     #init windows
     cv.namedWindow("2D-MAP", cv.WINDOW_NORMAL) if simulator_flag else None
+    cv.resizeWindow("2D-MAP", 800, 800) if simulator_flag else None
 
     # cv.namedWindow('Detection', cv.WINDOW_NORMAL)
     
     # init the car data
     os.system('rosservice call /gazebo/reset_simulation') if simulator_flag else None
     car = Automobile_Data(simulator=simulator_flag, trig_cam=True, trig_gps=True, trig_bno=True, 
-                            trig_enc=False, trig_control=True, trig_estimation=False)
+                            trig_enc=False, trig_control=True, trig_estimation=False, trig_sonar=True)
     car.stop()
 
     # init trajectory
@@ -149,13 +150,14 @@ if __name__ == '__main__':
             #project path ahead
             if generate_path:
                 frame, proj = project_onto_frame(frame, car, path_ahead, color=(0,0,100))
+
             #project point ahead
             frame, proj = project_onto_frame(frame, car, point_ahead, False, color=(200, 200, 100))
             if proj is not None:
                 #convert proj to cv2 point
                 proj = (int(proj[0]), int(proj[1]))
                 #draw line from bottmo half to proj
-                cv.line(frame, (320,479), proj, (200, 200, 100), 2)
+                cv.line(frame, (320//2,479//2), proj, (200, 200, 100), 2)
 
             #project seq of points ahead
             if training:
@@ -170,7 +172,7 @@ if __name__ == '__main__':
             frame = cv.line(frame, (320,479), (320-int(np.clip(controller.e2*1000, -319, 319)),479), (0,200,0), 3)  
             
             #draw curvature
-            radius = project_curvature(frame, car, curv)
+            # radius = project_curvature(frame, car, curv)
 
             ## DEBUG INFO
             os.system('cls' if os.name=='nt' else 'clear')
@@ -178,12 +180,12 @@ if __name__ == '__main__':
             print(f"xd: {xd:.3f}, yd: {yd:.3f}, yawd: {np.rad2deg(yawd):.3f}, curv: {curv:.3f}") if generate_path else None
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
             print(f'DESIRED_SPEED = {DESIRED_SPEED:.3f}, speed_ref = {speed_ref:.3f}, angle_ref = {np.rad2deg(angle_ref):.3f}')
-            print(f"Sequence Yaws = {np.rad2deg(np.array(controller.seq_yaws_ahead))}") if False else None ###########################
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}") if generate_path else None
             print(f'DIST: {float(dist):.3f}') if not training else None
+            print(f'Sonar 1 distance = {car.obstacle_ahead_median}')
             print(f'Net out:\n {lane_info}') if not training else None
             print(f'e_yaw: {e3}\ncurv: {100*curv}') if not training else None
-            print(f'Curvature radius = {radius:.2f}')
+            # print(f'Curvature radius = {radius:.2f}')
             print(f'FPS = {1/(time()-loop_start_time):.3f}')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.2f} ms')
             print(f'Sign detection time = {detect.avg_sign_detection_time:.2f} ms')

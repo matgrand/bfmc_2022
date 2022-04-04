@@ -3,18 +3,6 @@
 <sdf version='1.6'>
   <model name='camera_follow'>
     <link name='link_camera'>
-      <inertial>
-        <mass>0.001</mass>
-        <inertia>
-          <ixx>4.1e-07</ixx>
-          <ixy>0</ixy>
-          <ixz>0</ixz>
-          <iyy>7.9e-07</iyy>
-          <iyz>0</iyz>
-          <izz>4.1e-07</izz>
-        </inertia>
-        <pose frame=''>0 0 0 0 -0 0</pose>
-      </inertial>
       <pose frame=''>0 0 0 0 -0 0</pose>
       <gravity>1</gravity>
       <self_collide>0</self_collide>

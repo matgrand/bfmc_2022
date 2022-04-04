@@ -15,6 +15,7 @@ from utils.msg import IMU
 from utils.msg import localisation
 #from utils.srv import subscribing
 from sensor_msgs.msg import Image
+from sensor_msgs.msg import Range
 import os
 
 
@@ -38,8 +39,8 @@ WB = 0.26  			                # [m]       wheelbase
 GBOX_RATIO = 30                     # []        gearbox ratio (should be 9*pi)
 
 # Camera parameters
-FRAME_WIDTH = 640           # [pix]     frame width
-FRAME_HEIGHT = 480          # [pix]     frame height
+FRAME_WIDTH = 320#640           # [pix]     frame width
+FRAME_HEIGHT = 240#480          # [pix]     frame height
 # position and orientation wrt the car frame
 CAM_X = 0.0                 # [m]
 CAM_Y = 0.0                 # [m]
@@ -174,8 +175,6 @@ class Automobile_Data():
         self.obstacle_ahead_buffer = collections.deque(maxlen=20)   # FIFO queue for median filter on the encoder speed measurement
         self.obstacle_ahead_median = 3.0
 
-        self.bridge = CvBridge()
-        self.cv_image = np.zeros((640, 480))
         self.cam_x = CAM_X
         self.cam_y = CAM_Y
         self.cam_z = CAM_Z
@@ -233,6 +232,8 @@ class Automobile_Data():
             rospy.Timer(rospy.Duration(SPEED_UPDATE_TIME), self.update_speed_callback)
 
         if trig_cam:
+            self.bridge = CvBridge()
+            self.cv_image = np.zeros((480, 640))
             # camera stuff
             self.sub_cam = rospy.Subscriber("/automobile/image_raw", Image, self.camera_callback)
         if trig_gps:
@@ -255,7 +256,9 @@ class Automobile_Data():
             self.reset_rel_pose()
             rospy.Timer(rospy.Duration(EST_REL_POS_TS), self.update_rel_pose)
         if trig_sonar:
-            self.sub_son = rospy.Subscriber("/automobile/sonar", Float32, self.sonar_callback)
+            sonar_topic = "/automobile/sonar" if not self.simulator_flag else "/automobile/sonar1"
+            sonar_data_type = Float32 if not self.simulator_flag else Range
+            self.sub_son = rospy.Subscriber(sonar_topic, sonar_data_type, self.sonar_callback)
 
    
     # COMMAND CALLBACKS
@@ -293,7 +296,10 @@ class Automobile_Data():
         self.cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
 
     def sonar_callback(self, data):
-        self.obstacle_ahead = data.data if data.data>0 else self.obstacle_ahead
+        if not self.simulator_flag:
+            self.obstacle_ahead = data.data if data.data>0 else self.obstacle_ahead
+        else: #simulator
+            self.obstacle_ahead = data.range 
         self.obstacle_ahead_buffer.append(self.obstacle_ahead)
         self.obstacle_ahead_median = np.median(np.array(list(self.obstacle_ahead_buffer)))
 

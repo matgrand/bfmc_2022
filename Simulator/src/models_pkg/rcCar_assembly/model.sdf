@@ -49,8 +49,15 @@
       <pose>0 0 0.2 0 0.3490656 0</pose>
       <name>camera</name>
     </include>
+    
+    <!-- including camera top for 3rd person view -->
+    <include>
+      <uri>model://camera_top</uri>
+      <pose>-1 0 2.5 0 1.04 0</pose>
+      <name>camera_top</name>
+    </include>
 
-    <!-- includeing the car body -->
+    <!-- including the car body -->
     <include>
       <uri>model://car_body</uri>
       <pose>-0.024 0.0 -0.028 0 0.0 0</pose>
@@ -318,6 +325,13 @@
       </physics>
     </joint>
     
+    <!-- fixed joint for camera top --> 
+    <joint name='joint_camera_top' type='fixed'>
+      <parent>camera::link_camera</parent> 
+      <child>camera_top::link_camera_top</child>
+      <pose frame=''>0 0 0 0 -0 0</pose>
+    </joint> 
+    
     <!-- fixed joint for the ultrasonic sensor 1 -->
     <joint name='joint_sonar1' type='fixed'>
       <parent>chassis::link</parent>
@@ -335,7 +349,7 @@
           </suspension>
         </ode>
       </physics>
-    </joint>
+    </joint> 
     
     <!-- fixed joint for the ultrasonic sensor 2 -->
     <joint name='joint_sonar2' type='fixed'>
