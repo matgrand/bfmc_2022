@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 # Functional libraries
+from asyncio import start_unix_server
 import rospy
 import numpy as np
 from time import sleep, time
@@ -20,7 +21,9 @@ import os
 
 
 # State estimation
-#from estimation import EKFCar
+# from estimation import EKFCar
+START_X = 0.2
+START_Y = 14.8
 
 # Vehicle driving parameters
 MIN_SPEED = -0.3                    # [m/s]     minimum speed
@@ -127,15 +130,16 @@ class Automobile_Data():
         :type speed_buff_len: int, optional
         """        
 
-        self.simulator_flag = simulator # flag to know if we are in simulator or not'
-        if not self.simulator_flag:
+        self.SIMULATOR = simulator # flag to know if we are in simulator or not
+
+        if not self.SIMULATOR:
             from utils.srv import subscribing
             from gpiozero import Servo
             from gpiozero.pins.pigpio import PiGPIOFactory
         
         # State of the car
-        self.x_true = 0.0           # [m]       true:x coordinate (used in simulation and SPARCS)
-        self.y_true = 0.0           # [m]       true:y coordinate (used in simulation and SPARCS)
+        self.x_true = START_X       # [m]       true:x coordinate (used in simulation and SPARCS)
+        self.y_true = START_Y       # [m]       true:y coordinate (used in simulation and SPARCS)
         self.time_stamp = 0.0       # [s]       true:time stamp (used in simulation)
         self.x = 0.0                # [m]       GPS:x global coordinate
         self.y = 0.0                # [m]       GPS:y global coordinate
@@ -166,6 +170,10 @@ class Automobile_Data():
         self.yawLoc = 0.0           # [rad]     local:yaw local
         self.yawLoc_o = 0.0         # [rad]     local:yaw offset
         self.distLoc = 0.0          # [m]       local:absolute distance, length of local trajectory
+        self.tot_dist = 0.0         # [m]       total absolute distance measured by the encoder, it never get reset
+        if self.SIMULATOR:
+            self.prev_x_enc = START_X  # [m]       previous encoder position
+            self.prev_y_enc = START_Y  # [m]       previous encoder position
 
         #velocity control feedback
         self.dist_from_last_call = 0.0    # [m]       local:distance traveed from last drive speed command
@@ -190,7 +198,7 @@ class Automobile_Data():
         self.target_speed = 0.0
         self.prev_speed = 0.0
 
-        if not self.simulator_flag:
+        if not self.SIMULATOR:
             factory = PiGPIOFactory() #to activate this do: sudo pigpiod 
             self.servo = Servo(26, pin_factory=factory)
         
@@ -210,7 +218,7 @@ class Automobile_Data():
 
         # I/O interface
         # caller to the service for creating subscribers to get feedback from Nucleo
-        caller = rospy.ServiceProxy('/command_feedback_en', subscribing) if not self.simulator_flag else None
+        caller = rospy.ServiceProxy('/command_feedback_en', subscribing) if not self.SIMULATOR else None
         # publisher: send command to the car
         rospy.init_node('automobile_data', anonymous=False)
         rospy.sleep(1)  # wait for publisher to register to roscore
@@ -218,14 +226,14 @@ class Automobile_Data():
         if trig_control:
             # control stuff
             self.pub = rospy.Publisher('/automobile/command', String, queue_size=1)
-            caller(subscribing=True,code='1:ac',topic=FDBK_SPEED_TOPIC) if not self.simulator_flag else None
-            caller(subscribing=True,code='2:ac',topic=FDBK_STEER_TOPIC) if not self.simulator_flag else None
-            caller(subscribing=True,code='3:ac',topic=FDBK_BREAK_TOPIC) if not self.simulator_flag else None
+            caller(subscribing=True,code='1:ac',topic=FDBK_SPEED_TOPIC) if not self.SIMULATOR else None
+            caller(subscribing=True,code='2:ac',topic=FDBK_STEER_TOPIC) if not self.SIMULATOR else None
+            caller(subscribing=True,code='3:ac',topic=FDBK_BREAK_TOPIC) if not self.SIMULATOR else None
             self.activate_PID(PID_ENABLE)
             # feedback from commands
-            self.sub_speed_ack = rospy.Subscriber(FDBK_SPEED_TOPIC, String, self.speed_callback) if not self.simulator_flag else None
-            self.sub_steer_ack = rospy.Subscriber(FDBK_STEER_TOPIC, String, self.steer_callback) if not self.simulator_flag else None
-            self.sub_break_ack = rospy.Subscriber(FDBK_BREAK_TOPIC, String, self.break_callback) if not self.simulator_flag else None
+            self.sub_speed_ack = rospy.Subscriber(FDBK_SPEED_TOPIC, String, self.speed_callback) if not self.SIMULATOR else None
+            self.sub_steer_ack = rospy.Subscriber(FDBK_STEER_TOPIC, String, self.steer_callback) if not self.SIMULATOR else None
+            self.sub_break_ack = rospy.Subscriber(FDBK_BREAK_TOPIC, String, self.break_callback) if not self.SIMULATOR else None
 
             #set control callbacks
             rospy.Timer(rospy.Duration(STEER_UPDATE_TIME), self.update_angle_callback)
@@ -241,24 +249,27 @@ class Automobile_Data():
             self.sub_pos = rospy.Subscriber("/automobile/localisation", localisation, self.position_callback)
         if trig_bno:
             # imu stuff
-            imu_topic = "/automobile/imu" if not self.simulator_flag else "/automobile/IMU"
+            imu_topic = "/automobile/imu" if not self.SIMULATOR else "/automobile/IMU"
             self.sub_imu = rospy.Subscriber(imu_topic, IMU, self.imu_callback)
         if trig_estimation:
             # estimation stuff
             self.ekf = EKFCar(x0 = EST_X0, WB = WB)
             rospy.Timer(rospy.Duration(EST_EKF_STATE_TS), self.update_estimated_state)
         if trig_enc:
-            # encoder stuff
-            self.activate_encoder(True)
-            caller(subscribing=True,code='ENPB',topic=FDBK_ENC_TOPIC)
-            self.sub_enc = rospy.Subscriber(FDBK_ENC_TOPIC, String, self.encoder_callback)
+            if not self.SIMULATOR:
+                # encoder stuff
+                self.activate_encoder(True)
+                caller(subscribing=True,code='ENPB',topic=FDBK_ENC_TOPIC)
+                self.sub_enc = rospy.Subscriber(FDBK_ENC_TOPIC, String, self.encoder_callback)
             # activate relative positioning
             self.reset_rel_pose()
-            rospy.Timer(rospy.Duration(EST_REL_POS_TS), self.update_rel_pose)
+            rospy.Timer(rospy.Duration(EST_REL_POS_TS), self.update_rel_position)
         if trig_sonar:
-            sonar_topic = "/automobile/sonar" if not self.simulator_flag else "/automobile/sonar1"
-            sonar_data_type = Float32 if not self.simulator_flag else Range
+            sonar_topic = "/automobile/sonar" if not self.SIMULATOR else "/automobile/sonar1"
+            sonar_data_type = Float32 if not self.SIMULATOR else Range
             self.sub_son = rospy.Subscriber(sonar_topic, sonar_data_type, self.sonar_callback)
+
+
 
    
     # COMMAND CALLBACKS
@@ -296,7 +307,7 @@ class Automobile_Data():
         self.cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
 
     def sonar_callback(self, data):
-        if not self.simulator_flag:
+        if not self.SIMULATOR:
             self.obstacle_ahead = data.data if data.data>0 else self.obstacle_ahead
         else: #simulator
             self.obstacle_ahead = data.range 
@@ -319,7 +330,7 @@ class Automobile_Data():
         :type data: object
         """        
         #imu gives true coordinates in the simulator
-        if self.simulator_flag:
+        if self.SIMULATOR:
             self.roll = float(data.roll)
             self.roll_deg = np.rad2deg(self.roll)
             self.pitch = float(data.pitch)
@@ -354,6 +365,7 @@ class Automobile_Data():
 
         :param data: speed from encoder message
         :type data: dict
+        exists only in the real car, there is no encoder in the simulator, it implemented using true position
         """        
         data = data.data
         motor_speed = data[6:-2]# extract string value
@@ -381,7 +393,7 @@ class Automobile_Data():
             else:
                 set_steer = max(self.target_steer, self.prev_steer-STEER_INCREMENT)
 
-            if self.simulator_flag:
+            if self.SIMULATOR:
                 # steer command
                 data = {}
                 data['action']        =  '2'
@@ -396,7 +408,7 @@ class Automobile_Data():
                     #print(f'waiting for ack:{cnt*ROS_PAUSE} seconds')
                     sleep(ROS_PAUSE)
 
-                    if self.simulator_flag: break
+                    if self.SIMULATOR: break
                 if cnt >= ROS_REPEAT:
                     raise Exception('steer command not acknowledged')
             else: # If we are in the real car, control the servo directly from the pi
@@ -413,7 +425,7 @@ class Automobile_Data():
         :type data: object
         """ 
         if np.isclose(self.target_speed, self.prev_speed):
-            if not self.simulator_flag:
+            if not self.SIMULATOR:
                 if np.abs(self.speed_meas-self.target_speed) > 0.05:
                     print(f'Car didnt move, resending the speed command meas = {self.speed_meas} target = {self.target_speed}')
                     self.publish_speed(self.target_speed)
@@ -450,7 +462,7 @@ class Automobile_Data():
             self.pub.publish(reference)
             cnt += 1 
             sleep(ROS_PAUSE)
-            if self.simulator_flag: break
+            if self.SIMULATOR: break
         if cnt >= ROS_REPEAT:
             #raise Exception('speed command not acknowledged')
             print('speed command not acknowledged')
@@ -509,7 +521,7 @@ class Automobile_Data():
         if not direct:
             self.target_steer = angle
         else:
-            if self.simulator_flag:
+            if self.SIMULATOR:
                 data = {}
                 data['action']        =  '2'
                 data['steerAngle']    =  float(angle)*STEER_COMPENSATION
@@ -521,7 +533,7 @@ class Automobile_Data():
                     self.pub.publish(reference)
                     cnt += 1
                     #print(f'waiting for ack:{cnt*ROS_PAUSE} seconds')
-                    if self.simulator_flag: break
+                    if self.SIMULATOR: break
                     sleep(ROS_PAUSE)
 
                 if cnt >= ROS_REPEAT:
@@ -560,7 +572,7 @@ class Automobile_Data():
         # self.steer = angle
 
         # data = {}
-        # if not self.simulator_flag:
+        # if not self.SIMULATOR:
         #     data['action']        =  '3'
         #     data['brake (steerAngle)']    =  float(angle)*STEER_COMPENSATION
         # else:
@@ -574,11 +586,10 @@ class Automobile_Data():
         #     self.pub.publish(reference)
         #     cnt += 1
         #     sleep(ROS_PAUSE)
-        #     if self.simulator_flag: break
+        #     if self.SIMULATOR: break
         # if cnt >= ROS_REPEAT:
         #     raise Exception('break command not acknowledged')
 
-    # ESTIMATION
     def reset_rel_pose(self):
         """Set origin of the local frame to the actual pose
         """        
@@ -591,7 +602,7 @@ class Automobile_Data():
     def reset_rel_dist(self):
         self.distLoc = 0.0
     
-    def update_rel_pose(self,event):
+    def update_rel_position(self,event):
         """Update relative pose of the car
 
         :param event: event parameter passed by the rospy.Timer
@@ -605,14 +616,30 @@ class Automobile_Data():
         
         self.yawLoc = diff_angle(self.yaw, self.yawLoc_o)
         #rint(f'yaw: {self.yaw:.2f}, Loc: {self.yawLoc:.2f}, origin: {self.yawLoc_o:.2f}')
-        self.xLoc += self.speed_meas * sin(self.yawLoc) * dt
-        self.yLoc += self.speed_meas * cos(self.yawLoc) * dt
+        if not self.SIMULATOR:
+            x_increment += self.speed_meas * sin(self.yawLoc) * dt
+            y_increment += self.speed_meas * cos(self.yawLoc) * dt
+            dist_increment = abs(self.speed_meas) * dt
+        else:
+            curr_x = self.x_true
+            curr_y = self.y_true
+            x_increment = curr_x - self.prev_x_enc
+            y_increment = curr_y - self.prev_y_enc
+            dist_increment = np.hypot(x_increment, y_increment)
+            x_increment = x_increment*sin(self.yawLoc)
+            y_increment = y_increment*cos(self.yawLoc)
 
-        dist_increment = abs(self.speed_meas) * dt
+            self.prev_x_enc = curr_x
+            self.prev_y_enc = curr_y
+
+        self.xLoc += x_increment
+        self.yLoc += y_increment
 
         self.distLoc += dist_increment
+        self.tot_dist += dist_increment
         self.dist_from_last_call += dist_increment
 
+    # ESTIMATION
     def update_estimated_state(self,event):
         """Update estimated state according to EKF
         """        

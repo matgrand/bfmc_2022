@@ -20,7 +20,7 @@ with open("models/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
 # MAIN CONTROLS
-simulator_flag = True # True: run simulator, False: run real car
+SIMULATOR = True # True: run simulator, False: run real car
 training = False
 generate_path = False if not training else True
 # folder = 'training_imgs' 
@@ -49,15 +49,15 @@ noise_std = np.deg2rad(25) # [rad] noise in the steering angle
 if __name__ == '__main__':
 
     #init windows
-    cv.namedWindow("2D-MAP", cv.WINDOW_NORMAL) if simulator_flag else None
-    cv.resizeWindow("2D-MAP", 800, 800) if simulator_flag else None
+    cv.namedWindow("2D-MAP", cv.WINDOW_NORMAL) if SIMULATOR else None
+    cv.resizeWindow("2D-MAP", 800, 800) if SIMULATOR else None
 
     # cv.namedWindow('Detection', cv.WINDOW_NORMAL)
     
     # init the car data
-    os.system('rosservice call /gazebo/reset_simulation') if simulator_flag else None
-    car = Automobile_Data(simulator=simulator_flag, trig_cam=True, trig_gps=True, trig_bno=True, 
-                            trig_enc=False, trig_control=True, trig_estimation=False, trig_sonar=True)
+    os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
+    car = Automobile_Data(simulator=SIMULATOR, trig_cam=True, trig_gps=True, trig_bno=True, 
+                            trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
     car.stop()
 
     # init trajectory
@@ -176,24 +176,25 @@ if __name__ == '__main__':
 
             ## DEBUG INFO
             os.system('cls' if os.name=='nt' else 'clear')
-            print(f"x : {car.x_true:.3f}, y : {car.y_true:.3f}, yaw : {np.rad2deg(car.yaw):.3f}") 
-            print(f"xd: {xd:.3f}, yd: {yd:.3f}, yawd: {np.rad2deg(yawd):.3f}, curv: {curv:.3f}") if generate_path else None
+            print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
+            print(f"xd: {xd:.3f} [m], yd: {yd:.3f} [m], yawd: {np.rad2deg(yawd):.3f} [deg], curv: {curv:.3f}") if generate_path else None
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
-            print(f'DESIRED_SPEED = {DESIRED_SPEED:.3f}, speed_ref = {speed_ref:.3f}, angle_ref = {np.rad2deg(angle_ref):.3f}')
+            print(f'DESIRED_SPEED = {DESIRED_SPEED:.3f} [m/s], speed_ref = {speed_ref:.3f} [m/s], angle_ref = {np.rad2deg(angle_ref):.3f} [deg]')
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}") if generate_path else None
-            print(f'DIST: {float(dist):.3f}') if not training else None
-            print(f'Sonar 1 distance = {car.obstacle_ahead_median}')
+            print(f'distance line ahead :     {float(dist):.2f} [m]') if not training else None
+            print(f'total distance travelled: {car.tot_dist:.2f} [m]')
+            print(f'Front sonar distance:     {car.obstacle_ahead_median:.2f} [m]')
             print(f'Net out:\n {lane_info}') if not training else None
-            print(f'e_yaw: {e3}\ncurv: {100*curv}') if not training else None
+            print(f'e_yaw: {e3:.2f} [rad] \ncurv: {100*curv}') if not training else None
             # print(f'Curvature radius = {radius:.2f}')
-            print(f'FPS = {1/(time()-loop_start_time):.3f}')
-            print(f'Lane detection time = {detect.avg_lane_detection_time:.2f} ms')
-            print(f'Sign detection time = {detect.avg_sign_detection_time:.2f} ms')
+            print(f'FPS = {1/(time()-loop_start_time):.1f}')
+            print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
+            print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
 
             cv.imshow("Frame preview", frame)
             # cv.imshow('SIGNS ROI', signs_roi)
             # cv.imshow('FRONT ROI', front_obstacle_roi)
-            cv.imshow("2D-MAP", tmp) if simulator_flag else None
+            cv.imshow("2D-MAP", tmp) if SIMULATOR else None
             key = cv.waitKey(1)
             if key == 27:
                 car.stop()

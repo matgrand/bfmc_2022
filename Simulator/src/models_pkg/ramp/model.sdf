@@ -2,7 +2,7 @@
 <sdf version='1.6'>
   <model name='ramp'>
     <link name='link_0'>
-      <inertial>
+      <!--inertial>
         <mass>1</mass>
         <inertia>
           <ixx>0.166667</ixx>
@@ -13,7 +13,7 @@
           <izz>0.166667</izz>
         </inertia>
         <pose frame=''>0 0 0 0 -0 0</pose>
-      </inertial>
+      </inertial-->
       <pose frame=''>0 0 0 0 -0 0</pose>
       <gravity>1</gravity>
       <self_collide>0</self_collide>

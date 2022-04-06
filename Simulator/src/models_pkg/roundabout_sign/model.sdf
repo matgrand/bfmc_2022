@@ -3,7 +3,7 @@
   <model name='roundabout_sign'>
     <static>1</static>
     <link name='sign_leg'>
-      <inertial>
+      <!--inertial>
         <mass>0.5</mass>
         <inertia>
           <ixx>0.166667</ixx>
@@ -15,7 +15,7 @@
         </inertia>
 	<pose>0 0 -0.078998 0.0 0.0 0.0 </pose>
         <pose frame=''>0 0 0 0 -0 0</pose>
-      </inertial>
+      </inertial-->
       <pose frame=''>0.002193 -0.000682 -0.07606 0 -0 0</pose>
       <gravity>1</gravity>
       <self_collide>1</self_collide>
@@ -32,7 +32,7 @@
         <transparency>0</transparency>
         <cast_shadows>1</cast_shadows>
       </visual>
-      <collision name='collision'>
+      <!--collision name='collision'>
         <laser_retro>0</laser_retro>
         <max_contacts>10</max_contacts>
         <pose frame=''>0 0 0 0 -0 0</pose>
@@ -87,10 +87,10 @@
             </bullet>
           </contact>
         </surface>
-      </collision>
+      </collision-->
     </link>
     <link name='triangular_support'>
-      <inertial>
+      <!--inertial>
         <mass>0.022</mass>
         <inertia>
           <ixx>0.166667</ixx>
@@ -101,7 +101,7 @@
           <izz>0.166667</izz>
         </inertia>
         <pose frame=''>0 0 0 0 -0 0</pose>
-      </inertial>
+      </inertial-->
       <pose frame=''>-0.002193 0.000682 0.09894 0 0 3.141592</pose>
       <gravity>1</gravity>
       <self_collide>1</self_collide>
@@ -133,7 +133,7 @@
         <transparency>0</transparency>
         <cast_shadows>1</cast_shadows>
       </visual>
-      <collision name='collision'>
+      <!--collision name='collision'>
         <laser_retro>0</laser_retro>
         <max_contacts>10</max_contacts>
         <pose frame=''>0 0 0 0 -0 0</pose>
@@ -188,7 +188,7 @@
             </bullet>
           </contact>
         </surface>
-      </collision>
+      </collision-->
     </link>
     <joint name='support_to_leg_joint' type='fixed'>
       <parent>link_0</parent>
