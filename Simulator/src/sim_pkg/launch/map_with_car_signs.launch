@@ -20,4 +20,10 @@
   <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg prohibited_signs.launch"    name="prohibited_signs"     output="screen"/>
   <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg oneway_signs.launch"        name="oneway_signs"         output="screen"/>
   <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg parking_signs.launch"       name="parking_signs"        output="screen"/>
+  <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg traffic_lights.launch"      name="traffic_lights"       output="screen"/>
+  <?ignore
+  <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg obstacle_car.launch"        name="obstacle_car"         output="screen"/>
+  <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg pedestrian_objects.launch"  name="pedestrian_objects"   output="screen"/>
+  <node pkg="sim_pkg" type="delay.sh" args="5 sim_pkg members.launch"             name="members"              output="screen"/>
+  ?>
   </launch>

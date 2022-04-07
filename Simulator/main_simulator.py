@@ -2,7 +2,6 @@
 
 import os
 import cv2 as cv
-from zmq import CURVE
 import rospy
 import numpy as np
 from time import sleep, time
@@ -145,6 +144,7 @@ if __name__ == '__main__':
             ## ACTUATION
             sleep(ACTUATION_DELAY)
             car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
+            # car.drive_angle(angle=angle_ref, direct=True)
 
             ## VISUALIZATION
             #project path ahead

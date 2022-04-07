@@ -510,7 +510,7 @@ class Automobile_Data():
         speed = Automobile_Data.normalizeSpeed(speed)   # normalize speed
         self.target_speed = speed
 
-    def drive_angle(self, angle=0.0, direct=False):
+    def drive_angle(self, angle=0.0, direct=True):
         """Publish the STEER command to the command topic
 
         :param angle: [rad] desired angle, defaults to 0.0

@@ -77,8 +77,8 @@ class Detection:
         IMG_SIZE = (32,32) #match with trainer
         #convert to gray
         frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        #keep the bottom 2/3 of the image
         frame = frame[int(frame.shape[0]/3):,:] #/3
+        #keep the bottom 2/3 of the image
         #blur
         # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
         frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))

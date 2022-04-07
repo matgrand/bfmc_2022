@@ -62,7 +62,8 @@ class Controller():
 
         # if not self.training:
         #     curv = curv*30
-        r = 1.0 / ( curv*6.28 ) #radius of curvature
+        if curv == 0.0: r = 10000.0
+        else: r = 1.0 / ( curv*6.28 ) #radius of curvature
 
         #adaptive controller
         curv100 = 100 * curv

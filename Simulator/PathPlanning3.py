@@ -1,18 +1,10 @@
 #!/usr/bin/python3
-
-from curses.ascii import BS
-from os import path
-from re import S, X
-from time import sleep
+from time import time, sleep
 import copy
-from cv2 import cubeRoot
 import networkx as nx
 import numpy as np
 import cv2 as cv
-import random
 from pyclothoids import Clothoid
-import math
-from scipy.interpolate import BSpline, CubicSpline, make_interp_spline
 
 from helper_functions import *
 
@@ -104,14 +96,14 @@ class PathPlanning():
                 if not(prev_node in self.ra):
                     dx = xn - xp
                     dy = yn - yp
-                    self.route_list.append((xc,yc,math.degrees(np.arctan2(dy,dx))))
+                    self.route_list.append((xc,yc,np.rad2deg(np.arctan2(dy,dx))))
                 else:
                     if curr_node == '302':
                         continue
                     else:
                         dx = xn - xp
                         dy = yn - yp
-                        self.route_list.append((xc,yc,math.degrees(np.arctan2(dy,dx))))
+                        self.route_list.append((xc,yc,np.rad2deg(np.arctan2(dy,dx))))
             elif curr_node in self.ra_exit:
                 if next_node in self.ra:
                     # remain inside roundabout
@@ -120,15 +112,15 @@ class PathPlanning():
                     else:
                         dx = xn - xp
                         dy = yn - yp
-                        self.route_list.append((xc,yc,math.degrees(np.arctan2(dy,dx))))
+                        self.route_list.append((xc,yc,np.rad2deg(np.arctan2(dy,dx))))
                 else:
                     dx = xn - xp
                     dy = yn - yp
-                    self.route_list.append((xc,yc,math.degrees(np.arctan2(dy,dx))))
+                    self.route_list.append((xc,yc,np.rad2deg(np.arctan2(dy,dx))))
             else:
                 dx = xn - xp
                 dy = yn - yp
-                self.route_list.append((xc,yc,math.degrees(np.arctan2(dy,dx))))
+                self.route_list.append((xc,yc,np.rad2deg(np.arctan2(dy,dx))))
 
         prev_node = curr_node
         curr_node = next_node
@@ -199,18 +191,18 @@ class PathPlanning():
             # ****** ROUNDABOUT NAVIGATION ******
             if next_is_roundabout_enter:
                 if curr_node == "342":
-                    self.route_list.append((xc,yc,math.degrees(np.arctan2(-1,0))))
+                    self.route_list.append((xc,yc,np.rad2deg(np.arctan2(-1,0))))
                     dx = xc - xp
                     dy = yc - yp
-                    self.route_list.append((xc,yc+0.3*dy,math.degrees(np.arctan2(-1,0))))
+                    self.route_list.append((xc,yc+0.3*dy,np.rad2deg(np.arctan2(-1,0))))
                 else:
                     dx = xc-xp
                     dy = yc-yp
-                    self.route_list.append((xc,yc,math.degrees(np.arctan2(dy,dx))))
+                    self.route_list.append((xc,yc,np.rad2deg(np.arctan2(dy,dx))))
                     # add a further node
                     dx = xc - xp
                     dy = yc - yp
-                    self.route_list.append((xc+0.3*dx,yc+0.3*dy,math.degrees(np.arctan2(dy,dx))))
+                    self.route_list.append((xc+0.3*dx,yc+0.3*dy,np.rad2deg(np.arctan2(dy,dx))))
                 # enter the roundabout
                 self.navigator.append("enter roundabout at " + curr_node)
                 prev_node, curr_node, next_node = self.roundabout_navigation(prev_node, curr_node, next_node)
@@ -218,11 +210,11 @@ class PathPlanning():
             elif next_is_intersection:
                 dx = xc - xp
                 dy = yc - yp
-                self.route_list.append((xc,yc,math.degrees(np.arctan2(dy,dx))))
+                self.route_list.append((xc,yc,np.rad2deg(np.arctan2(dy,dx))))
                 # add a further node
                 dx = xc - xp
                 dy = yc - yp
-                self.route_list.append((xc+0.3*dx,yc+0.3*dy,math.degrees(np.arctan2(dy,dx))))
+                self.route_list.append((xc+0.3*dx,yc+0.3*dy,np.rad2deg(np.arctan2(dy,dx))))
                 # enter the intersection
                 self.navigator.append("enter intersection at " + curr_node)
                 prev_node, curr_node, next_node = self.intersection_navigation(prev_node, curr_node, next_node)
@@ -231,15 +223,15 @@ class PathPlanning():
                 # add a further node
                 dx = xn - xc
                 dy = yn - yc
-                self.route_list.append((xc-0.3*dx,yc-0.3*dy,math.degrees(np.arctan2(dy,dx))))
+                self.route_list.append((xc-0.3*dx,yc-0.3*dy,np.rad2deg(np.arctan2(dy,dx))))
                 # and add the exit node
                 dx = xn - xc
                 dy = yn - yc
-                self.route_list.append((xc,yc,math.degrees(np.arctan2(dy,dx))))
+                self.route_list.append((xc,yc,np.rad2deg(np.arctan2(dy,dx))))
             else:
                 dx = xn - xp
                 dy = yn - yp
-                self.route_list.append((xc,yc,math.degrees(np.arctan2(dy,dx))))
+                self.route_list.append((xc,yc,np.rad2deg(np.arctan2(dy,dx))))
             
             prev_node = curr_node
             curr_node = next_node
@@ -249,7 +241,7 @@ class PathPlanning():
                 # You arrived at the END
                 dx = xn - xp
                 dy = yn - yp
-                self.route_list.append((xn,yn,math.degrees(np.arctan2(dy,dx))))
+                self.route_list.append((xn,yn,np.rad2deg(np.arctan2(dy,dx))))
                 next_node = None
         
         self.navigator.append("stop")
@@ -300,7 +292,6 @@ class PathPlanning():
             complete_path = np.concatenate((complete_path, self.path))
         self.path = complete_path
         self.augment_path()
-
 
     def search_target_index(self, car):
         cx = self.path[:,0]
@@ -719,7 +710,7 @@ class PathPlanning():
             for i in range(len(self.path)-1):
                 x1,y1 = self.path[i]
                 x2,y2 = self.path[i+1]
-                length += math.hypot(x2-x1,y2-y1)
+                length += np.hypot(x2-x1,y2-y1)
             
             #print(f"Length of the trajectory: {length}")  
             return length
@@ -728,7 +719,7 @@ class PathPlanning():
             for i in range(len(path)-1):
                 x1,y1 = path[i]
                 x2,y2 = path[i+1]
-                length += math.hypot(x2-x1,y2-y1) 
+                length += np.hypot(x2-x1,y2-y1) 
             return length
 
     def get_coord(self, node):
@@ -759,8 +750,8 @@ class PathPlanning():
         for i in range(len(route)-1):
             xc,yc,thc = route[i]
             xn,yn,thn = route[i+1]
-            thc = math.radians(thc)
-            thn = math.radians(thn)
+            thc = np.deg2rad(thc)
+            thn = np.deg2rad(thn)
 
             #print("from (",xc,yc,thc,") to (",xn,yn,thn,")\n")
 
