@@ -29,13 +29,7 @@ class AutomobileDataSimulator(Automobile_Data):
                 trig_estimation=False, 
                 ) -> None:
         #initialize the parent class
-        super().__init__(trig_control=trig_control,
-                         trig_bno=trig_bno,
-                         trig_enc=trig_enc,
-                         trig_sonar=trig_sonar,
-                         trig_cam=trig_cam,
-                         trig_gps=trig_gps,
-                         trig_estimation=trig_estimation)
+        super().__init__()
 
         #implementing the specific subsribers and specific variables
 
@@ -55,10 +49,6 @@ class AutomobileDataSimulator(Automobile_Data):
             self.sub_imu = rospy.Subscriber('/automobile/IMU', IMU, self.imu_callback)
         if trig_enc:
             self.reset_rel_pose()
-            #this timer simulates the encoder setting the variables
-            #self.encoder_velocity           
-            #self.filtered_encoder_velocity
-            #self.encoder_distance        
             rospy.Timer(rospy.Duration(ENCODER_TIMER), self.encoder_distance_callback) #the callback will do also velocity
         if trig_sonar:
             sonar_topic = "/automobile/sonar1"
@@ -103,7 +93,7 @@ class AutomobileDataSimulator(Automobile_Data):
         self.pitch_deg = np.rad2deg(self.pitch)
         self.yaw = float(data.yaw)
         self.yaw_deg = np.rad2deg(self.yaw)
-        #true position, for training purposes
+        #true position, not in real car
         self.x_true = float(data.posx)
         self.y_true = float(data.posy)
         self.timestamp = float(data.timestamp)
@@ -143,7 +133,6 @@ class AutomobileDataSimulator(Automobile_Data):
         self.velocity_buffer.append(self.encoder_velocity)
         self.filtered_encoder_velocity = np.median(self.velocity_buffer)
 
-    
     # COMMAND ACTIONS
     def drive_speed(self, speed=0.0) -> None:
         """Set the speed of the car
@@ -179,4 +168,5 @@ class AutomobileDataSimulator(Automobile_Data):
         data['action']        =  '3'
         data['steerAngle']    =  float(angle)
         reference = json.dumps(data)
+        self.pub.publish(reference)
 
