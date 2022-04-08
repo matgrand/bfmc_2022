@@ -1,22 +1,14 @@
 #!/usr/bin/python3
-
 from automobile_data_interface import Automobile_Data
-from std_msgs.msg import String, Float32
-from utils.msg import IMU
-from utils.msg import localisation
-#from utils.srv import subscribing
-from sensor_msgs.msg import Image
-from sensor_msgs.msg import Range
-import rospy
-import json
+from std_msgs.msg import String
+from utils.msg import IMU,localisation
+from sensor_msgs.msg import Image, Range
+import rospy, json, collections
 from cv_bridge import CvBridge
-
 import numpy as np
-import collections
 from helper_functions import *
 
-
-ENCODER_TIMER = 0.01
+ENCODER_TIMER = 0.01 #frequency of encoder reading
 
 class AutomobileDataSimulator(Automobile_Data):
     def __init__(self,
@@ -31,12 +23,9 @@ class AutomobileDataSimulator(Automobile_Data):
         #initialize the parent class
         super().__init__()
 
-        #implementing the specific subscribers and specific variables
-
         # ADDITIONAL VARIABLES
         self.sonar_distance_buffer = collections.deque(maxlen=20)
         self.timestamp = 0.0
-
         self.prev_x_true = self.x_true
         self.prev_y_true = self.y_true
         self.prev_timestamp = 0.0
@@ -49,7 +38,7 @@ class AutomobileDataSimulator(Automobile_Data):
             self.sub_imu = rospy.Subscriber('/automobile/IMU', IMU, self.imu_callback)
         if trig_enc:
             self.reset_rel_pose()
-            rospy.Timer(rospy.Duration(ENCODER_TIMER), self.encoder_distance_callback) #the callback will do also velocity
+            rospy.Timer(rospy.Duration(ENCODER_TIMER), self.encoder_distance_callback) #the callback will also do velocity
         if trig_sonar:
             self.sub_son = rospy.Subscriber('/automobile/sonar1', Range, self.sonar_callback)
         if trig_cam:
@@ -65,6 +54,7 @@ class AutomobileDataSimulator(Automobile_Data):
         :acts on: self.frame
         """        
         self.frame = self.bridge.imgmsg_to_cv2(data, "bgr8")
+
     def sonar_callback(self, data) -> None:
         """Receive and store distance of an obstacle ahead in 
         :acts on: self.sonar_distance, self.filtered_sonar_distance
@@ -95,7 +85,7 @@ class AutomobileDataSimulator(Automobile_Data):
         self.x_true = float(data.posx)
         self.y_true = float(data.posy)
         self.timestamp = float(data.timestamp)
-        #NOTE: in the simulator we don't have neither acceleromter or gyroscope
+        #NOTE: in the simulator we don't have neither acceleromter or gyroscope (yet)
 
     def encoder_distance_callback(self, data) -> None:
         """Callback when an encoder distance message is received
@@ -167,4 +157,3 @@ class AutomobileDataSimulator(Automobile_Data):
         data['steerAngle']    =  float(angle)
         reference = json.dumps(data)
         self.pub.publish(reference)
-
