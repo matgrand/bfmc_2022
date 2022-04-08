@@ -69,7 +69,7 @@ class Controller():
         #adaptive controller
         curv100 = 100 * curv
         if 0.7 < np.abs(curv100) < 2.0: #big curvature, pure pursuit is too aggressive
-            print(f'HIGH CURVATURE: {curv100}')
+            # print(f'HIGH CURVATURE: {curv100}')
             # k2 = 5.0
             # k3 = 5.0
             k2 = self.k2

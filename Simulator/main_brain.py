@@ -29,7 +29,7 @@ folder = 'test_imgs'
 
 # os.system('rosservice call /gazebo/reset_simulation')
 
-LOOP_DELAY = 0.01
+LOOP_DELAY = 0.05
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 
@@ -79,7 +79,13 @@ if __name__ == '__main__':
         fps_cnt = 0
         while not rospy.is_shutdown():
             os.system('cls' if os.name=='nt' else 'clear')
-            ## DEBUG INFO
+
+            loop_start_time = time()
+
+            # RUN BRAIN
+            brain.run()
+
+                        ## DEBUG INFO
             print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
             print(f'Current velocity: {car.filtered_encoder_velocity:.3f} [m/s]')
@@ -87,22 +93,17 @@ if __name__ == '__main__':
             print(f'Front sonar distance:     {car.filtered_sonar_distance:.2f} [m]')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
             print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
-
-            loop_start_time = time()
-
-            # RUN BRAIN
-            brain.run()
+            print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
 
             cv.imshow('frame', car.frame)
             if cv.waitKey(1) == 27:
                 cv.destroyAllWindows()
                 break
-
+            
+            sleep(LOOP_DELAY)
             loop_time = time() - loop_start_time
             fps_avg = (fps_avg * fps_cnt + 1.0 / loop_time) / (fps_cnt + 1)
             fps_cnt += 1
-            print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
-            sleep(LOOP_DELAY)
 
     except KeyboardInterrupt:
         print("Shutting down")

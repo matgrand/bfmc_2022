@@ -31,10 +31,10 @@ class AutomobileDataSimulator(Automobile_Data):
         #initialize the parent class
         super().__init__()
 
-        #implementing the specific subsribers and specific variables
+        #implementing the specific subscribers and specific variables
 
         # ADDITIONAL VARIABLES
-        self.obstacle_ahead_buffer = collections.deque(maxlen=20)
+        self.sonar_distance_buffer = collections.deque(maxlen=20)
         self.timestamp = 0.0
 
         self.prev_x_true = self.x_true
@@ -51,9 +51,7 @@ class AutomobileDataSimulator(Automobile_Data):
             self.reset_rel_pose()
             rospy.Timer(rospy.Duration(ENCODER_TIMER), self.encoder_distance_callback) #the callback will do also velocity
         if trig_sonar:
-            sonar_topic = "/automobile/sonar1"
-            sonar_data_type = Range
-            self.sub_son = rospy.Subscriber(sonar_topic, sonar_data_type, self.sonar_callback)
+            self.sub_son = rospy.Subscriber('/automobile/sonar1', Range, self.sonar_callback)
         if trig_cam:
             self.bridge = CvBridge()
             self.sub_cam = rospy.Subscriber("/automobile/image_raw", Image, self.camera_callback)
@@ -72,8 +70,8 @@ class AutomobileDataSimulator(Automobile_Data):
         :acts on: self.sonar_distance, self.filtered_sonar_distance
         """        
         self.sonar_distance = data.range 
-        self.obstacle_ahead_buffer.append(self.sonar_distance)
-        self.filtered_sonar_distance = np.median(self.obstacle_ahead_buffer)
+        self.sonar_distance_buffer.append(self.sonar_distance)
+        self.filtered_sonar_distance = np.median(self.sonar_distance_buffer)
 
     def position_callback(self, data) -> None:
         """Receive and store global coordinates from GPS
@@ -97,7 +95,7 @@ class AutomobileDataSimulator(Automobile_Data):
         self.x_true = float(data.posx)
         self.y_true = float(data.posy)
         self.timestamp = float(data.timestamp)
-        #NOTE: in the simulator we don't have acceleration or gyroscope
+        #NOTE: in the simulator we don't have neither acceleromter or gyroscope
 
     def encoder_distance_callback(self, data) -> None:
         """Callback when an encoder distance message is received
