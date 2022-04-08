@@ -41,11 +41,12 @@ class AutomobileDataSimulator(Automobile_Data):
 
         # ADDITIONAL VARIABLES
         self.obstacle_ahead_buffer = collections.deque(maxlen=20)
-        self.time_stamp = 0.0
+        self.timestamp = 0.0
 
         self.prev_x_true = self.x_true
         self.prev_y_true = self.y_true
-        self.velocity_buffer = collections.deque(maxlen=10)
+        self.prev_timestamp = 0.0
+        self.velocity_buffer = collections.deque(maxlen=20)
 
         # PUBLISHERS AND SUBSCRIBERS
         if trig_control:
@@ -105,7 +106,7 @@ class AutomobileDataSimulator(Automobile_Data):
         #true position, for training purposes
         self.x_true = float(data.posx)
         self.y_true = float(data.posy)
-        self.time_stamp = float(data.timestamp)
+        self.timestamp = float(data.timestamp)
         #NOTE: in the simulator we don't have acceleration or gyroscope
 
     def encoder_distance_callback(self, data) -> None:
@@ -117,19 +118,22 @@ class AutomobileDataSimulator(Automobile_Data):
         curr_y = self.y_true
         prev_x = self.prev_x_true
         prev_y = self.prev_y_true
+        curr_time = self.timestamp
+        prev_time = self.prev_timestamp
         delta = np.sqrt((curr_x - prev_x)**2 + (curr_y - prev_y)**2)
         #get the direction of the movement: + or -
         motion_yaw = - np.arctan2(curr_y - prev_y, curr_x - prev_x)
         abs_yaw_diff = np.abs(diff_angle(motion_yaw, self.yaw))
         sign = 1.0 if abs_yaw_diff < np.pi/2 else -1.0
-        print('POSITIVE' if sign == 1 else 'NEGATIVE')
-        dt = ENCODER_TIMER
-        velocity = (delta * sign) / dt
-        self.encoder_velocity_callback(data=velocity)
-        self.encoder_distance += self.encoder_velocity * dt
-        self.update_rel_position()
-        self.prev_x_true = curr_x
-        self.prev_y_true = curr_y
+        dt = curr_time - prev_time
+        if dt > 0.0:
+            velocity = (delta * sign) / dt
+            self.encoder_velocity_callback(data=velocity) 
+            self.encoder_distance += sign*delta
+            self.update_rel_position()
+            self.prev_x_true = curr_x
+            self.prev_y_true = curr_y
+            self.prev_timestamp = curr_time
 
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received
@@ -137,7 +141,7 @@ class AutomobileDataSimulator(Automobile_Data):
         """    
         self.encoder_velocity = data
         self.velocity_buffer.append(self.encoder_velocity)
-        self.filtered_encoder_velocity = np.mean(self.velocity_buffer)
+        self.filtered_encoder_velocity = np.median(self.velocity_buffer)
 
     
     # COMMAND ACTIONS

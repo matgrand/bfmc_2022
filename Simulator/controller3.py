@@ -12,17 +12,18 @@ NUM_POINTS = 5 #number of points in the sequence
 L = 0.4  #length of the car, matched with lane_detection
 
 class Controller():
-    def __init__(self, k1=1.0,k2=1.0,k3=1.0, ff=1.0, cm_ahead=35, folder='training_imgs',
+    def __init__(self, k1=1.0,k2=1.0,k3=1.0, k3D=0.08, ff=1.0, cm_ahead=35, folder='training_imgs',
                     training=True, noise_std=np.deg2rad(20)):
         
         #controller paramters
         self.k1 = k1
         self.k2 = k2
         self.k3 = k3
+        self.k3D = k3D 
+        self.ff = ff
         self.e1 = 0.0
         self.e2 = 0.0
         self.e3 = 0.0
-        self.ff = ff
 
         self.prev_delta = 0.0
         self.prev_time = 0.0
@@ -81,22 +82,22 @@ class Controller():
         d = POINT_AHEAD_CM/100.0 #distance point ahead, matched with lane_detection
         delta = np.arctan((2*L*np.sin(alpha))/(1.0*d))
         proportional_term = k3 * delta
-        print(f'proportional term: {np.rad2deg(proportional_term):.2f}')
+        # print(f'proportional term: {np.rad2deg(proportional_term):.2f}')
 
         #derivative term
-        k3D = 0.08 #0.3
+        k3D = self.k3D
         curr_time = time()
         dt = curr_time - self.prev_time
         self.prev_time = curr_time
         diff3 = (delta - self.prev_delta) / dt
         self.prev_delta = delta
         derivative_term = - k3D * diff3
-        print(f'derivative term: {np.rad2deg(derivative_term):.2f}')
+        # print(f'derivative term: {np.rad2deg(derivative_term):.2f}')
 
         #feedforward term
         k3FF = 0. #0.2 #higher for high speeds
         ff_term = k3FF * np.arctan(L/r) #from ackerman geometry
-        print(f'Feedforward term: {np.rad2deg(ff_term):2f}')
+        # print(f'Feedforward term: {np.rad2deg(ff_term):2f}')
     
         output_angle = ff_term + proportional_term - k2 * e2 - derivative_term
         output_speed = desired_speed - self.k1 * self.e1

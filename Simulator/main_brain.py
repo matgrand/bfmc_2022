@@ -41,6 +41,7 @@ path_step_length = 0.01 # [m]
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
 k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
 k3 = 0.6 #1.0 yaw error gain .8 with ff 
+k3D = 0.08 #0.08 derivative gain of yaw error
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
@@ -63,7 +64,7 @@ if __name__ == '__main__':
     path = PathPlanning(map) 
 
     # init controller
-    controller = Controller(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, 
+    controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, ff=ff_curvature, folder=folder, 
                                     training=training, noise_std=noise_std)
 
     #initiliaze all the neural networks for detection and lane following
@@ -81,6 +82,7 @@ if __name__ == '__main__':
             ## DEBUG INFO
             print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
+            print(f'Current velocity: {car.filtered_encoder_velocity:.3f} [m/s]')
             print(f'total distance travelled: {car.encoder_distance:.2f} [m]')
             print(f'Front sonar distance:     {car.filtered_sonar_distance:.2f} [m]')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
@@ -90,7 +92,6 @@ if __name__ == '__main__':
 
             # RUN BRAIN
             brain.run()
-
 
             cv.imshow('frame', car.frame)
             if cv.waitKey(1) == 27:
