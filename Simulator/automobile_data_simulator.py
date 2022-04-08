@@ -50,7 +50,6 @@ class AutomobileDataSimulator(Automobile_Data):
         # PUBLISHERS AND SUBSCRIBERS
         if trig_control:
             self.pub = rospy.Publisher('/automobile/command', String, queue_size=1)
-            # self.activate_PID(True)
         if trig_bno:
             self.sub_imu = rospy.Subscriber('/automobile/IMU', IMU, self.imu_callback)
         if trig_enc:
@@ -114,32 +113,32 @@ class AutomobileDataSimulator(Automobile_Data):
         :acts on: self.encoder_distance
         :needs to: call update_rel_position
         """   
-         
-        self.encoder_velocity_callback(data=None)
-        dt = ENCODER_TIMER
-        self.encoder_distance += self.encoder_velocity * dt
-        self.update_rel_position()
-
-    def encoder_velocity_callback(self, data) -> None:
-        """Callback when an encoder velocity message is received
-        :acts on: self.encoder_velocity
-        """        
         curr_x = self.x_true
         curr_y = self.y_true
         prev_x = self.prev_x_true
         prev_y = self.prev_y_true
-        dt = ENCODER_TIMER
-        abs_velocity = np.sqrt((curr_x - prev_x)**2 + (curr_y - prev_y)**2) / dt
+        delta = np.sqrt((curr_x - prev_x)**2 + (curr_y - prev_y)**2)
         #get the direction of the movement: + or -
-        motion_yaw = np.arctan2(curr_y - prev_y, curr_x - prev_x)
+        motion_yaw = - np.arctan2(curr_y - prev_y, curr_x - prev_x)
         abs_yaw_diff = np.abs(diff_angle(motion_yaw, self.yaw))
-        sign = 1 if abs_yaw_diff < np.pi/2 else -1
+        sign = 1.0 if abs_yaw_diff < np.pi/2 else -1.0
         print('POSITIVE' if sign == 1 else 'NEGATIVE')
-        self.encoder_velocity = sign * abs_velocity
-        self.velocity_buffer.append(self.encoder_velocity)
-        self.filtered_encoder_velocity = np.mean(self.velocity_buffer)
+        dt = ENCODER_TIMER
+        velocity = (delta * sign) / dt
+        self.encoder_velocity_callback(data=velocity)
+        self.encoder_distance += self.encoder_velocity * dt
+        self.update_rel_position()
         self.prev_x_true = curr_x
         self.prev_y_true = curr_y
+
+    def encoder_velocity_callback(self, data) -> None:
+        """Callback when an encoder velocity message is received
+        :acts on: self.encoder_velocity
+        """    
+        self.encoder_velocity = data
+        self.velocity_buffer.append(self.encoder_velocity)
+        self.filtered_encoder_velocity = np.mean(self.velocity_buffer)
+
     
     # COMMAND ACTIONS
     def drive_speed(self, speed=0.0) -> None:
@@ -177,16 +176,3 @@ class AutomobileDataSimulator(Automobile_Data):
         data['steerAngle']    =  float(angle)
         reference = json.dumps(data)
 
-    # def activate_PID(self, pid_enable=True):
-    #     """Activate/Deactivate speed PID
-
-    #     :param pid_enable: self explanatory, defaults to True
-    #     :type pid_enable: bool, optional
-    #     """            
-    #     data = {}
-    #     data['action']      =  '4'
-    #     data['activate']    =  pid_enable
-    #     reference = json.dumps(data)
-
-    #     for i in range(50):
-    #         self.pub.publish(reference)
