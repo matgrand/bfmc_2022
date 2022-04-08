@@ -5,7 +5,7 @@ import cv2 as cv
 import os
 from time import time, sleep
 
-from automobile_data import Automobile_Data
+from automobile_data_interface import Automobile_Data
 from helper_functions import *
 from PathPlanning4 import PathPlanning
 from controller3 import Controller
@@ -33,7 +33,7 @@ class Brain:
 
     def __init__(self, car, controller, detection, path_planner, desired_speed=DESIRED_SPEED):
         print("Initialize brain")
-        self.car = Automobile_Data(simulator=True) #not needed, just to import he methods in visual studio
+        self.car = Automobile_Data() #not needed, just to import he methods in visual studio
         self.car = car
         assert isinstance(self.car, Automobile_Data)
         self.controller = Controller() #again, not needed
@@ -216,7 +216,7 @@ class Brain:
 
     def follow_lane(self):
         print('Routine: follow_lane')
-        e2, e3, point_ahead = self.detect.detect_lane(self.car.cv_image)
+        e2, e3, point_ahead = self.detect.detect_lane(self.car.frame)
         _, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
         angle_ref = np.rad2deg(angle_ref)
         print(f'angle_ref: {angle_ref}')

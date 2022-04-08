@@ -7,7 +7,8 @@ import numpy as np
 from time import sleep, time
 os.system('clear')
 print('Main brain starting...')
-from automobile_data import Automobile_Data
+# from automobile_data import Automobile_Data
+from automobile_data_simulator import AutomobileDataSimulator
 from helper_functions import *
 from PathPlanning4 import PathPlanning
 from controller3 import Controller
@@ -53,8 +54,10 @@ if __name__ == '__main__':
 
     # init the car data
     os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
-    car = Automobile_Data(simulator=SIMULATOR, trig_cam=True, trig_gps=True, trig_bno=True, 
-                            trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
+    # car = Automobile_Data(simulator=SIMULATOR, trig_cam=True, trig_gps=True, trig_bno=True, 
+    #                         trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
+    car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
+                               trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
 
     # init trajectory
     path = PathPlanning(map) 
@@ -75,28 +78,29 @@ if __name__ == '__main__':
         fps_cnt = 0
         while not rospy.is_shutdown():
             os.system('cls' if os.name=='nt' else 'clear')
+            ## DEBUG INFO
+            print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
+            print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
+            print(f'total distance travelled: {car.encoder_distance:.2f} [m]')
+            print(f'Front sonar distance:     {car.filtered_sonar_distance:.2f} [m]')
+            print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
+            print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
+
             loop_start_time = time()
 
             # RUN BRAIN
             brain.run()
 
-            ## DEBUG INFO
-            print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
-            print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
-            print(f'total distance travelled: {car.tot_dist:.2f} [m]')
-            print(f'Front sonar distance:     {car.obstacle_ahead_median:.2f} [m]')
-            loop_time = time() - loop_start_time
-            fps_avg = (fps_avg * fps_cnt + 1.0 / loop_time) / (fps_cnt + 1)
-            fps_cnt += 1
-            print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
-            print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
-            print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
 
-            cv.imshow('frame', car.cv_image)
+            cv.imshow('frame', car.frame)
             if cv.waitKey(1) == 27:
                 cv.destroyAllWindows()
                 break
 
+            loop_time = time() - loop_start_time
+            fps_avg = (fps_avg * fps_cnt + 1.0 / loop_time) / (fps_cnt + 1)
+            fps_cnt += 1
+            print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
             sleep(LOOP_DELAY)
 
     except KeyboardInterrupt:

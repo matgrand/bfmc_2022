@@ -87,7 +87,7 @@ if __name__ == '__main__':
 
             tmp = np.copy(map)
             # Get the image from the camera
-            frame = car.cv_image.copy()
+            frame = car.frame.copy()
             sleep(VISION_DELAY)
 
             #FOLLOW predefined trajectory
@@ -182,8 +182,8 @@ if __name__ == '__main__':
             print(f'DESIRED_SPEED = {DESIRED_SPEED:.3f} [m/s], speed_ref = {speed_ref:.3f} [m/s], angle_ref = {np.rad2deg(angle_ref):.3f} [deg]')
             print(f"INFO:\nState: {info[0]}\nNext: {info[1]}\nAction: {info[2]}\nDistance: {info[3]}") if generate_path else None
             print(f'distance line ahead :     {float(dist):.2f} [m]') if not training else None
-            print(f'total distance travelled: {car.tot_dist:.2f} [m]')
-            print(f'Front sonar distance:     {car.obstacle_ahead_median:.2f} [m]')
+            print(f'total distance travelled: {car.encoder_distance:.2f} [m]')
+            print(f'Front sonar distance:     {car.filtered_sonar_distance:.2f} [m]')
             print(f'Net out:\n {lane_info}') if not training else None
             print(f'e_yaw: {e3:.2f} [rad] \ncurv: {100*curv}') if not training else None
             # print(f'Curvature radius = {radius:.2f}')
