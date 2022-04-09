@@ -108,10 +108,10 @@ class AutomobileDataSimulator(Automobile_Data):
             velocity = (delta * sign) / dt
             self.encoder_velocity_callback(data=velocity) 
             self.encoder_distance += sign*delta
-            self.update_rel_position()
             self.prev_x_true = curr_x
             self.prev_y_true = curr_y
             self.prev_timestamp = curr_time
+        self.update_rel_position()
 
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received

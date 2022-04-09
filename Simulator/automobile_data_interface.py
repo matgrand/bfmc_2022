@@ -187,12 +187,14 @@ class Automobile_Data():
         """Update relative pose of the car
         right-hand frame of reference with x aligned with the direction of motion
         """  
-        self.yawLoc = diff_angle(self.yaw, self.yawLoc_o)
-        self.distLoc = np.abs(self.encoder_distance - self.distLoc_o)
-        x_increment = self.distLoc * np.cos(self.yawLoc)
-        y_increment = - self.distLoc * np.sin(self.yawLoc)
-        self.xLoc += x_increment
-        self.yLoc += y_increment
+        self.yaw_loc = diff_angle(self.yaw, self.yaw_loc_o)
+        prev_dist = self.dist_loc
+        self.dist_loc = np.abs(self.encoder_distance - self.dist_loc_o)
+        dist_increment = np.abs(self.dist_loc - prev_dist)
+        x_increment = dist_increment * np.cos(self.yaw_loc)
+        y_increment = - dist_increment * np.sin(self.yaw_loc)
+        self.x_loc += x_increment
+        self.y_loc += y_increment
 
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received
@@ -233,12 +235,12 @@ class Automobile_Data():
     def reset_rel_pose(self) -> None:
         """Set origin of the local frame to the actual pose
         """        
-        self.xLoc = 0.0
-        self.yLoc = 0.0
-        self.yawLoc_o = self.yaw
-        self.yawLoc = 0.0
-        self.distLoc = 0.0
-        self.distLoc_o = self.encoder_distance
+        self.x_loc = 0.0
+        self.y_loc = 0.0
+        self.yaw_loc_o = self.yaw
+        self.yaw_loc = 0.0
+        self.dist_loc = 0.0
+        self.dist_loc_o = self.encoder_distance
 
     # STATIC METHODS
     def normalizeSpeed(val):
