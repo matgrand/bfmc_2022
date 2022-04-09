@@ -7,6 +7,17 @@ import cv2 as cv
 from pyclothoids import Clothoid
 
 from helper_functions import *
+# EVENT TYPES #match with brain.py
+INTERSECTION_STOP_EVENT = 'intersection_stop_event'
+INTERSECTION_TRAFFIC_LIGHT_EVENT = 'intersection_traffic_light_event'
+INTERSECTION_PRIORITY_EVENT = 'intersection_priority_event'
+JUNCTION_EVENT = 'junction_event'
+ROUNDABOUT_EVENT = 'roundabout_event'
+CROSSWALK_EVENT = 'crosswalk_event'
+PARKING_EVENT = 'parking_event'
+
+EVENT_TYPES = [INTERSECTION_STOP_EVENT, INTERSECTION_TRAFFIC_LIGHT_EVENT, INTERSECTION_PRIORITY_EVENT,
+                JUNCTION_EVENT, ROUNDABOUT_EVENT, CROSSWALK_EVENT, PARKING_EVENT]
 
 class PathPlanning(): 
     def __init__(self, map_img):
@@ -63,19 +74,26 @@ class PathPlanning():
         self.junctions = [467,314]
         self.junctions = [str(i) for i in self.junctions]
 
-        #stop line points
-        self.stop_line_points = np.load('data/stop_line_points.npy')
-        self.stop_line_types = np.load('data/stop_line_types.npy')
-        assert len(self.stop_line_points) == len(self.stop_line_types), "stop line points and types are not the same length"
-        type_names = [
-            'intersection_stop',
-            'intersection_traffic_light',
-            'intersection_priority', 
-            'junction',
-            'roundabout',
-            'crosswalk',
-        ]
-        self.stop_line_types = [type_names[int(i)] for i in self.stop_line_types]
+        # #stop line points
+        # self.stop_line_points = np.load('data/stop_line_points.npy')
+        # self.stop_line_types = np.load('data/stop_line_types.npy')
+        # assert len(self.stop_line_points) == len(self.stop_line_types), "stop line points and types are not the same length"
+        # type_names = [
+        #     'intersection_stop',
+        #     'intersection_traffic_light',
+        #     'intersection_priority', 
+        #     'junction',
+        #     'roundabout',
+        #     'crosswalk',
+        # ]
+        # self.stop_line_types = [type_names[int(i)] for i in self.stop_line_types]
+
+        #event points
+        self.event_points = np.load('data/event_points.npy')
+        self.event_types = np.load('data/event_types.npy')
+        assert len(self.event_points) == len(self.event_types), "event points and types are not the same length"
+        event_type_names = EVENT_TYPES
+        self.event_types = [event_type_names[int(i)] for i in self.event_types]
 
         # import nodes and edges
         self.list_of_nodes = list(self.G.nodes)
@@ -285,22 +303,98 @@ class PathPlanning():
     
     def augment_path(self, draw=True):
 
-        self.path_stop_line_points = []
-        self.path_stop_line_points_idx = []
-        self.path_stop_line_types = []
+        exit_points = self.intersection_out + self.ra_exit
+        exit_points = np.array([self.get_coord(x) for x in exit_points])
+
+        path_exit_points = []
+        path_exit_point_idx = []
+        #get all the points the path intersects with the exit_points
+        for i in range(len(exit_points)):
+            p = exit_points[i]
+            distances = np.linalg.norm(self.path - p, axis=1)
+            index_min_dist = np.argmin(distances)
+            min_dist = distances[index_min_dist]
+            if min_dist < 0.1:
+                path_exit_points.append(p)
+                path_exit_point_idx.append(index_min_dist)
+                if draw:
+                    cv.circle(self.map, (m2pix(p[0]), m2pix(p[1])), 20, (0,150,0), 5)
+        path_exit_point_idx = np.array(path_exit_point_idx)
+        #reorder points by idx
+        exit_points = []
+        exit_points_idx = []
+        max_idx = max(path_exit_point_idx)
+        for i in range(len(path_exit_points)):
+            min_idx = np.argmin(path_exit_point_idx)
+            exit_points.append(path_exit_points[min_idx])
+            exit_points_idx.append(path_exit_point_idx[min_idx])
+            path_exit_point_idx[min_idx] = max_idx+1
+
+        # print("exit points: ", exit_points_idx)
+
 
         #get all the points the path intersects with the stop_line_points
-        for i in range(len(self.stop_line_points)):
-            p = self.stop_line_points[i]
+        path_event_points = []
+        path_event_points_idx = []
+        path_event_types = []
+        for i in range(len(self.event_points)):
+            p = self.event_points[i]
             distances = np.linalg.norm(self.path - p, axis=1)
             index_min_dist = np.argmin(distances)
             min_dist = distances[index_min_dist]
             if min_dist < 0.05:
-                self.path_stop_line_points.append(p)
-                self.path_stop_line_points_idx.append(index_min_dist)
-                self.path_stop_line_types.append(self.stop_line_types[i])
+                path_event_points.append(p)
+                path_event_points_idx.append(index_min_dist)
+                path_event_types.append(self.event_types[i])
                 if draw:
                     cv.circle(self.map, (m2pix(p[0]), m2pix(p[1])), 20, (0,255,0), 5)
+        
+        path_event_points_idx = np.array(path_event_points_idx)
+        #reorder
+        self.path_event_points = []
+        self.path_event_points_distances = []
+        self.path_event_points_idx = []
+        self.path_event_types = []
+        max_idx = np.max(path_event_points_idx)
+        for i in range(len(path_event_points)):
+            min_idx = np.argmin(path_event_points_idx)
+            self.path_event_points.append(path_event_points[min_idx])
+            self.path_event_points_idx.append(path_event_points_idx[min_idx])
+            self.path_event_points_distances.append(0.01*path_event_points_idx[min_idx])
+            self.path_event_types.append(path_event_types[min_idx])
+            path_event_points_idx[min_idx] = max_idx + 1
+
+        
+        
+        #add path ahead after intersections and roundabouts
+        path_event_path_ahead = []
+        local_idx = 0
+        for i in range(len(path_event_points)):
+            t = self.path_event_types[i]
+            if t.startswith('intersection') or t.startswith('roundabout'):
+                # print(f'local_idx = {local_idx} -- i = {i} -- {self.path_event_points_idx[i]} -- {exit_points_idx[local_idx]}')
+                path_ahead = self.path[self.path_event_points_idx[i]:exit_points_idx[local_idx]]
+                local_idx += 1
+                path_event_path_ahead.append(path_ahead)
+                if draw:
+                    for p in path_ahead:
+                        cv.circle(self.map, (m2pix(p[0]), m2pix(p[1])), 10, (200,150,0), 5)
+
+            else:
+                path_event_path_ahead.append(None)
+
+
+
+        # print(f'local_idx: {local_idx}')
+        print("path_event_points_idx: ", self.path_event_points_distances)
+        print("path_event_points: ", self.path_event_points)
+        print("path_event_types: ", self.path_event_types)
+        sleep(5.0)
+
+        events = list(zip(self.path_event_types, self.path_event_points_distances, self.path_event_points, path_event_path_ahead))
+
+        return events
+
 
     def generate_path_passing_through(self, list_of_nodes, step_length=0.01):
         """
@@ -371,14 +465,12 @@ class PathPlanning():
         for i,instruction in enumerate(self.navigator):
             print(i+1,") ",instruction)
     
-    @staticmethod
     def compute_path(xi, yi, thi, xf, yf, thf, step_length):
         clothoid_path = Clothoid.G1Hermite(xi, yi, thi, xf, yf, thf)
         length = clothoid_path.length
         [X,Y] = clothoid_path.SampleXY(int(length/step_length))
         return [X,Y]
     
-    @staticmethod
     def interpolate_route(route, step_length):
         path_X = []
         path_Y = []
