@@ -35,7 +35,7 @@ VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.7# [m/s]
+DESIRED_SPEED = 0.4# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -90,6 +90,9 @@ if __name__ == '__main__':
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
             print(f'Current velocity: {car.filtered_encoder_velocity:.3f} [m/s]')
             print(f'total distance travelled: {car.encoder_distance:.2f} [m]')
+            print()
+            print(f'Local: dist: {car.dist_loc:.2f} [m], x: {car.x_loc:.2f} [m], y: {car.y_loc:.2f} [m], yaw: {np.rad2deg(car.yaw_loc):.2f} [deg]')
+            print()
             print(f'Front sonar distance:     {car.filtered_sonar_distance:.2f} [m]')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
             print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')

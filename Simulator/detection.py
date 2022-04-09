@@ -165,7 +165,7 @@ class Detection:
         # assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
         self.stop_line_estimator.setInput(blob)
         output = self.stop_line_estimator.forward()
-        dist = output[0]
+        dist = output[0][0]
         self.est_dist_to_stop_line = dist
 
         # return e2, e3, inv_dist, curv, est_point_ahead
@@ -176,7 +176,7 @@ class Detection:
         if show_ROI:
             cv.imshow('stop_line_detection', frame)
             cv.waitKey(1)
-        print(f"stop_line_detection dist: {dist}, in {stop_line_detection_time:.2f} ms")
+        print(f"stop_line_detection dist: {dist:.2f}, in {stop_line_detection_time:.2f} ms")
         return dist
 
     def estimate_local_path(self, frame):

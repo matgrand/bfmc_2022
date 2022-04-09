@@ -389,7 +389,7 @@ class PathPlanning():
         print("path_event_points_idx: ", self.path_event_points_distances)
         print("path_event_points: ", self.path_event_points)
         print("path_event_types: ", self.path_event_types)
-        sleep(5.0)
+        # sleep(5.0)
 
         events = list(zip(self.path_event_types, self.path_event_points_distances, self.path_event_points, path_event_path_ahead))
 

@@ -100,23 +100,18 @@
         </surface>
       </collision>-->
       <sensor type="camera" name="camera1">
-        <update_rate>30.0</update_rate>
+        <update_rate>15.0</update_rate>
         <camera name="camera_top">
           <horizontal_fov>1.085594795</horizontal_fov>
           <image>
-            <width>720</width>
-            <height>720</height>
+            <width>240</width>
+            <height>240</height>
             <format>R8G8B8</format>
           </image>
           <clip>
             <near>0.02</near>
             <far>4.5</far>
           </clip>
-          <noise>
-            <type>gaussian</type>
-            <mean>0.0</mean>
-            <stddev>0.0</stddev>
-          </noise>
         </camera>
 
         <plugin name="camera_controller" filename="libgazebo_ros_camera.so">

@@ -57,7 +57,7 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
     #check shape
     if points[0].shape == (2,):
         #add 0 Z component
-        points = np.concatenate((points, -car.cam_z*np.ones((num_points,1))), axis=1)
+        points = np.concatenate((points, -car.CAM_Z*np.ones((num_points,1))), axis=1)
 
     #rotate the points around the z axis
     if align_to_car:
@@ -74,7 +74,7 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
     # front_points = []
     rel_pos_points = []
     for i, point in enumerate(points):
-        if np.abs(diff_angles[i]) < car.cam_fov/2:
+        if np.abs(diff_angles[i]) < car.CAM_FOV/2:
             # front_points.append(point)
             rel_pos_points.append(diff[i])
 
@@ -91,7 +91,7 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
     #     cv.circle(map, m2pix(p[:2]), 15, (0,255,255), -1)
 
     #rotate the points around the relative y axis, pitch
-    beta = -car.cam_pitch
+    beta = -car.CAM_PITCH
     rot_matrix = np.array([[np.cos(beta), 0, np.sin(beta)],
                             [0, 1, 0],
                             [-np.sin(beta), 0, np.cos(beta)]])
@@ -142,27 +142,39 @@ def draw_bounding_box(frame, bounding_box, color=(0,0,255)):
     cv.rectangle(frame, (x,y), (x2,y2), color, 2)
     return frame
 
-def get_curvature(points, v_des):
-    # calculate curvature 
-    local_traj = points
-    #get length
-    path_length = 0
-    for i in range(len(points)-1):
-        x1,y1 = points[i]
-        x2,y2 = points[i+1]
-        path_length += np.hypot(x2-x1,y2-y1) 
-    #time
-    tot_time = path_length / v_des
-    local_time = np.linspace(0, tot_time, len(local_traj))
-    dx_dt = np.gradient(local_traj[:,0], local_time)
-    dy_dt = np.gradient(local_traj[:,1], local_time)
-    dp_dt = np.gradient(local_traj, local_time, axis=0)
-    v = np.linalg.norm(dp_dt, axis=1)
-    ddx_dt = np.gradient(dx_dt, local_time)
-    ddy_dt = np.gradient(dy_dt, local_time)
-    curv = (dx_dt*ddy_dt-dy_dt*ddx_dt) / np.power(v,1.5)
-    avg_curv = np.mean(curv)
-    return avg_curv
+def get_curvature(points, v_des=0.0):
+    #OLD VERSION
+    # # calculate curvature 
+    # local_traj = points
+    # #get length
+    # path_length = 0
+    # for i in range(len(points)-1):
+    #     x1,y1 = points[i]
+    #     x2,y2 = points[i+1]
+    #     path_length += np.hypot(x2-x1,y2-y1) 
+    # #time
+    # tot_time = path_length / v_des
+    # local_time = np.linspace(0, tot_time, len(local_traj))
+    # dx_dt = np.gradient(local_traj[:,0], local_time)
+    # dy_dt = np.gradient(local_traj[:,1], local_time)
+    # dp_dt = np.gradient(local_traj, local_time, axis=0)
+    # v = np.linalg.norm(dp_dt, axis=1)
+    # ddx_dt = np.gradient(dx_dt, local_time)
+    # ddy_dt = np.gradient(dy_dt, local_time)
+    # curv = (dx_dt*ddy_dt-dy_dt*ddx_dt) / np.power(v,1.5)
+    # avg_curv = np.mean(curv)
+    # return avg_curv
+    diff = points[1:] - points[:-1]
+    distances = np.linalg.norm(diff, axis=1)
+    d = np.mean(distances)
+    angles = np.arctan2(diff[:,1], diff[:,0]) 
+    alphas = diff_angle(angles[1:], angles[:-1])
+    alpha = np.mean(alphas)
+    curv = (2*np.sin(alpha*0.5)) / d
+    COMPENSATION_FACTOR = 0.855072 
+    return curv * COMPENSATION_FACTOR
+
+
 
 #detection functions
 def wrap_detection(output_data):
