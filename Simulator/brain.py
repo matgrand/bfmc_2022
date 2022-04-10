@@ -18,7 +18,7 @@ IN_SIMULATOR = True
 SHOW_IMGS = True
 
 START_NODE = 86
-END_NODE = 236#169#116
+END_NODE = 285#236#169#116
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -129,6 +129,8 @@ assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
 STOP_WAIT_TIME = .5 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.15 #distance from previous stop_line from which is possible to start detecting a stop line again
+POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
+USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
 #==============================================================
 #=========================== BRAIN ============================
@@ -291,14 +293,16 @@ class Brain:
     def intersection_navigation(self):
         print('State: intersection_navigation')
         self.activate_routines([])
-        self.switch_to_state(TRACKING_LOCAL_PATH)
-        # if self.next_event.curvature > 0.5:
-        #     self.switch_to_state(TURNING_RIGHT)
-        # elif self.next_event.curvature < -0.5:
-        #     self.switch_to_state(TURNING_LEFT)
-        # else:
-        #     self.switch_to_state(GOING_STRAIGHT)
-        # self.car.drive_speed(self.desired_speed)
+        if USE_LOCAL_TRACKING_FOR_INTERSECTIONS:
+            self.switch_to_state(TRACKING_LOCAL_PATH)
+        else:
+            if self.next_event.curvature > 0.5:
+                self.switch_to_state(TURNING_RIGHT)
+            elif self.next_event.curvature < -0.5:
+                self.switch_to_state(TURNING_LEFT)
+            else:
+                self.switch_to_state(GOING_STRAIGHT)
+            self.car.drive_speed(self.desired_speed)
         
     def turning_right(self):
         print('State: turning_right')
@@ -378,6 +382,7 @@ class Brain:
         print('State: tracking_local_path') #var1=initial distance from stop_line, #var2=path to follow
         self.activate_routines([])
         if self.curr_state.just_switched:
+            self.car.stop()
             #get distance from the line and lateral error e2
             self.detect.detect_stop_line(self.car.frame)
             if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE:
@@ -389,44 +394,104 @@ class Brain:
             # NOTE: in the real car we need to have a GLOBAL YAW OFFSET to match the simulator with the real track
             local_path_wf = self.next_event.path_ahead # wf = world frame
             stop_line_position = self.next_event.point
+            # stop line frame: centered in the stop line with same orientation as world
             local_path_slf = local_path_wf - stop_line_position #slf = stop line frame
             alpha = self.car.yaw + YAW_GLOBAL_OFFSET
             rot_matrix = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
+            #stop line frame, but now oriented in the same direction of the car
             local_path_slf_rot = np.matmul(rot_matrix, local_path_slf.T).T
             # ## get position of the car in the stop line frame
             # # car_position_slf = self.car.position - stop_line_position #with good gps estimate
-            car_position_slf = np.array([+d+0.2, e2])
+            car_position_slf = np.array([+d+0.25, -e2])#np.array([+d+0.2, -e2])
             local_path_cf = local_path_slf_rot + car_position_slf #cf = car frame
             self.curr_state.var1 = local_path_cf
 
             print('local_path_cf_rot: ', local_path_cf[:20])
             #plot
             if SHOW_IMGS:
-                img, proj = project_onto_frame(self.car.frame.copy(), self.car, local_path_cf, align_to_car=False)
+                img = self.car.frame.copy()
+                #project the whole path (true)
+                img, _ = project_onto_frame(img, self.car, self.path_planner.path, align_to_car=True, color=(0, 100, 0))
+                #project local path (estimated), it should match the true path
+                img, _ = project_onto_frame(img, self.car, local_path_cf, align_to_car=False)
                 cv.imshow('brain_debug', img)
                 cv.waitKey(1)
 
             self.car.reset_rel_pose()
+            self.curr_state.var2 = np.array([self.car.x_true, self.car.y_true]) #var2 hold original position
+            true_start_pos_wf = self.curr_state.var2
+            if SHOW_IMGS:
+                true_start_pos_wf_pix = m2pix(true_start_pos_wf)
+                cv.circle(self.path_planner.map, (true_start_pos_wf_pix[0], true_start_pos_wf_pix[1]), 30, (255, 0, 255), 5)
+                cv.imshow('Path', self.path_planner.map)
+                cv.waitKey(1)
             self.curr_state.just_switched = False
+            #debug
+            self.car.stop()
+            sleep(1.0)
+            if SHOW_IMGS:
+                cv.namedWindow('local_path', cv.WINDOW_NORMAL)
+                local_map_img = np.zeros_like(self.path_planner.map)
+                h = local_map_img.shape[0]
+                w = local_map_img.shape[1]
+                local_map_img[w//2-2:w//2+2, :] = 255
+                local_map_img[:, h//2-2:h//2+2] = 255
+                for i in range(len(local_path_cf)):
+                    if (i%3 == 0):
+                        p = local_path_cf[i]
+                        cv.circle(local_map_img, (m2pix(p[0])+w//2, m2pix(p[1])+h//2), 10, (0, 150, 150), -1)
+            cv.imshow('local_path', local_map_img)
+            cv.waitKey(1)  
+            self.curr_state.var3 = local_map_img
         
+        D = POINT_AHEAD_DISTANCE_LOCAL_TRACKING
+
         #track the local path using simple pure pursuit
         path_idx = int(100*self.car.dist_loc) # m -> cm -> idx
-        print('path_idx: ', path_idx)
-        local_path = self.curr_state.var1 - np.array([self.car.x_loc, self.car.y_loc])
+        car_pos_loc = np.array([self.car.x_loc, self.car.y_loc])
+        local_path = self.curr_state.var1 - car_pos_loc
+
         rot_matrix = np.array([[np.cos(self.car.yaw_loc), -np.sin(self.car.yaw_loc)], [np.sin(self.car.yaw_loc), np.cos(self.car.yaw_loc)]])
         local_path = np.matmul(rot_matrix, local_path.T).T
-        max_idx = len(local_path)-10
+
+        if SHOW_IMGS:
+            local_map_img = self.curr_state.var3
+            h = local_map_img.shape[0]
+            w = local_map_img.shape[1]
+            angle = self.car.yaw_loc_o # + self.car.yaw_loc
+            rot_matrix_w = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+            # show car position in the local frame (from the encoder)
+            cv.circle(local_map_img, (m2pix(car_pos_loc[0])+w//2, m2pix(car_pos_loc[1])+h//2), 5, (255, 0, 255), 2)
+            # show the true position to check if they match, translated wrt starting position into the local frame
+            true_start_pos_wf = self.curr_state.var2
+            true_pos_loc = np.array([self.car.x_true, self.car.y_true]) - true_start_pos_wf
+            true_pos_loc = np.matmul(rot_matrix_w, true_pos_loc.T).T
+            cv.circle(local_map_img, (m2pix(true_pos_loc[0])+w//2, m2pix(true_pos_loc[1])+h//2), 7, (0, 255, 0), 2)
+            cv.imshow('local_path', local_map_img)
+            true_start_pos_wf = self.curr_state.var2
+            car_pos_loc_rot_wf = np.matmul(rot_matrix_w.T, car_pos_loc.T).T 
+            car_pos_wf = true_start_pos_wf + car_pos_loc_rot_wf
+            # show car position in wf (encoder)
+            cv.circle(self.path_planner.map, (m2pix(car_pos_wf[0]), m2pix(car_pos_wf[1])), 5, (255, 0, 255), 2)
+            # show the true position to check if they match
+            true_pos_wf = np.array([self.car.x_true, self.car.y_true])
+            cv.circle(self.path_planner.map, (m2pix(true_pos_wf[0]), m2pix(true_pos_wf[1])), 7, (0, 255, 0), 2)
+            cv.imshow('Path', self.path_planner.map)
+            cv.waitKey(1)
+        max_idx = len(local_path)-1
         if path_idx > max_idx:
             self.switch_to_state(LANE_FOLLOWING)
             self.go_to_next_event()
         else:
             point_ahead = local_path[path_idx]
             if SHOW_IMGS:
-                img, proj = project_onto_frame(self.car.frame.copy(), self.car, point_ahead, align_to_car=False)
+                img = self.car.frame.copy()
+                img, _ = project_onto_frame(img, self.car, local_path, align_to_car=False)
+                img, _ = project_onto_frame(img, self.car, point_ahead, align_to_car=False, color=(0,0,255))
                 cv.imshow('brain_debug', img)
                 cv.waitKey(1)
-            yaw_error = - np.arctan2(point_ahead[1]-self.car.x_loc, point_ahead[0]-self.car.y_loc) + self.car.yaw
-            out_speed, out_angle = self.controller.get_control(0.0, yaw_error, 0.0, self.desired_speed*0.2)
+            yaw_error = np.arctan2(point_ahead[1], point_ahead[0]) 
+            out_speed, out_angle = self.controller.get_control(0.0, yaw_error, 0.0, self.desired_speed)
             self.car.drive(out_speed, np.rad2deg(out_angle))
 
 

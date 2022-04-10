@@ -6,6 +6,7 @@ from sensor_msgs.msg import Image, Range
 import rospy, json, collections
 from cv_bridge import CvBridge
 import numpy as np
+from time import time,sleep
 from helper_functions import *
 
 ENCODER_TIMER = 0.01 #frequency of encoder reading
@@ -96,7 +97,8 @@ class AutomobileDataSimulator(Automobile_Data):
         curr_y = self.y_true
         prev_x = self.prev_x_true
         prev_y = self.prev_y_true
-        curr_time = self.timestamp
+        # curr_time = self.timestamp
+        curr_time = time()
         prev_time = self.prev_timestamp
         delta = np.sqrt((curr_x - prev_x)**2 + (curr_y - prev_y)**2)
         #get the direction of the movement: + or -
@@ -111,7 +113,7 @@ class AutomobileDataSimulator(Automobile_Data):
             self.prev_x_true = curr_x
             self.prev_y_true = curr_y
             self.prev_timestamp = curr_time
-        self.update_rel_position()
+            self.update_rel_position()
 
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received
