@@ -142,7 +142,6 @@ class Automobile_Data():
         self.CAM_FOV = CAM_FOV
         self.CAM_K = CAM_K
 
-
         # I/O interface
         rospy.init_node('automobile_data', anonymous=False)
 

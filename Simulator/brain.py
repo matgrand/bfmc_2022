@@ -7,6 +7,8 @@ import cv2 as cv
 import os
 from time import time, sleep
 
+from torch import exp2, exp2_
+
 from automobile_data_interface import Automobile_Data
 from helper_functions import *
 from PathPlanning4 import PathPlanning
@@ -19,7 +21,7 @@ IN_SIMULATOR = True
 SHOW_IMGS = True
 
 START_NODE = 86
-END_NODE = 285#236#169#116
+END_NODE = 285#285#236#169#116
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -130,8 +132,8 @@ STOP_LINE_STOP_DISTANCE = 0.1
 assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
 STOP_WAIT_TIME = .5 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
-STOP_LINE_DISTANCE_THRESHOLD = 0.15 #distance from previous stop_line from which is possible to start detecting a stop line again
-POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.2
+STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which is possible to start detecting a stop line again
+POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
 USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
 #==============================================================
@@ -234,8 +236,10 @@ class Brain:
         #initialize the list of events on the path
         events = self.path_planner.augment_path()
         self.events = self.create_sequence_of_events(events)
+
         # self.events = events
         self.next_event = self.events[0]
+        self.prev_event = None
         
         self.path_planner.draw_path()
         print('Starting in 2 second...')
@@ -246,9 +250,20 @@ class Brain:
 
     def end_state(self):
         print('State: end_state')
-        self.car.stop()
-        sleep(1.5)
-        exit()
+        self.activate_routines([FOLLOW_LANE])
+        if self.curr_state.just_switched:
+            prev_event_dist = self.prev_event.dist
+            end_dist = len(self.path_planner.path)*0.01
+            dist_to_end = end_dist - prev_event_dist
+            self.curr_state.var1 = dist_to_end
+            self.car.reset_rel_pose()
+            self.car.drive_speed(self.desired_speed)
+            self.curr_state.just_switched = False
+        dist_to_end = self.curr_state.var1
+        if np.abs(dist_to_end - self.car.dist_loc) < 0.1:
+            self.car.stop()
+            sleep(2.5)
+            exit()
 
     def doing_nothing(self):
         print('State: doing_nothing')
@@ -263,7 +278,8 @@ class Brain:
             self.car.drive_speed(self.desired_speed)
             self.curr_state.just_switched = False
         #check if we are approaching a stop_line, but only if we are far enough from the previous stop_line
-        far_enough_from_prev_stop_line = (self.car.encoder_distance - self.curr_state.start_distance) > STOP_LINE_DISTANCE_THRESHOLD
+        far_enough_from_prev_stop_line = (self.prev_event is None) or (self.car.dist_loc > STOP_LINE_DISTANCE_THRESHOLD)
+        print(f'stop enough: {self.car.encoder_distance - self.prev_event.dist}') if self.prev_event is not None else None
         if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE and far_enough_from_prev_stop_line:
             self.switch_to_state(APPROACHING_STOP_LINE)
             return
@@ -276,6 +292,7 @@ class Brain:
         #check if we are here by mistake
         if dist > STOP_LINE_APPROACH_DISTANCE:
             self.switch_to_state(LANE_FOLLOWING)
+            self.car.drive_speed(self.desired_speed)
             return
         if dist < STOP_LINE_STOP_DISTANCE:
             next_event_name = self.next_event.name
@@ -297,6 +314,7 @@ class Brain:
                 self.car.stop()
                 sleep(10.0)
                 self.switch_to_state(END_STATE)
+            self.car.reset_rel_pose() ###################### NOTE
 
     def intersection_navigation(self):
         print('State: intersection_navigation')
@@ -410,8 +428,8 @@ class Brain:
             local_path_slf_rot = np.matmul(rot_matrix, local_path_slf.T).T
             # ## get position of the car in the stop line frame
             # # car_position_slf = self.car.position - stop_line_position #with good gps estimate
-            car_position_slf = np.array([+d+0.25+0.13, -e2])#np.array([+d+0.2, -e2])
-            local_path_cf = local_path_slf_rot + car_position_slf #cf = car frame
+            car_position_slf = -np.array([+d+0.3+0.13, -e2])#np.array([+d+0.2, -e2])
+            local_path_cf = local_path_slf_rot - car_position_slf #cf = car frame
             self.curr_state.var1 = local_path_cf
 
             print('local_path_cf_rot: ', local_path_cf[:20])
@@ -430,7 +448,12 @@ class Brain:
             true_start_pos_wf = self.curr_state.var2
             if SHOW_IMGS:
                 true_start_pos_wf_pix = m2pix(true_start_pos_wf)
-                cv.circle(self.path_planner.map, (true_start_pos_wf_pix[0], true_start_pos_wf_pix[1]), 30, (255, 0, 255), 5)
+                est_car_pos_slf = car_position_slf
+                est_car_pos_slf_rot = np.matmul(rot_matrix.T, est_car_pos_slf.T).T
+                est_car_pos_wf = est_car_pos_slf_rot + stop_line_position
+                est_start_pos_wf_pix = m2pix(est_car_pos_wf)
+                cv.circle(self.path_planner.map, (est_start_pos_wf_pix[0], est_start_pos_wf_pix[1]), 25, (255, 0, 255), 5)
+                cv.circle(self.path_planner.map, (true_start_pos_wf_pix[0], true_start_pos_wf_pix[1]), 30, (0, 255, 0), 5)
                 cv.imshow('Path', self.path_planner.map)
                 cv.waitKey(1)
             self.curr_state.just_switched = False
@@ -495,7 +518,10 @@ class Brain:
             cv.circle(self.path_planner.map, (m2pix(true_pos_wf[0]), m2pix(true_pos_wf[1])), 7, (0, 255, 0), 2)
             cv.imshow('Path', self.path_planner.map)
             cv.waitKey(1)
-        max_idx = len(local_path_cf)-13
+        if np.abs(get_curvature(local_path_cf)) < 0.5: #the local path is straight
+            max_idx = len(local_path_cf)-30 #dont follow until the end
+        else: #curvy path
+            max_idx = len(local_path_cf)-1  #follow until the end
         if idx_point_ahead >= max_idx:
             self.switch_to_state(LANE_FOLLOWING)
             self.go_to_next_event()
@@ -507,11 +533,12 @@ class Brain:
                 img, _ = project_onto_frame(img, self.car, point_ahead, align_to_car=False, color=(0,0,255))
                 cv.imshow('brain_debug', img)
                 cv.waitKey(1)
-                
-            yaw_error = np.arctan2(point_ahead[1], point_ahead[0]) 
-            out_speed, out_angle = self.controller.get_control(0.0, yaw_error, 0.0, self.desired_speed)
-            self.car.drive(out_speed, np.rad2deg(out_angle))
 
+            gains = [0.0, .0, 1.2, 0.0] #k1,k2,k3,k3D
+            e2 = -local_path_cf[idx_car_on_path][1] 
+            yaw_error = np.arctan2(point_ahead[1], point_ahead[0]) 
+            out_speed, out_angle = self.controller.get_control(e2, yaw_error, 0.0, self.desired_speed, gains=gains)
+            self.car.drive(out_speed, np.rad2deg(out_angle))
 
     def roundabout_navigation(self):
         print('State: roundabout_navigation')
@@ -540,26 +567,23 @@ class Brain:
         pass
 
     def overtaking_static_car(self):
-        print('Routine: overtaking_static_car')
+        print('State: overtaking_static_car')
         pass
 
     def overtaking_moving_car(self):
-        print('Routine: overtaking_moving_car')
+        print('State: overtaking_moving_car')
         pass
 
     def tailing_car(self):
-        print('Routine: tailing_car')
+        print('State: tailing_car')
         pass
 
     def avoiding_obstacle(self):
-        print('Routine: avoiding_obstacle')
+        print('State: avoiding_obstacle')
         pass
-
-
 
     
     #=============== ROUTINES ===============#
-
     def follow_lane(self):
         print('Routine: follow_lane')
         e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
@@ -662,8 +686,8 @@ class Brain:
             self.switch_to_state(END_STATE)
         else:
             self.event_idx += 1
-            self.prev_event = self.next_event
             self.next_event = self.events[self.event_idx]
+        self.prev_event = self.next_event
 
     def create_sequence_of_events(self, events):
         """

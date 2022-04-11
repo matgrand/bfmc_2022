@@ -332,7 +332,6 @@ class PathPlanning():
 
         # print("exit points: ", exit_points_idx)
 
-
         #get all the points the path intersects with the stop_line_points
         path_event_points = []
         path_event_points_idx = []
@@ -373,7 +372,8 @@ class PathPlanning():
             t = self.path_event_types[i]
             if t.startswith('intersection') or t.startswith('roundabout'):
                 # print(f'local_idx = {local_idx} -- i = {i} -- {self.path_event_points_idx[i]} -- {exit_points_idx[local_idx]}')
-                path_ahead = self.path[self.path_event_points_idx[i]:exit_points_idx[local_idx]]
+                end_idx = min(exit_points_idx[local_idx]+10, len(self.path))
+                path_ahead = self.path[self.path_event_points_idx[i]:end_idx]
                 local_idx += 1
                 path_event_path_ahead.append(path_ahead)
                 if draw:

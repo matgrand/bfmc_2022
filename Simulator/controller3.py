@@ -55,7 +55,7 @@ class Controller():
                 if file.endswith(".png"):
                     os.remove(os.path.join(folder, file))
     
-    def get_control(self, e2, e3, curv, desired_speed):
+    def get_control(self, e2, e3, curv, desired_speed, gains=None):
 
         self.e2 = e2
         self.e3 = e3
@@ -77,6 +77,9 @@ class Controller():
         else:
             k2 = self.k2
             k3 = self.k3
+
+        if gains is not None:
+            k1, k2, k3, k3D = gains
 
         # yaw error (e3), proportional term
         d = POINT_AHEAD_CM/100.0 #distance point ahead, matched with lane_detection
