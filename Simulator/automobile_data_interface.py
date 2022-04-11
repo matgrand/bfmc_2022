@@ -3,6 +3,7 @@
 import rospy
 import numpy as np
 from helper_functions import *
+import os
 # from estimation import EKFCar
 
 START_X = 0.2
@@ -188,11 +189,14 @@ class Automobile_Data():
         right-hand frame of reference with x aligned with the direction of motion
         """  
         self.yaw_loc = diff_angle(self.yaw, self.yaw_loc_o)
+        # dyaw = diff_angle(self.yaw_loc, self.prev_yaw_loc)
+        # dyaw = diff_angle(self.yaw_loc - self.prev_yaw_loc)
+        # self.yaw_loc = self.yaw - self.yaw_loc_o
         prev_dist = self.dist_loc
         self.dist_loc = np.abs(self.encoder_distance - self.dist_loc_o)
-        dist_increment = np.abs(self.dist_loc - prev_dist)
-        x_increment = dist_increment * np.cos(self.yaw_loc)
-        y_increment = - dist_increment * np.sin(self.yaw_loc)
+        L = np.abs(self.dist_loc - prev_dist)
+        x_increment = L * np.cos(self.yaw_loc)
+        y_increment = - L * np.sin(self.yaw_loc)
         self.x_loc += x_increment
         self.y_loc += y_increment
 
@@ -207,15 +211,15 @@ class Automobile_Data():
         """Set the speed of the car
         :acts on: self.speed 
         :param speed: speed of the car [m/s], defaults to 0.0
-        """                
-        pass
+        """       
+        raise NotImplementedError()         
 
     def drive_angle(self, angle=0.0) -> None:
         """Set the steering angle of the car
         :acts on: self.steer
         :param angle: [deg] desired angle, defaults to 0.0
-        """        
-        pass
+        """    
+        raise NotImplementedError()    
 
     def drive(self, speed=0.0, angle=0.0) -> None:
         """Command a speed and steer angle to the car
@@ -230,7 +234,7 @@ class Automobile_Data():
         :acts on: self.speed, self.steer
         :param angle: [deg] stop angle, defaults to 0.0
         """
-        pass
+        raise NotImplementedError()
 
     def reset_rel_pose(self) -> None:
         """Set origin of the local frame to the actual pose
@@ -238,7 +242,9 @@ class Automobile_Data():
         self.x_loc = 0.0
         self.y_loc = 0.0
         self.yaw_loc_o = self.yaw
+        self.prev_yaw = self.yaw
         self.yaw_loc = 0.0
+        self.prev_yaw_loc = 0.0
         self.dist_loc = 0.0
         self.dist_loc_o = self.encoder_distance
 

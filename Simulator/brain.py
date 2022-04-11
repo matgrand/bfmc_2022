@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+from importlib.resources import path
 from turtle import speed
 import numpy as np
 import cv2 as cv
@@ -23,6 +24,7 @@ END_NODE = 285#236#169#116
 #========================= STATES ==========================
 START_STATE = 'start_state'
 END_STATE = 'end_state'
+DOING_NOTHING = 'doing_nothing'
 LANE_FOLLOWING = 'lane_following'
 APPROACHING_STOP_LINE = 'approaching_stop_line'
 INTERSECTION_NAVIGATION = 'intersection_navigation'
@@ -129,7 +131,7 @@ assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
 STOP_WAIT_TIME = .5 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.15 #distance from previous stop_line from which is possible to start detecting a stop line again
-POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
+POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.2
 USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
 #==============================================================
@@ -178,6 +180,7 @@ class Brain:
         self.states = { 
             START_STATE:              State(START_STATE, self.start_state),
             END_STATE:                State(END_STATE, self.end_state),
+            DOING_NOTHING:            State(DOING_NOTHING, self.doing_nothing),
             # lane following, between intersections or roundabouts
             LANE_FOLLOWING:           State(LANE_FOLLOWING, self.lane_following),
             # intersection navigation, further divided into the possible directions [left, right, straight]
@@ -217,6 +220,7 @@ class Brain:
         self.last_run_call = time()
         print('Brain initialized')
         self.switch_to_state(START_STATE)
+        # self.switch_to_state(DOING_NOTHING)
 
     #=============== STATES ===============#
     def start_state(self):
@@ -245,6 +249,10 @@ class Brain:
         self.car.stop()
         sleep(1.5)
         exit()
+
+    def doing_nothing(self):
+        print('State: doing_nothing')
+        self.activate_routines([])
 
     def lane_following(self): # LANE FOLLOWING ##############################
         print('State: lane_following')
@@ -402,7 +410,7 @@ class Brain:
             local_path_slf_rot = np.matmul(rot_matrix, local_path_slf.T).T
             # ## get position of the car in the stop line frame
             # # car_position_slf = self.car.position - stop_line_position #with good gps estimate
-            car_position_slf = np.array([+d+0.25, -e2])#np.array([+d+0.2, -e2])
+            car_position_slf = np.array([+d+0.25+0.13, -e2])#np.array([+d+0.2, -e2])
             local_path_cf = local_path_slf_rot + car_position_slf #cf = car frame
             self.curr_state.var1 = local_path_cf
 
@@ -447,12 +455,21 @@ class Brain:
         D = POINT_AHEAD_DISTANCE_LOCAL_TRACKING
 
         #track the local path using simple pure pursuit
-        path_idx = int(100*self.car.dist_loc) # m -> cm -> idx
+        local_path = self.curr_state.var1
         car_pos_loc = np.array([self.car.x_loc, self.car.y_loc])
-        local_path = self.curr_state.var1 - car_pos_loc
+        local_path_cf = local_path - car_pos_loc
+        dist_path = np.linalg.norm(local_path_cf, axis=1)
+        #get idx of car position on the path
+        idx_car_on_path = np.argmin(dist_path)
+        dist_path = dist_path[idx_car_on_path:]
+        dist_path = np.abs(dist_path - D)
+        #get idx of point ahead
+        idx_point_ahead = np.argmin(dist_path) + idx_car_on_path
+        # idx_point_ahead = int(100*self.car.dist_loc) # m -> cm -> idx
+        print(f'idx_point_ahead: {idx_point_ahead} / {len(local_path_cf)}')
 
         rot_matrix = np.array([[np.cos(self.car.yaw_loc), -np.sin(self.car.yaw_loc)], [np.sin(self.car.yaw_loc), np.cos(self.car.yaw_loc)]])
-        local_path = np.matmul(rot_matrix, local_path.T).T
+        local_path_cf = np.matmul(rot_matrix, local_path_cf.T).T
 
         if SHOW_IMGS:
             local_map_img = self.curr_state.var3
@@ -478,18 +495,19 @@ class Brain:
             cv.circle(self.path_planner.map, (m2pix(true_pos_wf[0]), m2pix(true_pos_wf[1])), 7, (0, 255, 0), 2)
             cv.imshow('Path', self.path_planner.map)
             cv.waitKey(1)
-        max_idx = len(local_path)-1
-        if path_idx > max_idx:
+        max_idx = len(local_path_cf)-13
+        if idx_point_ahead >= max_idx:
             self.switch_to_state(LANE_FOLLOWING)
             self.go_to_next_event()
         else:
-            point_ahead = local_path[path_idx]
+            point_ahead = local_path_cf[idx_point_ahead]
             if SHOW_IMGS:
                 img = self.car.frame.copy()
-                img, _ = project_onto_frame(img, self.car, local_path, align_to_car=False)
+                img, _ = project_onto_frame(img, self.car, local_path_cf, align_to_car=False)
                 img, _ = project_onto_frame(img, self.car, point_ahead, align_to_car=False, color=(0,0,255))
                 cv.imshow('brain_debug', img)
                 cv.waitKey(1)
+                
             yaw_error = np.arctan2(point_ahead[1], point_ahead[0]) 
             out_speed, out_angle = self.controller.get_control(0.0, yaw_error, 0.0, self.desired_speed)
             self.car.drive(out_speed, np.rad2deg(out_angle))

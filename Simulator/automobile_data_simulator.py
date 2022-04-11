@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+from cmath import cos
 from automobile_data_interface import Automobile_Data
 from std_msgs.msg import String
 from utils.msg import IMU,localisation
@@ -83,8 +84,12 @@ class AutomobileDataSimulator(Automobile_Data):
         self.yaw = float(data.yaw)
         self.yaw_deg = np.rad2deg(self.yaw)
         #true position, not in real car
-        self.x_true = float(data.posx)
-        self.y_true = float(data.posy)
+
+        x_true = float(data.posx)
+        y_true = float(data.posy)
+        self.x_true = x_true - self.WB/2*np.cos(self.yaw)  
+        self.y_true = y_true + self.WB/2*np.sin(self.yaw)
+
         self.timestamp = float(data.timestamp)
         #NOTE: in the simulator we don't have neither acceleromter or gyroscope (yet)
 
@@ -97,10 +102,10 @@ class AutomobileDataSimulator(Automobile_Data):
         curr_y = self.y_true
         prev_x = self.prev_x_true
         prev_y = self.prev_y_true
-        # curr_time = self.timestamp
-        curr_time = time()
+        curr_time = self.timestamp
+        # curr_time = time()
         prev_time = self.prev_timestamp
-        delta = np.sqrt((curr_x - prev_x)**2 + (curr_y - prev_y)**2)
+        delta = np.hypot(curr_x - prev_x, curr_y - prev_y)
         #get the direction of the movement: + or -
         motion_yaw = - np.arctan2(curr_y - prev_y, curr_x - prev_x)
         abs_yaw_diff = np.abs(diff_angle(motion_yaw, self.yaw))
