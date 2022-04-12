@@ -323,12 +323,14 @@ class PathPlanning():
         #reorder points by idx
         exit_points = []
         exit_points_idx = []
-        max_idx = max(path_exit_point_idx)
-        for i in range(len(path_exit_points)):
-            min_idx = np.argmin(path_exit_point_idx)
-            exit_points.append(path_exit_points[min_idx])
-            exit_points_idx.append(path_exit_point_idx[min_idx])
-            path_exit_point_idx[min_idx] = max_idx+1
+
+        if len(path_exit_point_idx) > 0:
+            max_idx = max(path_exit_point_idx)
+            for i in range(len(path_exit_points)):
+                min_idx = np.argmin(path_exit_point_idx)
+                exit_points.append(path_exit_points[min_idx])
+                exit_points_idx.append(path_exit_point_idx[min_idx])
+                path_exit_point_idx[min_idx] = max_idx+1
 
         # print("exit points: ", exit_points_idx)
 
@@ -354,14 +356,15 @@ class PathPlanning():
         self.path_event_points_distances = []
         self.path_event_points_idx = []
         self.path_event_types = []
-        max_idx = np.max(path_event_points_idx)
-        for i in range(len(path_event_points)):
-            min_idx = np.argmin(path_event_points_idx)
-            self.path_event_points.append(path_event_points[min_idx])
-            self.path_event_points_idx.append(path_event_points_idx[min_idx])
-            self.path_event_points_distances.append(0.01*path_event_points_idx[min_idx])
-            self.path_event_types.append(path_event_types[min_idx])
-            path_event_points_idx[min_idx] = max_idx + 1
+        if len(path_event_points) > 0:
+            max_idx = np.max(path_event_points_idx)
+            for i in range(len(path_event_points)):
+                min_idx = np.argmin(path_event_points_idx)
+                self.path_event_points.append(path_event_points[min_idx])
+                self.path_event_points_idx.append(path_event_points_idx[min_idx])
+                self.path_event_points_distances.append(0.01*path_event_points_idx[min_idx])
+                self.path_event_types.append(path_event_types[min_idx])
+                path_event_points_idx[min_idx] = max_idx + 1
 
         
         

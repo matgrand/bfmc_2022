@@ -18,7 +18,7 @@ SHOW_IMGS = False
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116
-CHECKPOINTS = [86,90]#[86,285,116,236]
+CHECKPOINTS = [86,280,285,116,236,329,162,226]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -221,6 +221,7 @@ class Brain:
             CONTROL_FOR_VEHICLES:     Routine(CONTROL_FOR_VEHICLES,  self.control_for_roadblocks),   
             CONTROL_FOR_ROADBLOCKS:   Routine(CONTROL_FOR_ROADBLOCKS,  self.control_for_roadblocks),
         }
+        self.active_routines_names = []
 
         self.last_run_call = time()
         print('Brain initialized')
@@ -286,7 +287,7 @@ class Brain:
         print(f'Stoppig in {stopping_in-0.1} [m]')
         if stopping_in < 0.1:
             self.car.stop()
-            # self.go_to_next_event()
+            self.go_to_next_event()
             self.switch_to_state(START_STATE)
             #start routing for next checkpoint
             self.next_checkpoint()
@@ -305,10 +306,17 @@ class Brain:
             self.curr_state.just_switched = False
         #check if we are approaching a stop_line, but only if we are far enough from the previous stop_line
         far_enough_from_prev_stop_line = (self.prev_event.name is None) or (self.car.dist_loc > STOP_LINE_DISTANCE_THRESHOLD)
-        print(f'stop enough: {self.car.encoder_distance - self.prev_event.dist}') if self.prev_event.name is not None else None
+        print(f'stop enough: {self.car.dist_loc}') if self.prev_event.name is not None else None
         if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE and far_enough_from_prev_stop_line:
             self.switch_to_state(APPROACHING_STOP_LINE)
-            return
+        
+        #NOTE: TEMPORARY solution
+        if self.next_event.name == PARKING_EVENT:
+            self.go_to_next_event()
+
+        if self.next_event.name == END_EVENT:
+            self.switch_to_state(END_STATE)
+
 
     def approaching_stop_line(self):
         print('State: approaching_stop_line')
@@ -318,9 +326,9 @@ class Brain:
         #check if we are here by mistake
         if dist > STOP_LINE_APPROACH_DISTANCE:
             self.switch_to_state(LANE_FOLLOWING)
+            self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE])
             self.car.drive_speed(self.desired_speed)
-            return
-        if dist < STOP_LINE_STOP_DISTANCE:
+        elif dist < STOP_LINE_STOP_DISTANCE:
             next_event_name = self.next_event.name
             if next_event_name == INTERSECTION_STOP_EVENT:
                 self.switch_to_state(WAITING_AT_STOPLINE) 
@@ -336,10 +344,7 @@ class Brain:
                 self.switch_to_state(WAITING_FOR_PEDESTRIAN)
             elif next_event_name == PARKING_EVENT:
                 print('WARNING: UNEXPECTED STOP LINE FOUND WITH PARKING AS NEXT EVENT')
-                print('Switching to end state')
-                self.car.stop()
-                sleep(10.0)
-                self.switch_to_state(END_STATE)
+                exit()
             self.car.reset_rel_pose() ###################### NOTE
 
     def intersection_navigation(self):
@@ -648,8 +653,6 @@ class Brain:
         print('Routine: control_for_roadblocks')
         pass
 
-
-
     # STATE CHECKS
     def check_logic(self):
         print('check_logic')
@@ -661,6 +664,7 @@ class Brain:
         print('==============================================')
         print(f'STATE: {self.curr_state.name.upper()}')
         print(f'UPCOMING_EVENT: {self.next_event}')
+        print(f'ROUTINES: {self.active_routines_names}')
         self.run_current_state()
         print('==============================================')
         print()
@@ -678,8 +682,10 @@ class Brain:
         routines_to_activate are a list of strings (routines)
         ex: ['follow_lane', 'control_for_signs']
         """
+        self.active_routines_names = []
         for k,r in self.routines.items():
             r.active = k in routines_to_activate
+            if r.active: self.active_routines_names.append(k)
     
     def switch_to_state(self, to_state, interrupt=False):
         """
@@ -710,7 +716,8 @@ class Brain:
         self.prev_event = self.next_event
         if self.event_idx == len(self.events):
             #no more events, go to end_state
-            self.switch_to_state(END_STATE)
+            # self.switch_to_state(END_STATE)
+            pass
         else:
             self.next_event = self.events[self.event_idx]
             self.event_idx += 1
@@ -747,10 +754,10 @@ class Brain:
                 len_path_ahead = None
             event = Event(name, dist, point, path_ahead, len_path_ahead, curv)
             to_ret.append(event)
-        # #add end of path event
+        #add end of path event
         # ee_dist = (len(self.path_planner.path) - 1 )*0.01
-        # ee_point = self.path_planner.path[-1]
-        # end_event = Event(END_EVENT, dist=ee_dist, point=ee_point)
-        # to_ret.append(end_event)
+        ee_point = self.path_planner.path[-1]
+        end_event = Event(END_EVENT, dist=0.0, point=ee_point)
+        to_ret.append(end_event)
         return to_ret
 
