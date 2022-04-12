@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+SIMULATOR = True # True: run simulator, False: run real car
 
 import os
 import cv2 as cv
@@ -8,8 +9,13 @@ from time import sleep, time
 os.system('clear')
 print('Main brain starting...')
 # from automobile_data import Automobile_Data
-from automobile_data_simulator import AutomobileDataSimulator
-from helper_functions import *
+if SIMULATOR:
+    from automobile_data_simulator import AutomobileDataSimulator
+    from helper_functions import *
+else: #PI
+    from control.automobile_data_pi import AutomobileDataPi
+    from control.helper_functions import *
+
 from PathPlanning4 import PathPlanning
 from controller3 import Controller
 from detection import Detection
@@ -21,21 +27,18 @@ with open("data/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
 # MAIN CONTROLS
-SIMULATOR = True # True: run simulator, False: run real car
 training = False
 generate_path = False if not training else True
 # folder = 'training_imgs' 
 folder = 'test_imgs'
 
-# os.system('rosservice call /gazebo/reset_simulation')
-
-LOOP_DELAY = 0.1
+LOOP_DELAY = 0.01
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.4# [m/s]
+DESIRED_SPEED = 0.6# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -47,7 +50,6 @@ k3D = 0.08 #0.08 derivative gain of yaw error
 ff_curvature = 0.0 # feedforward gain
 noise_std = np.deg2rad(25) # [rad] noise in the steering angle
 
-
 if __name__ == '__main__':
 
     cv.namedWindow('frame', cv.WINDOW_NORMAL)
@@ -55,11 +57,12 @@ if __name__ == '__main__':
 
     # init the car data
     os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
-    # car = Automobile_Data(simulator=SIMULATOR, trig_cam=True, trig_gps=True, trig_bno=True, 
-    #                         trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
-    car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
+    if SIMULATOR:
+        car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
-
+    else:
+        car = AutomobileDataPi(trig_cam=True, trig_gps=False, trig_bno=True, 
+                               trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
     # init trajectory
     path = PathPlanning(map) 
 
@@ -85,15 +88,16 @@ if __name__ == '__main__':
             # RUN BRAIN
             brain.run()
 
-                        ## DEBUG INFO
-            print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
-            print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
-            print(f'Current velocity: {car.filtered_encoder_velocity:.3f} [m/s]')
-            print(f'total distance travelled: {car.encoder_distance:.2f} [m]')
-            print()
-            print(f'Local: dist: {car.dist_loc:.2f} [m], x: {car.x_loc:.2f} [m], y: {car.y_loc:.2f} [m], yaw: {np.rad2deg(car.yaw_loc):.2f} [deg]')
-            print()
-            print(f'Front sonar distance:     {car.filtered_sonar_distance:.2f} [m]')
+            ## DEBUG INFO
+            print(car)
+            # print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
+            # print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
+            # print(f'Current velocity: {car.filtered_encoder_velocity:.3f} [m/s]')
+            # print(f'total distance travelled: {car.encoder_distance:.2f} [m]')
+            # print()
+            # print(f'Local: dist: {car.dist_loc:.2f} [m], x: {car.x_loc:.2f} [m], y: {car.y_loc:.2f} [m], yaw: {np.rad2deg(car.yaw_loc):.2f} [deg]')
+            # print()
+            # print(f'Front sonar distance:     {car.filtered_sonar_distance:.2f} [m]')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
             print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
             print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')

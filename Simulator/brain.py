@@ -1,13 +1,10 @@
 #!/usr/bin/python3
-
-from importlib.resources import path
-from turtle import speed
 import numpy as np
 import cv2 as cv
 import os
 from time import time, sleep
+from copy import copy, deepcopy
 
-from torch import exp2, exp2_
 
 from automobile_data_interface import Automobile_Data
 from helper_functions import *
@@ -17,12 +14,11 @@ from detection import Detection
 
 from helper_functions import *
 
-IN_SIMULATOR = True
-SHOW_IMGS = True
+SHOW_IMGS = False
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116
-CHECKPOINTS = [86,285,116]
+CHECKPOINTS = [86,90]#[86,285,116,236]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -88,6 +84,9 @@ class Routine():
 
     def __str__(self):
         return self.name
+
+    def __repr__(self) -> str:
+        return self.name
     
     def run(self):
         self.method()
@@ -100,6 +99,7 @@ JUNCTION_EVENT = 'junction_event'
 ROUNDABOUT_EVENT = 'roundabout_event'
 CROSSWALK_EVENT = 'crosswalk_event'
 PARKING_EVENT = 'parking_event'
+END_EVENT = 'end_event'
 
 EVENT_TYPES = [INTERSECTION_STOP_EVENT, INTERSECTION_TRAFFIC_LIGHT_EVENT, INTERSECTION_PRIORITY_EVENT,
                 JUNCTION_EVENT, ROUNDABOUT_EVENT, CROSSWALK_EVENT, PARKING_EVENT]
@@ -114,7 +114,7 @@ class Event:
         self.curvature = curvature      # curvature of the path ahead of the event
     
     def __str__(self):
-        return self.name
+        return self.name.upper() if self.name is not None else 'None'
 
 #======================== CONDITIONS ==========================
 CONDITIONS = {
@@ -175,7 +175,7 @@ class Brain:
 
         #debug
         self.debug = debug
-        if self.debug:
+        if self.debug and SHOW_IMGS:
             cv.namedWindow('brain_debug', cv.WINDOW_NORMAL)
             self.debug_frame = None
 
@@ -250,33 +250,43 @@ class Brain:
         events = self.path_planner.augment_path()
         #add the events to the list of events, increasing it
         self.events = self.create_sequence_of_events(events)
+        self.event_idx = 0
+        self.next_event = self.events[0]
+
+        print(f'EVENTS: idx: {self.event_idx}')
+        for e in self.events:
+            print(e)
 
         # self.events = events
         self.go_to_next_event()
         
         self.path_planner.draw_path()
         print('Starting in 1 second...')
-        sleep(1)
+        sleep(3)
         # cv.waitKey(0)
         self.switch_to_state(LANE_FOLLOWING)
         self.car.drive_speed(self.desired_speed)
 
     def end_state(self):
         print('State: end_state')
+        print(f'Next event: {self.next_event}')
         self.activate_routines([FOLLOW_LANE])
         if self.curr_state.just_switched: # first call
             prev_event_dist = self.prev_event.dist
             end_dist = len(self.path_planner.path)*0.01
             dist_to_end = end_dist - prev_event_dist
             self.curr_state.var1 = dist_to_end
-            self.car.reset_rel_pose()
+            # self.car.reset_rel_pose()
             self.car.drive_speed(self.desired_speed)
             self.curr_state.just_switched = False
 
         #end condition on the distance, can be done with GPS instead, or both
         dist_to_end = self.curr_state.var1
-        if np.abs(dist_to_end - self.car.dist_loc) < 0.1:
+        stopping_in = np.abs(dist_to_end - self.car.dist_loc)
+        print(f'Stoppig in {stopping_in-0.1} [m]')
+        if stopping_in < 0.1:
             self.car.stop()
+            # self.go_to_next_event()
             self.switch_to_state(START_STATE)
             #start routing for next checkpoint
             self.next_checkpoint()
@@ -351,7 +361,7 @@ class Brain:
         self.activate_routines([])
         if self.curr_state.just_switched:
             #detetc the stop_line to see how far we are from the line
-            self.detect.detect_stop_line(self.car.frame)
+            self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
             if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE:
                 #create a private variable for this state
                 self.curr_state.var1 = self.detect.est_dist_to_stop_line
@@ -382,7 +392,7 @@ class Brain:
         self.activate_routines([])
         if self.curr_state.just_switched:
             #detetc the stop_line to see how far we are from the line
-            self.detect.detect_stop_line(self.car.frame)
+            self.detect.detect_stop_line(self.car.frame,SHOW_IMGS)
             if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE:
                 #create a private variable for this state
                 self.curr_state.var1 = self.detect.est_dist_to_stop_line
@@ -426,7 +436,7 @@ class Brain:
         if self.curr_state.just_switched:
             self.car.stop()
             #get distance from the line and lateral error e2
-            self.detect.detect_stop_line(self.car.frame)
+            self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
             if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE:
                 d = self.detect.est_dist_to_stop_line
             else: d = 0.0
@@ -448,8 +458,6 @@ class Brain:
             local_path_cf = local_path_slf_rot - car_position_slf #cf = car frame
             self.curr_state.var1 = local_path_cf
 
-            print('local_path_cf_rot: ', local_path_cf[:20])
-            #plot
             if SHOW_IMGS:
                 img = self.car.frame.copy()
                 #project the whole path (true)
@@ -459,9 +467,10 @@ class Brain:
                 cv.imshow('brain_debug', img)
                 cv.waitKey(1)
 
-            self.car.reset_rel_pose()
+            # self.car.reset_rel_pose()
             self.curr_state.var2 = np.array([self.car.x_true, self.car.y_true]) #var2 hold original position
             true_start_pos_wf = self.curr_state.var2
+            self.curr_state.just_switched = False
             if SHOW_IMGS:
                 true_start_pos_wf_pix = m2pix(true_start_pos_wf)
                 est_car_pos_slf = car_position_slf
@@ -472,11 +481,9 @@ class Brain:
                 cv.circle(self.path_planner.map, (true_start_pos_wf_pix[0], true_start_pos_wf_pix[1]), 30, (0, 255, 0), 5)
                 cv.imshow('Path', self.path_planner.map)
                 cv.waitKey(1)
-            self.curr_state.just_switched = False
-            #debug
-            self.car.stop()
-            sleep(1.0)
-            if SHOW_IMGS:
+                #debug
+                self.car.stop()
+                sleep(1.0)
                 cv.namedWindow('local_path', cv.WINDOW_NORMAL)
                 local_map_img = np.zeros_like(self.path_planner.map)
                 h = local_map_img.shape[0]
@@ -487,9 +494,9 @@ class Brain:
                     if (i%3 == 0):
                         p = local_path_cf[i]
                         cv.circle(local_map_img, (m2pix(p[0])+w//2, m2pix(p[1])+h//2), 10, (0, 150, 150), -1)
-            cv.imshow('local_path', local_map_img)
-            cv.waitKey(1)  
-            self.curr_state.var3 = local_map_img
+                cv.imshow('local_path', local_map_img)
+                cv.waitKey(1)  
+                self.curr_state.var3 = local_map_img
         
         D = POINT_AHEAD_DISTANCE_LOCAL_TRACKING
 
@@ -652,6 +659,8 @@ class Brain:
 #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
         print('==============================================')
+        print(f'STATE: {self.curr_state.name.upper()}')
+        print(f'UPCOMING_EVENT: {self.next_event}')
         self.run_current_state()
         print('==============================================')
         print()
@@ -699,7 +708,7 @@ class Brain:
         Switches to the next event on the path
         """
         self.prev_event = self.next_event
-        if self.event_idx == (len(self.events)-1):
+        if self.event_idx == len(self.events):
             #no more events, go to end_state
             self.switch_to_state(END_STATE)
         else:
@@ -709,7 +718,8 @@ class Brain:
     def next_checkpoint(self):
         self.checkpoint_idx += 1
         if self.checkpoint_idx < (len(self.checkpoints)-1): #check if it's last
-            #everything is ok, can switch to next checkpoint
+            #update events
+            self.prev_event = deepcopy(self.next_event)
             pass
         else: 
             #it was the last checkpoint
@@ -737,5 +747,10 @@ class Brain:
                 len_path_ahead = None
             event = Event(name, dist, point, path_ahead, len_path_ahead, curv)
             to_ret.append(event)
+        # #add end of path event
+        # ee_dist = (len(self.path_planner.path) - 1 )*0.01
+        # ee_point = self.path_planner.path[-1]
+        # end_event = Event(END_EVENT, dist=ee_dist, point=ee_point)
+        # to_ret.append(end_event)
         return to_ret
 
