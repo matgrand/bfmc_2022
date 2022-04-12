@@ -22,6 +22,7 @@ SHOW_IMGS = True
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116
+CHECKPOINTS = [86,285,116]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -140,7 +141,7 @@ USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 #=========================== BRAIN ============================
 #==============================================================
 class Brain:
-    def __init__(self, car, controller, detection, path_planner, desired_speed=0.3, debug=True):
+    def __init__(self, car, controller, detection, path_planner, checkpoints=None, desired_speed=0.3, debug=True):
         print("Initialize brain")
         self.car = Automobile_Data() #not needed, just to import he methods in visual studio
         self.car = car
@@ -160,14 +161,16 @@ class Brain:
         self.navigation_instructions = []
         # events are an ordered list of tuples: (type , distance from start, x y position)
         self.events = []
+        self.checkpoints = checkpoints if checkpoints is not None else CHECKPOINTS
+        self.checkpoint_idx = 0
         self.desired_speed = desired_speed
 
         #current and previous states (class State)
-        self.curr_state = State
-        self.prev_state = State
+        self.curr_state = State()
+        self.prev_state = State()
         #previous and next event (class Event)
-        self.prev_event = Event
-        self.next_event = Event
+        self.prev_event = Event()
+        self.next_event = Event()
         self.event_idx = 0
 
         #debug
@@ -229,21 +232,31 @@ class Brain:
         print('State: start_state')
         #exception: states should not perform actions
         self.car.stop()
+        print('Generating route...')
+
+        #localize the car and go to the first checkpoint
+        #for now we will assume to be in the correct position
+
+        #get start and end nodes from the chekpoint list
+        assert len(self.checkpoints) >= 2, 'List of checkpoints needs 2 ore more nodes'
+        start_node = self.checkpoints[self.checkpoint_idx]
+        end_node = self.checkpoints[self.checkpoint_idx+1] #already checked in end_state
+        
         #calculate path
-        print('Calculating path...')
-        self.path_planner.compute_shortest_path(START_NODE, END_NODE)
+        self.path_planner.compute_shortest_path(start_node, end_node)
         
         #initialize the list of events on the path
+        print('Calculating path...')
         events = self.path_planner.augment_path()
+        #add the events to the list of events, increasing it
         self.events = self.create_sequence_of_events(events)
 
         # self.events = events
-        self.next_event = self.events[0]
-        self.prev_event = None
+        self.go_to_next_event()
         
         self.path_planner.draw_path()
-        print('Starting in 2 second...')
-        sleep(2)
+        print('Starting in 1 second...')
+        sleep(1)
         # cv.waitKey(0)
         self.switch_to_state(LANE_FOLLOWING)
         self.car.drive_speed(self.desired_speed)
@@ -251,7 +264,7 @@ class Brain:
     def end_state(self):
         print('State: end_state')
         self.activate_routines([FOLLOW_LANE])
-        if self.curr_state.just_switched:
+        if self.curr_state.just_switched: # first call
             prev_event_dist = self.prev_event.dist
             end_dist = len(self.path_planner.path)*0.01
             dist_to_end = end_dist - prev_event_dist
@@ -259,11 +272,14 @@ class Brain:
             self.car.reset_rel_pose()
             self.car.drive_speed(self.desired_speed)
             self.curr_state.just_switched = False
+
+        #end condition on the distance, can be done with GPS instead, or both
         dist_to_end = self.curr_state.var1
         if np.abs(dist_to_end - self.car.dist_loc) < 0.1:
             self.car.stop()
-            sleep(2.5)
-            exit()
+            self.switch_to_state(START_STATE)
+            #start routing for next checkpoint
+            self.next_checkpoint()
 
     def doing_nothing(self):
         print('State: doing_nothing')
@@ -278,8 +294,8 @@ class Brain:
             self.car.drive_speed(self.desired_speed)
             self.curr_state.just_switched = False
         #check if we are approaching a stop_line, but only if we are far enough from the previous stop_line
-        far_enough_from_prev_stop_line = (self.prev_event is None) or (self.car.dist_loc > STOP_LINE_DISTANCE_THRESHOLD)
-        print(f'stop enough: {self.car.encoder_distance - self.prev_event.dist}') if self.prev_event is not None else None
+        far_enough_from_prev_stop_line = (self.prev_event.name is None) or (self.car.dist_loc > STOP_LINE_DISTANCE_THRESHOLD)
+        print(f'stop enough: {self.car.encoder_distance - self.prev_event.dist}') if self.prev_event.name is not None else None
         if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE and far_enough_from_prev_stop_line:
             self.switch_to_state(APPROACHING_STOP_LINE)
             return
@@ -661,6 +677,7 @@ class Brain:
         to_state is the string of the desired state to switch to
         ex: 'lane_following'
         """
+        assert to_state in self.states, f'{to_state} is not a valid state'
         self.prev_state = self.curr_state
         self.curr_state = self.states[to_state]
         for k,s in self.states.items():
@@ -681,13 +698,24 @@ class Brain:
         """
         Switches to the next event on the path
         """
+        self.prev_event = self.next_event
         if self.event_idx == (len(self.events)-1):
             #no more events, go to end_state
             self.switch_to_state(END_STATE)
         else:
-            self.event_idx += 1
             self.next_event = self.events[self.event_idx]
-        self.prev_event = self.next_event
+            self.event_idx += 1
+    
+    def next_checkpoint(self):
+        self.checkpoint_idx += 1
+        if self.checkpoint_idx < (len(self.checkpoints)-1): #check if it's last
+            #everything is ok, can switch to next checkpoint
+            pass
+        else: 
+            #it was the last checkpoint
+            print('Reached last checkpoint...\nExiting...')
+            cv.destroyAllWindows()
+            exit()
 
     def create_sequence_of_events(self, events):
         """

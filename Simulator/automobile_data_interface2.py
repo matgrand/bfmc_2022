@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 # Functional libraries
+from math import degrees
 import rospy
 import numpy as np
-from helper_functions import *
 import os
 # from estimation import EKFCar
 
@@ -142,6 +142,7 @@ class Automobile_Data():
         self.CAM_FOV = CAM_FOV
         self.CAM_K = CAM_K
 
+
         # I/O interface
         rospy.init_node('automobile_data', anonymous=False)
 
@@ -187,8 +188,10 @@ class Automobile_Data():
         """Update relative pose of the car
         right-hand frame of reference with x aligned with the direction of motion
         """  
-        # self.yaw_loc = diff_angle(self.yaw, self.yaw_loc_o)
         self.yaw_loc = self.yaw - self.yaw_loc_o
+        # dyaw = diff_angle(self.yaw_loc, self.prev_yaw_loc)
+        # dyaw = diff_angle(self.yaw_loc - self.prev_yaw_loc)
+        # self.yaw_loc = self.yaw - self.yaw_loc_o
         prev_dist = self.dist_loc
         self.dist_loc = np.abs(self.encoder_distance - self.dist_loc_o)
         L = np.abs(self.dist_loc - prev_dist)
@@ -273,7 +276,7 @@ class Automobile_Data():
         elif val > MAX_STEER:
             val = MAX_STEER
         return val
-
+    
     def __str__(self):
         description = '''
 {:#^50s} 
@@ -303,6 +306,7 @@ sonar distance (filtered):  {:.3f} ({:.3f}) m
                                     ' ENCODER ', self.encoder_distance, self.encoder_velocity, self.filtered_encoder_velocity,
                                     ' SONAR ', self.sonar_distance, self.filtered_sonar_distance)
                                     
+                                
 
 
     
