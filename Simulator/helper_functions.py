@@ -14,37 +14,63 @@ def diff_angle(angle1, angle2):
 #const_simple = 196.5
 #const_med = 14164/15.0
 const_verysmall = 3541/15.0
-def m2pix(m):
-    return np.int32(m*const_verysmall)
+M_R2L = np.array([[ 1.0, 0.0], [ 0.0, -1.0]])
+T_R2L = np.array([0, 15.0])
 
-def pix2m(pix):
-    return 1.0*pix/const_verysmall
+#meters to pixel (left frame)
+# def m2pix(m):
+#     return np.int32(m*const_verysmall)
 
-def yaw2world(angle):
-        return -(angle + np.pi/2)
+# def pix2m(pix): # pixel to meter (left frame)
+#     return pix/const_verysmall
 
-def world2yaw(angle):
-    return -angle -np.pi/2
+def mL2pix(ml): #meters to pixel (left frame)
+    return np.int32(ml*const_verysmall)
+
+def pix2mL(pix): #pixel to meters (left frame)
+    return pix/const_verysmall
+
+def mL2mR(m): # meters left frame to meters right frame
+   return m @ M_R2L + T_R2L
+
+def mR2mL(m): #meters right frame to meters left frame
+    return (m - T_R2L) @ M_R2L 
+
+def mR2pix(mr): # meters to pixel (right frame), return directly a cv point
+    if mr.size == 2:
+        pix =  mL2pix(mR2mL(mr))
+        return (pix[0], pix[1])
+    else:
+        return mL2pix(mR2mL(mr))
+    
+def pix2mR(pix): #pixel to meters (right frame)
+    return mL2mR(pix2mL(pix))
+
+# def yaw2world(angle):
+#     return -(angle + np.pi/2)
+
+# def world2yaw(angle):
+#     return -angle -np.pi/2
 
 #function to draw the car on the map
 def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
-    car_length = 0.4 #m
+    car_length = 0.45-0.11 #m
     car_width = 0.2 #m
     #match angle with map frame of reference
-    angle = yaw2world(angle)
-    #find 4 corners not rotated
-    corners = np.array([[-car_width/2, car_length/2],
-                        [car_width/2, car_length/2],
-                        [car_width/2, -car_length/2],
-                        [-car_width/2, -car_length/2]])
+    # angle = yaw2world(angle)
+    #find 4 corners not rotated car_width
+    corners = np.array([[-0.11, car_width/2],
+                        [car_length, car_width/2],
+                        [car_length, -car_width/2],
+                        [-0.11, -car_width/2]])
     #rotate corners
     rot_matrix = np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])
-    corners = np.matmul(rot_matrix, corners.T)
+    corners = np.matmul(rot_matrix, corners.T).T
     #add car position
-    corners = corners.T + np.array([x,y])
+    corners = corners + np.array([x,y])
     #draw body
     if draw_body:
-        cv.polylines(map, [m2pix(corners)], True, color, 3, cv.LINE_AA) 
+        cv.polylines(map, [mR2pix(corners)], True, color, 3, cv.LINE_AA) 
     return map
 
 def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255)):
@@ -61,34 +87,26 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
 
     #rotate the points around the z axis
     if align_to_car:
-        diff = to_car_frame(points, car, 3)
+        points_cf = to_car_frame(points, car, 3)
     else:
-        diff = points
+        points_cf = points
 
-    #get points inside the fov:
-    #angles
-    angles = - np.arctan2(diff[:,1], diff[:,0])
+    angles = np.arctan2(points_cf[:,1], points_cf[:,0])
     #calculate angle differences
     diff_angles = diff_angle(angles, 0.0) #car.yaw
     #get points in front of the car
-    # front_points = []
     rel_pos_points = []
     for i, point in enumerate(points):
         if np.abs(diff_angles[i]) < car.CAM_FOV/2:
             # front_points.append(point)
-            rel_pos_points.append(diff[i])
+            rel_pos_points.append(points_cf[i])
 
     #convert to numpy
-    # front_points = np.array(front_points)
     rel_pos_points = np.array(rel_pos_points)
 
     if len(rel_pos_points) == 0:
         # return frame, proj
         return frame, None
-    
-    # #plot the points in the 2d map
-    # for p in front_points:
-    #     cv.circle(map, m2pix(p[:2]), 15, (0,255,255), -1)
 
     #rotate the points around the relative y axis, pitch
     beta = -car.CAM_PITCH
@@ -99,7 +117,7 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
     rotated_points = np.matmul(rot_matrix, rel_pos_points.T).T
 
     #project the points onto the camera frame
-    proj_points = np.array([[p[1]/p[0], -p[2]/p[0]] for p in rotated_points])
+    proj_points = np.array([[-p[1]/p[0], -p[2]/p[0]] for p in rotated_points])
     #convert to pixel coordinates
     # proj_points = 490*proj_points + np.array([320, 240]) #640x480
     proj_points = 240*proj_points + np.array([320//2, 240//2]) #320x240
@@ -119,16 +137,16 @@ def to_car_frame(points, car, return_size=3):
         single_dim = True
     gamma = car.yaw
     if points.shape[1] == 3:
-        diff = points - np.array([car.x_true, car.y_true, 0])
+        points_cf = points - np.array([car.x_true, car.y_true, 0])
         rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma), 0],[np.sin(gamma), np.cos(gamma), 0 ], [0,0,1]])
-        out = np.matmul(rot_matrix, diff.T).T
+        out = np.matmul(rot_matrix.T, points_cf.T).T
         if return_size == 2:
             out = out[:,:2]
         assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
     elif points.shape[1] == 2:
-        diff = points - np.array([car.x_true, car.y_true]) 
+        points_cf = points - np.array([car.x_true, car.y_true]) 
         rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma)],[np.sin(gamma), np.cos(gamma)]])
-        out = np.matmul(rot_matrix, diff.T).T
+        out = np.matmul(rot_matrix.T, points_cf.T).T
         if return_size == 3:
             out = np.concatenate((out, np.zeros((out.shape[0],1))), axis=1)
         assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
@@ -225,7 +243,7 @@ def project_curvature(frame, car, curv):
     r = 1. / curv
     print("r: {}".format(r))
     x = np.linspace(start_from, start_from + d_ahead, num_points)
-    y = - np.sqrt(r**2 - x**2) * np.sign(curv) + r
+    y = np.sqrt(r**2 - x**2) * np.sign(curv) + r
     #stack x and y into one array
     points = np.stack((x,y), axis=1)
     #project points onto car frame, note: they are already inn car frame

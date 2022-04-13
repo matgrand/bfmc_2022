@@ -74,22 +74,9 @@ class PathPlanning():
         self.junctions = [467,314]
         self.junctions = [str(i) for i in self.junctions]
 
-        # #stop line points
-        # self.stop_line_points = np.load('data/stop_line_points.npy')
-        # self.stop_line_types = np.load('data/stop_line_types.npy')
-        # assert len(self.stop_line_points) == len(self.stop_line_types), "stop line points and types are not the same length"
-        # type_names = [
-        #     'intersection_stop',
-        #     'intersection_traffic_light',
-        #     'intersection_priority', 
-        #     'junction',
-        #     'roundabout',
-        #     'crosswalk',
-        # ]
-        # self.stop_line_types = [type_names[int(i)] for i in self.stop_line_types]
-
         #event points
-        self.event_points = np.load('data/event_points.npy')
+        self.event_points = np.load('data/event_points.npy') #L coord
+        self.event_points = mL2mR(self.event_points) #convert R coord
         self.event_types = np.load('data/event_types.npy')
         assert len(self.event_points) == len(self.event_types), "event points and types are not the same length"
         event_type_names = EVENT_TYPES
@@ -116,10 +103,12 @@ class PathPlanning():
                 break
                 
             #print("inside roundabout: ", curr_node)
-            
-            xp,yp = self.get_coord(prev_node)
-            xc,yc = self.get_coord(curr_node)
-            xn,yn = self.get_coord(next_node)
+            pp = self.get_coord(prev_node)
+            xp,yp = pp[0],pp[1]
+            pc = self.get_coord(curr_node)
+            xc,yc = pc[0],pc[1]
+            pn = self.get_coord(next_node)
+            xn,yn = pn[0],pn[1]
 
             if curr_node in self.ra_enter:
                 if not(prev_node in self.ra):
@@ -202,9 +191,13 @@ class PathPlanning():
         #print("next_node",next_node)
         self.navigator.append("go straight")
         while curr_node != self.target:
-            xp,yp = self.get_coord(prev_node)
-            xc,yc = self.get_coord(curr_node)
-            xn,yn = self.get_coord(next_node)
+            pp = self.get_coord(prev_node)
+            xp,yp = pp[0],pp[1]
+            pc = self.get_coord(curr_node)
+            xc,yc = pc[0],pc[1]
+            pn = self.get_coord(next_node)
+            xn,yn = pn[0],pn[1]
+
 
             #print("from",curr_node,"(",xc,yc,")"," to ",next_node,"(",xn,yn,")")
             #print("edge: ",self.route_graph.get_edge_data(curr_node, next_node))
@@ -294,11 +287,9 @@ class PathPlanning():
         # expand route node and update navigation instructions
         self.compute_route_list()
         
-        #self.print_navigation_instructions()
         # interpolate the route of nodes
         self.path = PathPlanning.interpolate_route(self.route_list, step_length)
 
-        # self.augment_path()
         return self.path
     
     def augment_path(self, draw=True):
@@ -318,7 +309,7 @@ class PathPlanning():
                 path_exit_points.append(p)
                 path_exit_point_idx.append(index_min_dist)
                 if draw:
-                    cv.circle(self.map, (m2pix(p[0]), m2pix(p[1])), 20, (0,150,0), 5)
+                    cv.circle(self.map, mR2pix(p), 20, (0,150,0), 5)
         path_exit_point_idx = np.array(path_exit_point_idx)
         #reorder points by idx
         exit_points = []
@@ -348,8 +339,9 @@ class PathPlanning():
                 path_event_points_idx.append(index_min_dist)
                 path_event_types.append(self.event_types[i])
                 if draw:
-                    cv.circle(self.map, (m2pix(p[0]), m2pix(p[1])), 20, (0,255,0), 5)
+                    cv.circle(self.map, mR2pix(p), 20, (0,255,0), 5)
         
+
         path_event_points_idx = np.array(path_event_points_idx)
         #reorder
         self.path_event_points = []
@@ -381,12 +373,10 @@ class PathPlanning():
                 path_event_path_ahead.append(path_ahead)
                 if draw:
                     for p in path_ahead:
-                        cv.circle(self.map, (m2pix(p[0]), m2pix(p[1])), 10, (200,150,0), 5)
+                        cv.circle(self.map, mR2pix(p), 10, (200,150,0), 5)
 
             else:
                 path_event_path_ahead.append(None)
-
-
 
         # print(f'local_idx: {local_idx}')
         print("path_event_points_idx: ", self.path_event_points_distances)
@@ -395,7 +385,6 @@ class PathPlanning():
         # sleep(5.0)
 
         events = list(zip(self.path_event_types, self.path_event_points_distances, self.path_event_points, path_event_path_ahead))
-
         return events
 
 
@@ -431,7 +420,7 @@ class PathPlanning():
         index_closest = np.argmin(np.hypot(nx - self.stop_points[:,0], ny - self.stop_points[:,1]))
         print(f'Closest stop point is {self.stop_points[index_closest, :]}, Point is {nx, ny}')
         #draw a circle around the closest stop point
-        if draw: cv.circle(self.map, (m2pix(self.stop_points[index_closest, 0]), m2pix(self.stop_points[index_closest, 1])), 8, (0, 255, 0), 4)
+        if draw: cv.circle(self.map, mR2pix(self.stop_points[index_closest]), 8, (0, 255, 0), 4)
         return self.stop_points[index_closest, 0], self.stop_points[index_closest, 1]
 
     def print_path_info(self):
@@ -459,7 +448,9 @@ class PathPlanning():
     def get_coord(self, node):
         x = self.nodes_data[node]['x']
         y = self.nodes_data[node]['y']
-        return x, y
+        p = np.array([x,y])
+        p = mL2mR(p)
+        return p
     
     def get_path(self):
         return self.path
@@ -519,36 +510,26 @@ class PathPlanning():
 
         # draw nodes
         for node in self.list_of_nodes:
-            x,y = self.get_coord(node)
-            x = m2pix(x)
-            y = m2pix(y)
-            cv.circle(self.map, (x, y), 5, (0, 0, 255), -1)
+            p = self.get_coord(node) #change to r coordinate
+            cv.circle(self.map, mR2pix(p), 5, (0, 0, 255), -1)
             #add node number
-            cv.putText(self.map, str(node), (x, y), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv.putText(self.map, str(node), mR2pix(p), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
         # draw edges
         for edge in self.list_of_edges:
-            x1,y1 = self.get_coord(edge[0])
-            x2,y2 = self.get_coord(edge[1])
-            x1 = m2pix(x1)
-            y1 = m2pix(y1)
-            x2 = m2pix(x2)
-            y2 = m2pix(y2)
-            #cv.line(self.map, (x1, y1), (x2, y2), (0, 255, 255), 2)
+            p1 = self.get_coord(edge[0])
+            p2 = self.get_coord(edge[1])
+            #cv.line(self.map, mR2pix(p1), mR2pix(p2), (0, 255, 255), 2)
 
         # draw all points in given path
         for point in self.route_list:
             x,y,_ = point
-            x = m2pix(x)
-            y = m2pix(y)
-            cv.circle(self.map, (x, y), 5, (255, 0, 0), 1)
+            p = np.array([x,y])
+            cv.circle(self.map, mR2pix(p), 5, (255, 0, 0), 1)
 
         # draw trajectory
-        cv.polylines(self.map, [m2pix(self.path)], False, (200, 200, 0), thickness=4, lineType=cv.LINE_AA)
+        cv.polylines(self.map, [mR2pix(self.path)], False, (200, 200, 0), thickness=4, lineType=cv.LINE_AA)
 
-        # show windows
-        cv.namedWindow('Path', cv.WINDOW_NORMAL)
-        cv.resizeWindow('Path', 800, 800)
         cv.imshow('Path', self.map)
         # save current image
         # cv.imwrite('my_trajectory.png', self.map)

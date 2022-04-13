@@ -94,7 +94,7 @@ class Controller():
         self.prev_time = curr_time
         diff3 = (delta - self.prev_delta) / dt
         self.prev_delta = delta
-        derivative_term = - k3D * diff3
+        derivative_term = k3D * diff3
         # print(f'derivative term: {np.rad2deg(derivative_term):.2f}')
 
         #feedforward term
@@ -102,7 +102,7 @@ class Controller():
         ff_term = k3FF * np.arctan(L/r) #from ackerman geometry
         # print(f'Feedforward term: {np.rad2deg(ff_term):2f}')
     
-        output_angle = ff_term + proportional_term - k2 * e2 - derivative_term
+        output_angle = ff_term - proportional_term - k2 * e2 - derivative_term
         output_speed = desired_speed - self.k1 * self.e1
 
         return output_speed, output_angle
@@ -112,7 +112,7 @@ class Controller():
         #add e2 (lateral error)
         ex = path_ahead[0][0] - car.x_true #x error
         ey = path_ahead[0][1] - car.y_true #y error
-        e2 = -(ex * np.sin(car.yaw) + ey * np.cos(car.yaw)) #y error in the body frame
+        e2 = ex * np.cos(car.yaw) + ey * np.sin(car.yaw) #y error in the body frame
 
         #get point ahead
         assert len(path_ahead) > max(NUM_POINTS * SEQ_POINTS_INTERVAL, POINT_AHEAD_CM), f"path_ahead is not long enough, len: {len(path_ahead)}"

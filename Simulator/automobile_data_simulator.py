@@ -86,9 +86,10 @@ class AutomobileDataSimulator(Automobile_Data):
         #true position, not in real car
 
         x_true = float(data.posx)
-        y_true = float(data.posy)
+        y_true = -float(data.posy) + 15.0
+        # center x_true on the rear axis
         self.x_true = x_true - self.WB/2*np.cos(self.yaw)  
-        self.y_true = y_true + self.WB/2*np.sin(self.yaw)
+        self.y_true = y_true - self.WB/2*np.sin(self.yaw)
 
         self.timestamp = float(data.timestamp)
         #NOTE: in the simulator we don't have neither acceleromter or gyroscope (yet)
@@ -107,7 +108,7 @@ class AutomobileDataSimulator(Automobile_Data):
         prev_time = self.prev_timestamp
         delta = np.hypot(curr_x - prev_x, curr_y - prev_y)
         #get the direction of the movement: + or -
-        motion_yaw = - np.arctan2(curr_y - prev_y, curr_x - prev_x)
+        motion_yaw = + np.arctan2(curr_y - prev_y, curr_x - prev_x)
         abs_yaw_diff = np.abs(diff_angle(motion_yaw, self.yaw))
         sign = 1.0 if abs_yaw_diff < np.pi/2 else -1.0
         dt = curr_time - prev_time

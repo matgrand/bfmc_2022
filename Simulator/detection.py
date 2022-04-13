@@ -107,7 +107,7 @@ class Detection:
             blob = cv.dnn.blobFromImages(images, 1.0, IMG_SIZE, 0, swapRB=True, crop=False) 
         # assert blob.shape == (2, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
         self.lane_keeper.setInput(blob)
-        out = self.lane_keeper.forward()
+        out = -self.lane_keeper.forward()
         output = out[0]
         output_flipped = out[1] if not faster else None
 

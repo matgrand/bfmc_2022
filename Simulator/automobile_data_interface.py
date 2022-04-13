@@ -77,11 +77,11 @@ class Automobile_Data():
         :type speed_buff_len: int, optional
         """        
 
-        # CAR POSITION
+        # CAR POSITION 
         self.x_true = START_X                   # [m]       true:x coordinate (used in simulation and SPARCS)
         self.y_true = START_Y                   # [m]       true:y coordinate (used in simulation and SPARCS)
-        self.x = 0.0                            # [m]       GPS:x global coordinate
-        self.y = 0.0                            # [m]       GPS:y global coordinate
+        self.x = 0.0                            # [m]       GPS:x global coordinate tranlated in right-hand frame of reference
+        self.y = 0.0                            # [m]       GPS:y global coordinate tranlated in right-hand frame of reference
         # IMU           
         self.roll = 0.0                         # [rad]     IMU:roll angle of the car
         self.roll_deg = 0.0                     # [deg]     IMU:roll angle of the car
@@ -192,7 +192,7 @@ class Automobile_Data():
         self.dist_loc = np.abs(self.encoder_distance - self.dist_loc_o)
         L = np.abs(self.dist_loc - prev_dist)
         x_increment = L * np.cos(self.yaw_loc)
-        y_increment = - L * np.sin(self.yaw_loc)
+        y_increment = L * np.sin(self.yaw_loc)
         self.x_loc += x_increment
         self.y_loc += y_increment
 
@@ -238,9 +238,7 @@ class Automobile_Data():
         self.x_loc = 0.0
         self.y_loc = 0.0
         self.yaw_loc_o = self.yaw
-        self.prev_yaw = self.yaw
         self.yaw_loc = 0.0
-        self.prev_yaw_loc = 0.0
         self.dist_loc = 0.0
         self.dist_loc_o = self.encoder_distance
 

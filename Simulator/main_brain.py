@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 SIMULATOR = True # True: run simulator, False: run real car
 
-import os
+import os, signal
 import cv2 as cv
 import rospy
 import numpy as np
@@ -54,6 +54,12 @@ if __name__ == '__main__':
 
     cv.namedWindow('frame', cv.WINDOW_NORMAL)
     cv.resizeWindow('frame',640,480)
+    # show windows
+    cv.namedWindow('Path', cv.WINDOW_NORMAL)
+    cv.resizeWindow('Path', 600, 600)
+    cv.namedWindow('Map', cv.WINDOW_NORMAL)
+    cv.resizeWindow('Map', 600, 600)
+
 
     # init the car data
     os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
@@ -63,6 +69,16 @@ if __name__ == '__main__':
     else:
         car = AutomobileDataPi(trig_cam=True, trig_gps=False, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
+    
+    
+    #stop the car with ctrl+c
+    def handler(signum, frame):
+        print("Exiting ...")
+        car.stop()
+        cv.destroyAllWindows()
+        exit(1)
+    signal.signal(signal.SIGINT, handler)
+    
     # init trajectory
     path = PathPlanning(map) 
 
@@ -76,6 +92,13 @@ if __name__ == '__main__':
     #initiliaze the brain
     brain = Brain(car=car, controller=controller, detection=detect, path_planner=path, desired_speed=DESIRED_SPEED)
 
+
+    map1 = map.copy()
+    draw_car(map1, car.x_true, car.y_true, car.yaw)
+    cv.imshow('Map', map1)
+    cv.waitKey(1)
+
+
     try:
         car.stop()
         fps_avg = 0.0
@@ -84,6 +107,12 @@ if __name__ == '__main__':
             os.system('cls' if os.name=='nt' else 'clear')
 
             loop_start_time = time()
+
+            map1 = map.copy()
+            draw_car(map1, car.x_true, car.y_true, car.yaw)
+            cv.imshow('Map', map1)
+            cv.waitKey(1)
+
 
             # RUN BRAIN
             brain.run()
