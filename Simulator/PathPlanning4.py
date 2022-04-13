@@ -293,10 +293,8 @@ class PathPlanning():
         return self.path
     
     def augment_path(self, draw=True):
-
         exit_points = self.intersection_out + self.ra_exit
         exit_points = np.array([self.get_coord(x) for x in exit_points])
-
         path_exit_points = []
         path_exit_point_idx = []
         #get all the points the path intersects with the exit_points
@@ -323,8 +321,6 @@ class PathPlanning():
                 exit_points_idx.append(path_exit_point_idx[min_idx])
                 path_exit_point_idx[min_idx] = max_idx+1
 
-        # print("exit points: ", exit_points_idx)
-
         #get all the points the path intersects with the stop_line_points
         path_event_points = []
         path_event_points_idx = []
@@ -340,8 +336,7 @@ class PathPlanning():
                 path_event_types.append(self.event_types[i])
                 if draw:
                     cv.circle(self.map, mR2pix(p), 20, (0,255,0), 5)
-        
-
+    
         path_event_points_idx = np.array(path_event_points_idx)
         #reorder
         self.path_event_points = []
@@ -358,8 +353,6 @@ class PathPlanning():
                 self.path_event_types.append(path_event_types[min_idx])
                 path_event_points_idx[min_idx] = max_idx + 1
 
-        
-        
         #add path ahead after intersections and roundabouts
         path_event_path_ahead = []
         local_idx = 0
@@ -386,7 +379,6 @@ class PathPlanning():
 
         events = list(zip(self.path_event_types, self.path_event_points_distances, self.path_event_points, path_event_path_ahead))
         return events
-
 
     def generate_path_passing_through(self, list_of_nodes, step_length=0.01):
         """
@@ -501,13 +493,6 @@ class PathPlanning():
         return path
 
     def draw_path(self):
-        # print png image
-        #map = cv.imread('Track.png')
-        #map = cv.imread('src/models_pkg/track/materials/textures/2021_Medium.png')
-        # get sizes
-        #height, width, channels = self.map.shape
-        #print(height, width)
-
         # draw nodes
         for node in self.list_of_nodes:
             p = self.get_coord(node) #change to r coordinate
@@ -531,6 +516,4 @@ class PathPlanning():
         cv.polylines(self.map, [mR2pix(self.path)], False, (200, 200, 0), thickness=4, lineType=cv.LINE_AA)
 
         cv.imshow('Path', self.map)
-        # save current image
-        # cv.imwrite('my_trajectory.png', self.map)
         cv.waitKey(1)

@@ -3,10 +3,6 @@
 # HELPER FUNCTIONS
 import numpy as np
 import cv2 as cv
-import matplotlib.pyplot as plt
-import glob
-import os
-from mpl_toolkits.mplot3d import Axes3D
 
 def diff_angle(angle1, angle2):
     return np.arctan2(np.sin(angle1-angle2), np.cos(angle1-angle2))
@@ -46,12 +42,6 @@ def mR2pix(mr): # meters to pixel (right frame), return directly a cv point
 def pix2mR(pix): #pixel to meters (right frame)
     return mL2mR(pix2mL(pix))
 
-# def yaw2world(angle):
-#     return -(angle + np.pi/2)
-
-# def world2yaw(angle):
-#     return -angle -np.pi/2
-
 #function to draw the car on the map
 def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
     car_length = 0.45-0.11 #m
@@ -65,7 +55,7 @@ def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
                         [-0.11, -car_width/2]])
     #rotate corners
     rot_matrix = np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])
-    corners = np.matmul(rot_matrix, corners.T).T
+    corners = corners @ rot_matrix.T
     #add car position
     corners = corners + np.array([x,y])
     #draw body
@@ -114,7 +104,7 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
                             [0, 1, 0],
                             [-np.sin(beta), 0, np.cos(beta)]])
     
-    rotated_points = np.matmul(rot_matrix, rel_pos_points.T).T
+    rotated_points = rel_pos_points @ rot_matrix.T
 
     #project the points onto the camera frame
     proj_points = np.array([[-p[1]/p[0], -p[2]/p[0]] for p in rotated_points])
@@ -139,14 +129,14 @@ def to_car_frame(points, car, return_size=3):
     if points.shape[1] == 3:
         points_cf = points - np.array([car.x_true, car.y_true, 0])
         rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma), 0],[np.sin(gamma), np.cos(gamma), 0 ], [0,0,1]])
-        out = np.matmul(rot_matrix.T, points_cf.T).T
+        out = points_cf @ rot_matrix
         if return_size == 2:
             out = out[:,:2]
         assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
     elif points.shape[1] == 2:
         points_cf = points - np.array([car.x_true, car.y_true]) 
         rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma)],[np.sin(gamma), np.cos(gamma)]])
-        out = np.matmul(rot_matrix.T, points_cf.T).T
+        out = points_cf @ rot_matrix
         if return_size == 3:
             out = np.concatenate((out, np.zeros((out.shape[0],1))), axis=1)
         assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])

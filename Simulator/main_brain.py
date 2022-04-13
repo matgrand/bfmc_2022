@@ -32,7 +32,7 @@ generate_path = False if not training else True
 # folder = 'training_imgs' 
 folder = 'test_imgs'
 
-LOOP_DELAY = 0.01
+LOOP_DELAY = 0.05
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 

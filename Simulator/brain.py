@@ -5,7 +5,6 @@ import os
 from time import time, sleep
 from copy import copy, deepcopy
 
-
 from automobile_data_interface import Automobile_Data
 from helper_functions import *
 from PathPlanning4 import PathPlanning
@@ -18,7 +17,7 @@ SHOW_IMGS = True
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116
-CHECKPOINTS = [86,285,116,236,329,162,226]
+CHECKPOINTS = [86,280,285,116,236,329,162,226]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -230,7 +229,6 @@ class Brain:
 
     #=============== STATES ===============#
     def start_state(self):
-        print('State: start_state')
         #exception: states should not perform actions
         self.car.stop()
         print('Generating route...')
@@ -242,49 +240,28 @@ class Brain:
         assert len(self.checkpoints) >= 2, 'List of checkpoints needs 2 ore more nodes'
         start_node = self.checkpoints[self.checkpoint_idx]
         end_node = self.checkpoints[self.checkpoint_idx+1] #already checked in end_state
-        
         #calculate path
         self.path_planner.compute_shortest_path(start_node, end_node)
-
-        print('Route generated')
-        print('Path:\n', self.path_planner.path)
-        # cv.waitKey(0)
-        
         #initialize the list of events on the path
         print('Augmenting path...')
         events = self.path_planner.augment_path()
         print(f'Path augmented')
-
         #add the events to the list of events, increasing it
         self.events = self.create_sequence_of_events(events)
         self.event_idx = 0
         self.next_event = self.events[0]
-
         print(f'EVENTS: idx: {self.event_idx}')
         for e in self.events:
             print(e)
-
-        # self.events = events
         self.go_to_next_event()
-        
         #draw the path 
         self.path_planner.draw_path()
-
-        #project the car onto frame
-        frm = self.car.frame.copy()
-        project_onto_frame(frm, self.car, self.path_planner.path, align_to_car=True)
-        cv.imshow('Map', self.path_planner.map)
-        cv.imshow('Frame', frm)
-        cv.waitKey(1)
-
-
         print('Starting in 1 second...')
         sleep(3)
         self.switch_to_state(LANE_FOLLOWING)
         self.car.drive_speed(self.desired_speed)
 
     def end_state(self):
-        print('State: end_state')
         print(f'Next event: {self.next_event}')
         self.activate_routines([FOLLOW_LANE])
         if self.curr_state.just_switched: # first call
@@ -295,7 +272,6 @@ class Brain:
             # self.car.reset_rel_pose()
             self.car.drive_speed(self.desired_speed)
             self.curr_state.just_switched = False
-
         #end condition on the distance, can be done with GPS instead, or both
         dist_to_end = self.curr_state.var1
         stopping_in = np.abs(dist_to_end - self.car.dist_loc)
@@ -308,12 +284,9 @@ class Brain:
             self.next_checkpoint()
 
     def doing_nothing(self):
-        print('State: doing_nothing')
         self.activate_routines([])
 
     def lane_following(self): # LANE FOLLOWING ##############################
-        print('State: lane_following')
-        print('Next event: ', self.next_event)
         self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE])
         #start driving if it's the first time it has been called
         if self.curr_state.just_switched:
@@ -332,10 +305,7 @@ class Brain:
         if self.next_event.name == END_EVENT:
             self.switch_to_state(END_STATE)
 
-
     def approaching_stop_line(self):
-        print('State: approaching_stop_line')
-        print('Next event: ', self.next_event)
         self.activate_routines([FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE])
         dist = self.detect.est_dist_to_stop_line
         #check if we are here by mistake
@@ -363,7 +333,6 @@ class Brain:
             self.car.reset_rel_pose() ###################### NOTE
 
     def intersection_navigation(self):
-        print('State: intersection_navigation')
         self.activate_routines([])
         if USE_LOCAL_TRACKING_FOR_INTERSECTIONS:
             self.switch_to_state(TRACKING_LOCAL_PATH)
@@ -377,7 +346,6 @@ class Brain:
             self.car.drive_speed(self.desired_speed)
         
     def turning_right(self):
-        print('State: turning_right')
         self.activate_routines([])
         if self.curr_state.just_switched:
             #detetc the stop_line to see how far we are from the line
@@ -408,7 +376,6 @@ class Brain:
             self.go_to_next_event()
 
     def turning_left(self):
-        print('State: turning_left')
         self.activate_routines([])
         if self.curr_state.just_switched:
             #detetc the stop_line to see how far we are from the line
@@ -439,7 +406,6 @@ class Brain:
             self.go_to_next_event()
 
     def going_straight(self):
-        print('State: going_straight')
         self.activate_routines([])
         distance_to_stop = self.curr_state.start_distance+OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD*self.next_event.length_path_ahead
         if self.car.encoder_distance < distance_to_stop: 
@@ -471,7 +437,7 @@ class Brain:
             alpha = self.car.yaw + YAW_GLOBAL_OFFSET
             rot_matrix = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
             #stop line frame, but now oriented in the same direction of the car
-            local_path_slf_rot = np.matmul(rot_matrix.T, local_path_slf.T).T
+            local_path_slf_rot = local_path_slf @ rot_matrix
             # ## get position of the car in the stop line frame
             # # car_position_slf = self.car.position - stop_line_position #with good gps estimate
             car_position_slf = -np.array([+d+0.3+0.13, +e2])#np.array([+d+0.2, -e2])
@@ -493,7 +459,7 @@ class Brain:
             self.curr_state.just_switched = False
             if SHOW_IMGS:
                 est_car_pos_slf = car_position_slf
-                est_car_pos_slf_rot = np.matmul(rot_matrix, est_car_pos_slf.T).T
+                est_car_pos_slf_rot = est_car_pos_slf @ rot_matrix.T
                 est_car_pos_wf = est_car_pos_slf_rot + stop_line_position
                 cv.circle(self.path_planner.map, mR2pix(est_car_pos_wf), 25, (255, 0, 255), 5)
                 cv.circle(self.path_planner.map, mR2pix(true_start_pos_wf), 30, (0, 255, 0), 5)
@@ -536,7 +502,7 @@ class Brain:
         print(f'idx_point_ahead: {idx_point_ahead} / {len(local_path_cf)}')
 
         rot_matrix = np.array([[np.cos(self.car.yaw_loc), -np.sin(self.car.yaw_loc)], [np.sin(self.car.yaw_loc), np.cos(self.car.yaw_loc)]])
-        local_path_cf = np.matmul(rot_matrix.T, local_path_cf.T).T
+        local_path_cf = local_path_cf @ rot_matrix
 
         if SHOW_IMGS:
             local_map_img = self.curr_state.var3
@@ -549,11 +515,11 @@ class Brain:
             # show the true position to check if they match, translated wrt starting position into the local frame
             true_start_pos_wf = self.curr_state.var2
             true_pos_loc = np.array([self.car.x_true, self.car.y_true]) - true_start_pos_wf
-            true_pos_loc = np.matmul(rot_matrix_w.T, true_pos_loc.T).T
+            true_pos_loc = true_pos_loc @ rot_matrix_w
             cv.circle(local_map_img, (mR2pix(true_pos_loc)[0]+w//2, mR2pix(true_pos_loc)[1]-h//2), 7, (0, 255, 0), 2)
             cv.imshow('local_path', local_map_img)
             true_start_pos_wf = self.curr_state.var2
-            car_pos_loc_rot_wf = np.matmul(rot_matrix_w, car_pos_loc.T).T 
+            car_pos_loc_rot_wf = car_pos_loc @ rot_matrix_w.T
             car_pos_wf = true_start_pos_wf + car_pos_loc_rot_wf
             # show car position in wf (encoder)
             cv.circle(self.path_planner.map, mR2pix(car_pos_wf), 5, (255, 0, 255), 2)
@@ -585,51 +551,41 @@ class Brain:
             self.car.drive(out_speed, np.rad2deg(out_angle))
 
     def roundabout_navigation(self):
-        print('State: roundabout_navigation')
         self.switch_to_state(TRACKING_LOCAL_PATH)
 
     def waiting_for_pedestrian(self):
-        print('State: waiting_for_pedestrian')
         self.switch_to_state(LANE_FOLLOWING) #temporary
         self.go_to_next_event() #temporary
         pass
 
     def waiting_for_green(self):
-        print('State: waiting_for_green')
         #temporary fix
         self.switch_to_state(WAITING_AT_STOPLINE)
 
     def waiting_at_stopline(self):
-        print('State: waiting_at_stopline')
         self.activate_routines([]) #no routines
         self.car.stop()
         if (time() - self.curr_state.start_time) > STOP_WAIT_TIME:
             self.switch_to_state(INTERSECTION_NAVIGATION)
 
     def waiting_for_rerouting(self):
-        print('State: waiting_for_rerouting')
         pass
 
     def overtaking_static_car(self):
-        print('State: overtaking_static_car')
         pass
 
     def overtaking_moving_car(self):
-        print('State: overtaking_moving_car')
         pass
 
     def tailing_car(self):
-        print('State: tailing_car')
         pass
 
     def avoiding_obstacle(self):
-        print('State: avoiding_obstacle')
         pass
 
     
     #=============== ROUTINES ===============#
     def follow_lane(self):
-        print('Routine: follow_lane')
         e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
         _, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
         angle_ref = np.rad2deg(angle_ref)
@@ -637,36 +593,28 @@ class Brain:
         self.car.drive_angle(angle_ref)
 
     def detect_stop_line(self):
-        print('Routine: detect_stop_line')
         #update the variable self.detect.est_dist_to_stop_line
         self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
 
     def slow_down(self):
-        print('Routine: slow_down')
         self.car.drive_speed(self.desired_speed*0.2)
 
     def accelerate(self):
-        print('Routine: accelerate')
         pass
 
     def control_for_signs(self):
-        print('Routine: control_for_signs')
         pass
 
     def control_for_semaphore(self):
-        print('Routine: control_for_semaphore')
         pass
 
     def control_for_pedestrians(self):
-        print('Routine: control_for_pedestrians')
         pass
 
     def control_for_vehicles(self):
-        print('Routine: control_for_vehicles')
         pass
 
     def control_for_roadblocks(self):
-        print('Routine: control_for_roadblocks')
         pass
 
     # STATE CHECKS
