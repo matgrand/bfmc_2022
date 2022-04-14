@@ -38,7 +38,7 @@ VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.6# [m/s]
+DESIRED_SPEED = 0.3# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -110,6 +110,8 @@ if __name__ == '__main__':
 
             map1 = map.copy()
             draw_car(map1, car.x_true, car.y_true, car.yaw)
+            draw_car(map1, car.x_est, car.y_est, car.yaw_est, color=(255,0,255))
+            draw_car(map1, car.x, car.y, car.yaw, color=(255,0,0))
             cv.imshow('Map', map1)
             cv.waitKey(1)
 

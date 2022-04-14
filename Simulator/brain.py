@@ -99,9 +99,10 @@ ROUNDABOUT_EVENT = 'roundabout_event'
 CROSSWALK_EVENT = 'crosswalk_event'
 PARKING_EVENT = 'parking_event'
 END_EVENT = 'end_event'
+HIGHWAY_EXIT_EVENT = 'highway_exit_event'
 
 EVENT_TYPES = [INTERSECTION_STOP_EVENT, INTERSECTION_TRAFFIC_LIGHT_EVENT, INTERSECTION_PRIORITY_EVENT,
-                JUNCTION_EVENT, ROUNDABOUT_EVENT, CROSSWALK_EVENT, PARKING_EVENT]
+                JUNCTION_EVENT, ROUNDABOUT_EVENT, CROSSWALK_EVENT, PARKING_EVENT, HIGHWAY_EXIT_EVENT]
 
 class Event:
     def __init__(self, name=None, dist=None, point=None, path_ahead=None, length_path_ahead=None, curvature=None):
@@ -130,7 +131,7 @@ YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track a
 STOP_LINE_APPROACH_DISTANCE = 0.3
 STOP_LINE_STOP_DISTANCE = 0.1
 assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
-STOP_WAIT_TIME = .5 #3.0
+STOP_WAIT_TIME = 3.5 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which is possible to start detecting a stop line again
 POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
@@ -256,8 +257,8 @@ class Brain:
         self.go_to_next_event()
         #draw the path 
         self.path_planner.draw_path()
-        print('Starting in 1 second...')
-        sleep(3)
+        print('Starting...')
+        # sleep(3)
         self.switch_to_state(LANE_FOLLOWING)
         self.car.drive_speed(self.desired_speed)
 
@@ -299,7 +300,7 @@ class Brain:
             self.switch_to_state(APPROACHING_STOP_LINE)
         
         #NOTE: TEMPORARY solution
-        if self.next_event.name == PARKING_EVENT:
+        if self.next_event.name == PARKING_EVENT or self.next_event.name == HIGHWAY_EXIT_EVENT:
             self.go_to_next_event()
 
         if self.next_event.name == END_EVENT:
@@ -467,7 +468,7 @@ class Brain:
                 cv.waitKey(1)
                 #debug
                 self.car.stop()
-                sleep(1.0)
+                # sleep(1.0)
                 cv.namedWindow('local_path', cv.WINDOW_NORMAL)
                 local_map_img = np.zeros_like(self.path_planner.map)
                 h = local_map_img.shape[0]

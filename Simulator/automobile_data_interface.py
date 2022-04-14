@@ -1,8 +1,19 @@
 #!/usr/bin/python3
+
+SIMULATOR = True
+
 # Functional libraries
 import rospy
 import numpy as np
 import os
+if SIMULATOR:
+    from automobile_ekf import AutomobileEKF
+    from helper_functions import *
+else:
+    from control.automobile_ekf import AutomobileEKF
+    from control.helper_functions import *
+import time
+import math
 # from estimation import EKFCar
 
 START_X = 0.2
@@ -42,6 +53,11 @@ CAM_Oy = 10.0               # [pix]
 CAM_K = np.array([[CAM_F*CAM_Sx,      0.0,            CAM_Ox],
                   [ 0.0,              CAM_F*CAM_Sy,   CAM_Oy],
                   [ 0.0,              0.0,            1.0]])
+# Estimator parameters
+EST_INIT_X      = 1.0               # [m]
+EST_INIT_Y      = 3.0               # [m]
+EST_INIT_YAW    = np.deg2rad(20)    # [rad]
+
 
 class Automobile_Data():
     def __init__(self,
@@ -77,11 +93,11 @@ class Automobile_Data():
         :type speed_buff_len: int, optional
         """        
 
-        # CAR POSITION 
+        # CAR POSITION
         self.x_true = START_X                   # [m]       true:x coordinate (used in simulation and SPARCS)
         self.y_true = START_Y                   # [m]       true:y coordinate (used in simulation and SPARCS)
-        self.x = 0.0                            # [m]       GPS:x global coordinate tranlated in right-hand frame of reference
-        self.y = 0.0                            # [m]       GPS:y global coordinate tranlated in right-hand frame of reference
+        self.x = 0.0                            # [m]       GPS:x global coordinate
+        self.y = 0.0                            # [m]       GPS:y global coordinate
         # IMU           
         self.roll = 0.0                         # [rad]     IMU:roll angle of the car
         self.roll_deg = 0.0                     # [deg]     IMU:roll angle of the car
@@ -122,14 +138,14 @@ class Automobile_Data():
         self.MIN_SPEED = MIN_SPEED              # [m/s]     minimum speed of the car
         self.MAX_SPEED = MAX_SPEED              # [m/s]     maximum speed of the car
         self.MAX_STEER = MAX_STEER              # [deg]     maximum steering angle of the car
-        # Vehicle parameters
+        # VEHICLE PARAMETERS
         self.LENGTH = LENGTH			        # [m]       car body length
         self.WIDTH = WIDTH  			        # [m]       car body width
         self.BACKTOWHEEL = BACKTOWHEEL		    # [m]       distance of the wheel and the car body
         self.WHEEL_LEN = WHEEL_LEN  			# [m]       wheel raduis
         self.WHEEL_WIDTH = WHEEL_WIDTH  		# [m]       wheel thickness
         self.WB = WB  			                # [m]       wheelbase
-        # Camera parameters
+        # CAMERA PARAMETERS
         self.FRAME_WIDTH = FRAME_WIDTH          # [pix]     frame width
         self.FRAME_HEIGHT = FRAME_HEIGHT        # [pix]     frame height
         self.CAM_X = CAM_X
@@ -140,6 +156,10 @@ class Automobile_Data():
         self.CAM_YAW = CAM_YAW
         self.CAM_FOV = CAM_FOV
         self.CAM_K = CAM_K
+        # ESTIMATION PARAMETERS
+        self.last_estimation_callback_time = None
+        self.est_init_state = np.array([EST_INIT_X, EST_INIT_Y, EST_INIT_YAW]).reshape(-1,1)
+        self.ekf = AutomobileEKF(x0=self.est_init_state, WB=self.WB)
 
         # I/O interface
         rospy.init_node('automobile_data', anonymous=False)
@@ -165,6 +185,7 @@ class Automobile_Data():
     def position_callback(self, data) -> None:
         """Receive and store global coordinates from GPS
         :acts on: self.x, self.y
+        :needs to: call update_estimated_state
         """        
         pass
 
@@ -186,8 +207,8 @@ class Automobile_Data():
         """Update relative pose of the car
         right-hand frame of reference with x aligned with the direction of motion
         """  
-        # self.yaw_loc = diff_angle(self.yaw, self.yaw_loc_o)
-        self.yaw_loc = self.yaw - self.yaw_loc_o
+        self.yaw_loc = diff_angle(self.yaw, self.yaw_loc_o)
+        # self.yaw_loc = self.yaw - self.yaw_loc_o
         prev_dist = self.dist_loc
         self.dist_loc = np.abs(self.encoder_distance - self.dist_loc_o)
         L = np.abs(self.dist_loc - prev_dist)
@@ -201,6 +222,36 @@ class Automobile_Data():
         :acts on: self.encoder_velocity
         """        
         pass
+
+    def update_estimated_state(self):
+        ''' Updates estimated state according to EKF '''
+        # Sampling time of the estimator
+        callback_time = time.time()
+        if self.last_estimation_callback_time is None:
+            self.last_estimation_callback_time = callback_time
+            return
+        else:
+            DT = callback_time - self.last_estimation_callback_time
+            self.last_estimation_callback_time = callback_time
+            # print(f'Starting estimation with sampling time {DT} ...')
+            
+        if DT>0:            
+            # INPUT: [SPEED, STEER]
+            u0 = self.filtered_encoder_velocity
+            u1 = self.steer
+            u = np.array([u0, u1]).reshape(-1,1)
+            # OUTPUT: [GPS:x, GPS:y, IMU:yaw]
+            zx = self.x
+            zy = self.y 
+            zth = self.yaw
+            z = np.array([zx, zy, zth]).reshape(-1,1)
+            # PREDICT and UPDATE STEPS
+            self.x_est, self.y_est, self.yaw_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
+
+            # print(f'with this input: {u}')
+            # print(f'and this output: {z}')
+            # print(f'this is the estimated state: ({self.x_est, self.y_est, self.yaw_est})')
+
 
     # COMMAND ACTIONS
     def drive_speed(self, speed=0.0) -> None:
@@ -238,7 +289,9 @@ class Automobile_Data():
         self.x_loc = 0.0
         self.y_loc = 0.0
         self.yaw_loc_o = self.yaw
+        self.prev_yaw = self.yaw
         self.yaw_loc = 0.0
+        self.prev_yaw_loc = 0.0
         self.dist_loc = 0.0
         self.dist_loc_o = self.encoder_distance
 
@@ -270,36 +323,35 @@ class Automobile_Data():
         elif val > MAX_STEER:
             val = MAX_STEER
         return val
+    
 
     def __str__(self):
         description = '''
-{:#^50s} 
-x:  {:.2f} m
-y:  {:.2f} m
-
-{:#^50s} 
-x_loc:      {:.2f} m
-y_loc:      {:.2f} m
-yaw_loc:    {:.2f} deg
-
-{:#^50s} 
-roll, pitch, yaw:   {:.2f}, {:.2f}, {:.2f} deg
-ax, ay, az:         {:.2f}, {:.2f}, {:.2f} m/s^2
-wx, wy, wz:         {:.2f}, {:.2f}, {:.2f} rad/s
-
-{:#^50s}
-global distance:        {:.3f} m
-velocity (filtered):    {:.2f} ({:.2f}) m/s
-
-{:#^50s}
-sonar distance (filtered):  {:.3f} ({:.3f}) m
+{:#^65s} 
+(x,y):\t\t\t\t({:.2f},{:.2f})\t\t[m]
+{:#^65s} 
+(x_est,y_est,yaw_est):\t\t({:.2f},{:.2f},{:.2f})\t[m,m,deg]
+{:#^65s} 
+(x_loc,y_loc,yaw_loc):\t\t({:.2f},{:.2f},{:.2f})\t[m,m,deg]
+dist_loc:\t\t\t{:.2f}\t\t\t[m]
+{:#^65s} 
+roll, pitch, yaw:\t\t{:.2f}, {:.2f}, {:.2f}\t[deg]
+ax, ay, az:\t\t\t{:.2f}, {:.2f}, {:.2f}\t[m/s^2]
+wx, wy, wz:\t\t\t{:.2f}, {:.2f}, {:.2f}\t[rad/s]
+{:#^65s}
+encoder_distance:\t\t{:.3f}\t\t\t[m]
+encoder_velocity (filtered):\t{:.2f} ({:.2f})\t\t[m/s]
+{:#^65s}
+sonar_distance (filtered):\t{:.3f} ({:.3f})\t\t[m]
 '''
         return description.format(' POSITION ', self.x, self.y,\
-                                    ' LOCAL POSITION ', self.x_loc, self.y_loc, np.rad2deg(self.yaw_loc),\
+                                    ' ESTIMATION ', self.x_est, self.y_est, np.rad2deg(self.yaw_est),\
+                                    ' LOCAL POSITION ', self.x_loc, self.y_loc, np.rad2deg(self.yaw_loc), self.dist_loc,\
                                     ' IMU ', self.roll_deg, self.pitch_deg, self.yaw_deg, self.accel_x, self.accel_y, self.accel_z, self.gyrox, self.gyroy, self.gyroz,\
                                     ' ENCODER ', self.encoder_distance, self.encoder_velocity, self.filtered_encoder_velocity,
                                     ' SONAR ', self.sonar_distance, self.filtered_sonar_distance)
                                     
+
 
 
     

@@ -69,8 +69,11 @@ class AutomobileDataSimulator(Automobile_Data):
         """Receive and store global coordinates from GPS
         :acts on: self.x, self.y
         """        
-        self.x = data.posA
-        self.y = data.posB 
+        pL = np.array([data.posA, data.posB])
+        pR = mL2mR(pL)
+        self.x = pR[0]# + self.WB/2*np.cos(self.yaw)
+        self.y = pR[1]# - self.WB/2*np.sin(self.yaw)
+        self.update_estimated_state()
 
     def imu_callback(self, data) -> None:
         """Receive and store rotation from IMU 
@@ -160,6 +163,7 @@ class AutomobileDataSimulator(Automobile_Data):
         :acts on: self.speed, self.steer
         :param angle: [deg] stop angle, defaults to 0.0
         """
+        self.speed = 0.0
         data = {}
         data['action']        =  '3'
         data['steerAngle']    =  float(angle)

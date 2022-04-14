@@ -15,10 +15,11 @@ JUNCTION_EVENT = 'junction_event'
 ROUNDABOUT_EVENT = 'roundabout_event'
 CROSSWALK_EVENT = 'crosswalk_event'
 PARKING_EVENT = 'parking_event'
+HIGHWAY_EXIT_EVENT = 'highway_exit_event'
 
 EVENT_TYPES = [INTERSECTION_STOP_EVENT, INTERSECTION_TRAFFIC_LIGHT_EVENT, INTERSECTION_PRIORITY_EVENT,
-                JUNCTION_EVENT, ROUNDABOUT_EVENT, CROSSWALK_EVENT, PARKING_EVENT]
-
+                JUNCTION_EVENT, ROUNDABOUT_EVENT, CROSSWALK_EVENT, PARKING_EVENT, HIGHWAY_EXIT_EVENT]
+                
 class PathPlanning(): 
     def __init__(self, map_img):
         # start and end nodes
@@ -75,8 +76,7 @@ class PathPlanning():
         self.junctions = [str(i) for i in self.junctions]
 
         #event points
-        self.event_points = np.load('data/event_points.npy') #L coord
-        self.event_points = mL2mR(self.event_points) #convert R coord
+        self.event_points = np.load('data/event_points.npy') #created in R coord
         self.event_types = np.load('data/event_types.npy')
         assert len(self.event_points) == len(self.event_types), "event points and types are not the same length"
         event_type_names = EVENT_TYPES
