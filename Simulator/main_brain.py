@@ -70,7 +70,8 @@ if __name__ == '__main__':
         print("Exiting ...")
         car.stop()
         cv.destroyAllWindows()
-        exit(1)
+        sleep(0.1)
+        exit()
     signal.signal(signal.SIGINT, handler)
     
     # init trajectory
@@ -102,26 +103,18 @@ if __name__ == '__main__':
             loop_start_time = time()
 
             map1 = map.copy()
-            draw_car(map1, car.x, car.y, car.yaw, color=(255,0,0))
-            draw_car(map1, car.x_est, car.y_est, car.yaw, color=(255,0,255))
-            draw_car(map1, car.x_true, car.y_true, car.yaw)
+            draw_car(map1, car.x, car.y, car.yaw, color=(180,0,0))
+            color=(255,0,255) if car.trust_gps else (100,0,100)
+            draw_car(map1, car.x_true, car.y_true, car.yaw, color=(0,180,0))
+            draw_car(map1, car.x_est, car.y_est, car.yaw, color=color)
             cv.imshow('Map', map1)
             cv.waitKey(1)
-
 
             # RUN BRAIN
             brain.run()
 
             ## DEBUG INFO
             print(car)
-            # print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
-            # print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
-            # print(f'Current velocity: {car.filtered_encoder_velocity:.3f} [m/s]')
-            # print(f'total distance travelled: {car.encoder_distance:.2f} [m]')
-            # print()
-            # print(f'Local: dist: {car.dist_loc:.2f} [m], x: {car.x_loc:.2f} [m], y: {car.y_loc:.2f} [m], yaw: {np.rad2deg(car.yaw_loc):.2f} [deg]')
-            # print()
-            # print(f'Front sonar distance:     {car.filtered_sonar_distance:.2f} [m]')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
             print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
             print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')

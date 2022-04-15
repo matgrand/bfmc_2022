@@ -30,6 +30,14 @@ namespace gazebo
             // The gps message
             utils::localisation            m_gps_pose;
             
+            // last publish time
+            double last_pub;
+            double packet_loss_time;
+            
+            // simulate packet loss
+            bool losing_pkg = false; 
+            
+            
         // Default constructor
         public: GPS();
         public: void Load(physics::ModelPtr, sdf::ElementPtr);

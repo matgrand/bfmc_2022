@@ -1,7 +1,10 @@
 
 #include "gps_plugin.hpp"
 
-#define DEBUG false
+#define DEBUG true
+#define GPS_STD 0.1 // [m]
+#define PROB_OF_STARTING_LOSING_PKGS 0.05
+#define MAX_TIME_PKG_LOSS 2.3 // [s]
 
 namespace gazebo
 {
@@ -37,8 +40,10 @@ namespace gazebo
               std::cerr << "\n\n";
               ROS_INFO_STREAM("====================================================================");
               ROS_INFO_STREAM("[gps_plugin] attached to: " << this->m_model->GetName());
-              ROS_INFO_STREAM("[gps_plugin] publish to: "  << topic_name);
-              ROS_INFO_STREAM("[gps_plugin] Usefull data: linear x, linear y, angular z");
+              ROS_INFO_STREAM("[gps_plugin] publish to:  "  << topic_name);
+              ROS_INFO_STREAM("[gps_plugin] PROB_OF_STARTING_LOSING_PKGS:" << PROB_OF_STARTING_LOSING_PKGS );
+              ROS_INFO_STREAM("[gps_plugin] MAX_TIME_PKG_LOSS:           " << MAX_TIME_PKG_LOSS);
+              ROS_INFO_STREAM("[gps_plugin] GPS_STD:                     " << GPS_STD);
               ROS_INFO_STREAM("====================================================================\n\n");
           }
         }
@@ -46,13 +51,46 @@ namespace gazebo
         // Publish the updated values
         void GPS::OnUpdate()
         {
-		this->m_gps_pose.timestamp  = this->m_model->GetWorld()->SimTime().Float();
-           	this->m_gps_pose.posA   = this->m_model->RelativePose().Pos().X() + (rand() / (float)RAND_MAX * 0.2) - 0.1;
-           	this->m_gps_pose.posB   = abs(this->m_model->RelativePose().Pos().Y()) + (rand() / (float)RAND_MAX * 0.2) - 0.1;
+		float true_x = this->m_model->RelativePose().Pos().X();
+		float true_y = abs(this->m_model->RelativePose().Pos().Y());
+		float time_stamp = this->m_model->GetWorld()->SimTime().Float();
+		this->m_gps_pose.timestamp  = time_stamp;
+           	this->m_gps_pose.posA   = true_x + (rand() / (float)RAND_MAX * 2 * GPS_STD) - GPS_STD;
+           	this->m_gps_pose.posB   = true_y + (rand() / (float)RAND_MAX * 2 * GPS_STD) - GPS_STD;
            	this->m_gps_pose.rotA   = this->m_model->RelativePose().Rot().Yaw();
            	this->m_gps_pose.rotB   = this->m_model->RelativePose().Rot().Yaw();
-               this->m_pubGPS.publish(this->m_gps_pose);
+           	
+           	///*
+           	//package loss
+           	if (this->losing_pkg) {
+           		double time_diff = time_stamp - this->last_pub;
+           		//ROS_INFO_STREAM("time_diff = " << time_diff);
+           		//ROS_INFO_STREAM("packet_loss_time = " << this->packet_loss_time);
+           		if ((time_diff > this->packet_loss_time) || (time_diff <= 0.0) ) { 
+           			this->losing_pkg = false;
+           		}
+           	}
+           	else {
+           		bool start_losing_pkgs = (rand()/(float)RAND_MAX) < PROB_OF_STARTING_LOSING_PKGS; 
+           		//ROS_INFO_STREAM("start_losing_pkgs = " << start_losing_pkgs);
+           		if (start_losing_pkgs) {
+           			this->packet_loss_time = MAX_TIME_PKG_LOSS * rand() / (float)RAND_MAX;
+           			//ROS_INFO_STREAM("START->packet_loss_time = " << this->packet_loss_time);
+           			this->losing_pkg = true;
+           		}
+           	}
+           	//ROS_INFO_STREAM("losing_pkgs = " << this->losing_pkg);
+           	//*/
+           	
+           	bool inside_no_signal_region = (true_x > 15.0*0.78) && (true_y > 15.0*0.4);
+           	
+           	bool can_publish = (!inside_no_signal_region) && (!this->losing_pkg);
+           	//ROS_INFO_STREAM("can_publish = " << can_publish);
+		if (can_publish) {
+		      	this->m_pubGPS.publish(this->m_gps_pose);
+		      	this->last_pub = time_stamp;
+		}
         };      
-    }; //namespace trafficLight
+    }; //namespace gps
     GZ_REGISTER_MODEL_PLUGIN(gps::GPS)
 }; // namespace gazebo

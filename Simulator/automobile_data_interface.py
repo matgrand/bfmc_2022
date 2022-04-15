@@ -58,6 +58,8 @@ EST_INIT_X      = 3.0               # [m]
 EST_INIT_Y      = 3.0               # [m]
 
 
+EKF_STEP_BEFORE_TRUST = 5
+
 class Automobile_Data():
     def __init__(self,
                 trig_control=True,
@@ -120,6 +122,8 @@ class Automobile_Data():
         self.x_est = 0.0                        # [m]       EST:x EKF estimated global coordinate
         self.y_est = 0.0                        # [m]       EST:y EKF estimated global coordinate
         self.yaw_est = 0.0                      # [rad]     EST:yaw EKF estimated
+        self.gps_cnt = 0
+        self.trust_gps = False                  # [bool]    EST:variable set to true if the EKF trust the GPS
         # LOCAL POSITION
         self.x_loc = 0.0                        # [m]       local:x local coordinate
         self.y_loc = 0.0                        # [m]       local:y local coordinate
@@ -224,6 +228,8 @@ class Automobile_Data():
             self.last_gps_sample_time = time.time()    
             self.new_gps_sample_arrived = False           
         else:
+            if (time.time() - self.last_gps_sample_time) > 0.8:
+                self.trust_gps = False #too much time passed from previous gps pos
             yaw = self.yaw
             dx = L * np.cos(yaw)
             dy = L * np.sin(yaw)   
@@ -249,14 +255,6 @@ class Automobile_Data():
 
         if DT>0:  
             self.new_gps_sample_arrived = True   
-            #if the estimate is way off set the estimate to the current gps position
-            curr_x_est = self.ekf.x[0,0]
-            curr_y_est = self.ekf.x[1,0]
-            curr_est = np.array([curr_x_est, curr_y_est]).reshape(-1,1)
-            curr_gps = np.array([self.x, self.y]).reshape(-1,1)
-            if np.linalg.norm(curr_est - curr_gps) > 0.3:
-                self.ekf.x[0,0] = self.x
-                self.ekf.x[1,0] = self.y
             #calculate velocity using the encoder for maximum precision
             curr_gps_dist = self.encoder_distance
             dist = curr_gps_dist - self.prev_gps_dist
@@ -271,7 +269,40 @@ class Automobile_Data():
             zy = self.y 
             z = np.array([zx, zy]).reshape(-1,1)
             # PREDICT and UPDATE STEPS
-            self.x_est, self.y_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
+            x_est, y_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
+
+            #if the estimate is way off set the estimate to the current gps position
+            curr_x_est = self.ekf.x[0,0]
+            curr_y_est = self.ekf.x[1,0]
+            p_ekf = np.array([curr_x_est, curr_y_est]) #estimate of the kalmann filter
+            p_gps = np.array([self.x, self.y])       #current gps position
+            p_enc = np.array([self.x_est, self.y_est]) #estimate using the encoder
+            ekf_gps_diff =  np.linalg.norm(p_ekf - p_gps)
+            enc_gps_diff =  np.linalg.norm(p_enc - p_gps)
+
+            if ekf_gps_diff > 0.4 and enc_gps_diff > 0.4: #both estimates way off
+                self.ekf.x[0,0] = p_gps[0]
+                self.ekf.x[1,0] = p_gps[1]
+                self.trust_gps = False
+                self.gps_cnt = 0
+            elif ekf_gps_diff > 0.4 and enc_gps_diff <= 0.4: #only ekf estimate way off
+                self.ekf.x[0,0] = p_enc[0]
+                self.ekf.x[1,0] = p_enc[1]
+                self.trust_gps = False
+                self.gps_cnt = 2
+            else: #both fairly accurate
+                if ekf_gps_diff > 0.25: 
+                    self.trust_gps = False
+                    self.gps_cnt = 0
+                else: 
+                    self.gps_cnt +=1
+                    if self.gps_cnt > EKF_STEP_BEFORE_TRUST:
+                        self.trust_gps = True
+
+            if self.trust_gps:
+                self.x_est, self.y_est = x_est, y_est
+
+            
 
     # COMMAND ACTIONS
     def drive_speed(self, speed=0.0) -> None:
