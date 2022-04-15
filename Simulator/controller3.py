@@ -13,7 +13,7 @@ L = 0.4  #length of the car, matched with lane_detection
 
 class Controller():
     def __init__(self, k1=1.0,k2=1.0,k3=1.0, k3D=0.08, ff=1.0, cm_ahead=35, folder='training_imgs',
-                    training=True, noise_std=np.deg2rad(20)):
+                    training=False, noise_std=np.deg2rad(20)):
         
         #controller paramters
         self.k1 = k1

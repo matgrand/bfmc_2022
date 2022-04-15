@@ -22,8 +22,8 @@ class AutomobileEKF(EKF):
         :param WB: [m]: car wheelbase length
         :type WB: float
         """        
-        dim_xx = 3      # xx = [x, y, yaw]^T
-        dim_zz = 3      # zz = [GPS:x, GPS:y, IMU:yaw]^T
+        dim_xx = 2      # xx = [x, y, yaw]^T
+        dim_zz = 2      # zz = [GPS:x, GPS:y, IMU:yaw]^T
         dim_uu = 2      # uu = [speed, steer]^T
 
         EKF.__init__(self, dim_x=dim_xx, dim_z=dim_zz, dim_u=dim_uu)
@@ -31,26 +31,24 @@ class AutomobileEKF(EKF):
         self.x = np.copy(x0)
 
         # Measurement uncertainty
-        self.R = np.diag([SIGMA_X**2, SIGMA_Y**2, SIGMA_H**2])
+        self.R = np.diag([SIGMA_X**2, SIGMA_Y**2])
 
         # Analytical model
         self.xx = MX.sym('x',dim_xx)
         self.uu = MX.sym('u',dim_uu)
         x = self.xx[0]      # [m]   GPS:x
         y = self.xx[1]      # [m]   GPS:y
-        psi = self.xx[2]    # [rad] GPS:yaw
 
         # Input: [speed, steering angle]
         v = self.uu[0]      # [m/s] SPEED
-        delta = self.uu[1]  # [rad] STEER
+        psi = self.uu[1]    # [rad] YAW
 
         # *******************************************
         # Useful parameters
         lr = WB/2                       # [m]   dist from rear wheel to CoM
-        beta = atan(lr/WB*tan(delta))   # [rad] beta, i.e. the turning angle
         # *******************************************
         # ODE integration
-        self.rhs = vertcat(v*cos(psi+beta), v*sin(psi+beta), v/lr*sin(beta))
+        self.rhs = vertcat(v*cos(psi), v*sin(psi))
         self.model = {}              # ODE declaration
         self.model['x']   = self.xx  # states
         self.model['p']   = self.uu  # inputs (as parameters)
@@ -95,21 +93,8 @@ class AutomobileEKF(EKF):
         # *******************************************
         # Error covariance prediction
         # *******************************************
-        # # Process Uncertainty in the control space, see paper for this choiche
-        # self.M = np.array([[SIGMA_SPEED**2, 0], [0, SIGMA_STEER**2]])
-        # self.Q = V @ self.M @ V.T
-
-        self.Q = np.diag([0.001, 0.001, 0.001])
-        #self.Q = np.diag([(SIGMA_X**2), (SIGMA_Y**2), SIGMA_H**2])
-        
-        if DEBUG:
-            print('self.Q:\n',self.gammaQ*self.Q)
-            print('V:\n',V)
-            print('*********************')
-        
-
+        self.Q = np.diag([0.001, 0.001])
         self.P = self.gammaP * F @ self.P @ F.T + self.Q * self.gammaQ
-        #self.P = np.dot(self.F, self.P).dot(self.F.T) + self.Q
 
         # *******************************************
         # State prediction
@@ -140,46 +125,27 @@ class AutomobileEKF(EKF):
         x_est = xxEst[0,0]
         # y: CoM
         y_est = xxEst[1,0]
-        # Yaw
-        yaw_est = xxEst[2,0]
-        yaw_est = diff_angle(yaw_est,0.0)
 
-        return x_est, y_est, yaw_est
-
-        # if DEBUG:
-        #     print(f'with this input: {u}')
-        #     print(f'and this output: {z}')
-        #     print(f'this is the estimated state: ({self.x_est, self.y_est, self.yaw_est})')
+        return x_est, y_est
     
 def residual(a,b):
     """ compute residual between two measurement.
-    Angle is normalized to [0, 360)"""
-    # y = a - b
-    # if y[2] > np.pi:
-    #     y[2] -= 2*np.pi
-    # if y[2] < -np.pi:
-    #     y[2] += 2*np.pi
-    y = np.zeros_like(a)
-    y[0] = a[0] - b[0]
-    y[1] = a[1] - b[1]
-    y[2] = diff_angle(a[2],b[2])
-    return y
+    """
+    return a - b
 
 def diff_angle(angle1, angle2):
     return np.arctan2(np.sin(angle1-angle2), np.cos(angle1-angle2))
 
 def HJacobian(x):
     ''' compute Jacobian of the output map h(x) '''
-    H = np.array([[1,0,0],
-                [0,1,0],
-                [0,0,1]])
+    H = np.array([[1,0],
+                [0,1]])
     return H
 
 
 def Hx(x):
     ''' compute output given current state '''
-    H = np.array([[1,0,0],
-                [0,1,0],
-                [0,0,1]])
+    H = np.array([[1,0],
+                [0,1]])
     z = np.matmul(H,x)
     return z

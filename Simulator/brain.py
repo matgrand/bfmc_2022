@@ -54,10 +54,8 @@ class State():
         self.var1 = None
         self.var2 = None
         self.var3 = None
-
     def __str__(self):
-        return self.name
-    
+        return self.name.upper() if self.name is not None else 'None'
     def run(self):
         self.method()
 
@@ -80,13 +78,8 @@ class Routine():
         self.start_time = None
         self.start_position = None
         self.start_distance = None
-
     def __str__(self):
         return self.name
-
-    def __repr__(self) -> str:
-        return self.name
-    
     def run(self):
         self.method()
 
@@ -112,7 +105,6 @@ class Event:
         self.path_ahead = path_ahead    # sequence of points after the event, only for intersections or roundabouts
         self.length_path_ahead = length_path_ahead   # length of the path after the event, only for intersections or roundabouts
         self.curvature = curvature      # curvature of the path ahead of the event
-    
     def __str__(self):
         return self.name.upper() if self.name is not None else 'None'
 
@@ -126,7 +118,9 @@ CONDITIONS = {
     'car_on_path':              True,   # if true, the car is on the path, if the gps is trusted and the position is too far from the path it will be set to false
 }
 
+#==============================================================
 #========================= PARAMTERS ==========================
+#==============================================================
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
 STOP_LINE_APPROACH_DISTANCE = 0.3
 STOP_LINE_STOP_DISTANCE = 0.1
@@ -263,14 +257,12 @@ class Brain:
         self.car.drive_speed(self.desired_speed)
 
     def end_state(self):
-        print(f'Next event: {self.next_event}')
         self.activate_routines([FOLLOW_LANE])
         if self.curr_state.just_switched: # first call
             prev_event_dist = self.prev_event.dist
             end_dist = len(self.path_planner.path)*0.01
             dist_to_end = end_dist - prev_event_dist
             self.curr_state.var1 = dist_to_end
-            # self.car.reset_rel_pose()
             self.car.drive_speed(self.desired_speed)
             self.curr_state.just_switched = False
         #end condition on the distance, can be done with GPS instead, or both
@@ -278,11 +270,11 @@ class Brain:
         stopping_in = np.abs(dist_to_end - self.car.dist_loc)
         print(f'Stoppig in {stopping_in-0.1} [m]')
         if stopping_in < 0.1:
-            self.car.stop()
+            self.car.stop() #TODO control in position
             self.go_to_next_event()
-            self.switch_to_state(START_STATE)
             #start routing for next checkpoint
             self.next_checkpoint()
+            self.switch_to_state(START_STATE)
 
     def doing_nothing(self):
         self.activate_routines([])
@@ -303,6 +295,7 @@ class Brain:
         if self.next_event.name == PARKING_EVENT or self.next_event.name == HIGHWAY_EXIT_EVENT:
             self.go_to_next_event()
 
+        # end of current route, go to end state
         if self.next_event.name == END_EVENT:
             self.switch_to_state(END_STATE)
 
@@ -314,8 +307,9 @@ class Brain:
             self.switch_to_state(LANE_FOLLOWING)
             self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE])
             self.car.drive_speed(self.desired_speed)
-        elif dist < STOP_LINE_STOP_DISTANCE:
+        elif dist < STOP_LINE_STOP_DISTANCE: #STOP THE CAR
             next_event_name = self.next_event.name
+            # Events with stopline
             if next_event_name == INTERSECTION_STOP_EVENT:
                 self.switch_to_state(WAITING_AT_STOPLINE) 
             elif next_event_name == INTERSECTION_TRAFFIC_LIGHT_EVENT:
@@ -323,21 +317,26 @@ class Brain:
             elif next_event_name == INTERSECTION_PRIORITY_EVENT:
                 self.switch_to_state(INTERSECTION_NAVIGATION)
             elif next_event_name == JUNCTION_EVENT:
-                self.switch_to_state(TURNING_RIGHT)
+                self.switch_to_state(INTERSECTION_NAVIGATION) #TODO: careful with this
             elif next_event_name == ROUNDABOUT_EVENT:
                 self.switch_to_state(ROUNDABOUT_NAVIGATION)
             elif next_event_name == CROSSWALK_EVENT:
                 self.switch_to_state(WAITING_FOR_PEDESTRIAN)
+            # Events without stopline = LOGIC ERROR
             elif next_event_name == PARKING_EVENT:
                 print('WARNING: UNEXPECTED STOP LINE FOUND WITH PARKING AS NEXT EVENT')
-                exit()
-            self.car.reset_rel_pose() ###################### NOTE
+                exit() #TODO: handle this case
+            elif next_event_name == HIGHWAY_EXIT_EVENT:
+                print('WARNING: UNEXPECTED STOP LINE FOUND WITH HIGHWAY EXIT AS NEXT EVENT')
+                exit() #TODO: handle this case
+            #Every time we stop for a stopline, we reset teh local frame of reference
+            self.car.reset_rel_pose() 
 
     def intersection_navigation(self):
         self.activate_routines([])
-        if USE_LOCAL_TRACKING_FOR_INTERSECTIONS:
+        if USE_LOCAL_TRACKING_FOR_INTERSECTIONS: #use local tracking, more reliable if local yaw estimaiton and localization are good
             self.switch_to_state(TRACKING_LOCAL_PATH)
-        else:
+        else: # go for precoded manouvers, less precise and less robust, but predictable
             if self.next_event.curvature > 0.5:
                 self.switch_to_state(TURNING_RIGHT)
             elif self.next_event.curvature < -0.5:
@@ -454,7 +453,6 @@ class Brain:
                 cv.imshow('brain_debug', img)
                 cv.waitKey(1)
 
-            # self.car.reset_rel_pose()
             self.curr_state.var2 = np.array([self.car.x_true, self.car.y_true]) #var2 hold original position
             true_start_pos_wf = self.curr_state.var2
             self.curr_state.just_switched = False
@@ -485,9 +483,7 @@ class Brain:
                 cv.waitKey(1)  
                 self.curr_state.var3 = local_map_img
 
-        
         D = POINT_AHEAD_DISTANCE_LOCAL_TRACKING
-
         #track the local path using simple pure pursuit
         local_path = self.curr_state.var1
         car_pos_loc = np.array([self.car.x_loc, self.car.y_loc])
@@ -533,10 +529,11 @@ class Brain:
             max_idx = len(local_path_cf)-30 #dont follow until the end
         else: #curvy path
             max_idx = len(local_path_cf)-1  #follow until the end
-        if idx_point_ahead >= max_idx:
+        # State exit conditions
+        if idx_point_ahead >= max_idx: #we reached the end of the path
             self.switch_to_state(LANE_FOLLOWING)
             self.go_to_next_event()
-        else:
+        else: #we are still on the path
             point_ahead = local_path_cf[idx_point_ahead]
             if SHOW_IMGS:
                 img = self.car.frame.copy()
@@ -544,7 +541,6 @@ class Brain:
                 img, _ = project_onto_frame(img, self.car, point_ahead, align_to_car=False, color=(0,0,255))
                 cv.imshow('brain_debug', img)
                 cv.waitKey(1)
-
             gains = [0.0, .0, 1.2, 0.0] #k1,k2,k3,k3D
             e2 = local_path_cf[idx_car_on_path][1] 
             yaw_error = np.arctan2(point_ahead[1], point_ahead[0]) 
@@ -626,12 +622,12 @@ class Brain:
 
 #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
-        print('==============================================')
-        print(f'STATE: {self.curr_state.name.upper()}')
+        print('==========================================================')
+        print(f'STATE: {self.curr_state}')
         print(f'UPCOMING_EVENT: {self.next_event}')
         print(f'ROUTINES: {self.active_routines_names}')
         self.run_current_state()
-        print('==============================================')
+        print('==========================================================')
         print()
         self.run_routines()
 
@@ -680,8 +676,7 @@ class Brain:
         """
         self.prev_event = self.next_event
         if self.event_idx == len(self.events):
-            #no more events, go to end_state
-            # self.switch_to_state(END_STATE)
+            #no more events, for now
             pass
         else:
             self.next_event = self.events[self.event_idx]

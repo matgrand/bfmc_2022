@@ -26,19 +26,13 @@ class_list = []
 with open("data/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
-# MAIN CONTROLS
-training = False
-generate_path = False if not training else True
-# folder = 'training_imgs' 
-folder = 'test_imgs'
-
 LOOP_DELAY = 0.05
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.3# [m/s]
+DESIRED_SPEED = 0.6# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -83,8 +77,7 @@ if __name__ == '__main__':
     path = PathPlanning(map) 
 
     # init controller
-    controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, ff=ff_curvature, folder=folder, 
-                                    training=training, noise_std=noise_std)
+    controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, ff=ff_curvature)
 
     #initiliaze all the neural networks for detection and lane following
     detect = Detection()
@@ -109,9 +102,9 @@ if __name__ == '__main__':
             loop_start_time = time()
 
             map1 = map.copy()
-            draw_car(map1, car.x_true, car.y_true, car.yaw)
-            draw_car(map1, car.x_est, car.y_est, car.yaw_est, color=(255,0,255))
             draw_car(map1, car.x, car.y, car.yaw, color=(255,0,0))
+            draw_car(map1, car.x_est, car.y_est, car.yaw, color=(255,0,255))
+            draw_car(map1, car.x_true, car.y_true, car.yaw)
             cv.imshow('Map', map1)
             cv.waitKey(1)
 

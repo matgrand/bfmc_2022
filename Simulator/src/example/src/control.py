@@ -39,7 +39,7 @@ from utils.msg import IMU
 from cv_bridge import CvBridge
 from time import time, sleep
 import numpy as np
-import os
+import os, sys
 
 import rospy
 
@@ -210,20 +210,32 @@ class CarVisualizer():
         return -angle -np.pi/2
 
 if __name__ == '__main__':
+    #get arguments
+    args = sys.argv
+    if len(args) > 1:
+        if args[1] == '-view-only':
+            print('View only mode, [esc] will not stop the program,\nu can only stop the program with [ctrl]+[c]')
+            view_only = True
+        else:
+            view_only = False
+            print('Invalid argument, the only valid argument is "-view-only"')
+    run_control = not view_only
+    
     try:
         cv.namedWindow('Car visualization', cv.WINDOW_NORMAL)
         cv.resizeWindow('Car visualization', FRAME_SIZE*2, FRAME_SIZE)
         cam = CarVisualizer()
-        nod = RemoteControlTransmitterProcess()
+        if run_control:
+            nod = RemoteControlTransmitterProcess()
         # nod.run()
         while not rospy.is_shutdown():
             cv.imshow("Car visualization", cam.img)
             key = cv.waitKey(1)
-            if key == 27:
+            if key == 27 and run_control:
                 cv.destroyAllWindows()
                 nod.keyboardListenerThread.stop()
                 break
-            sleep(0.01)
+            sleep(0.005) if run_control else sleep(1/15.0)
 
 
 

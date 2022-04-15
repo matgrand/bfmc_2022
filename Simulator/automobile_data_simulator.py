@@ -71,8 +71,8 @@ class AutomobileDataSimulator(Automobile_Data):
         """        
         pL = np.array([data.posA, data.posB])
         pR = mL2mR(pL)
-        self.x = pR[0]# + self.WB/2*np.cos(self.yaw)
-        self.y = pR[1]# - self.WB/2*np.sin(self.yaw)
+        self.x = pR[0] - self.WB/2*np.cos(self.yaw)
+        self.y = pR[1] - self.WB/2*np.sin(self.yaw)
         self.update_estimated_state()
 
     def imu_callback(self, data) -> None:
@@ -87,12 +87,11 @@ class AutomobileDataSimulator(Automobile_Data):
         self.yaw = float(data.yaw)
         self.yaw_deg = np.rad2deg(self.yaw)
         #true position, not in real car
-
-        x_true = float(data.posx)
-        y_true = -float(data.posy) + 15.0
+        true_posL = np.array([data.posx, data.posy])
+        true_posR = mL2mR(true_posL)
         # center x_true on the rear axis
-        self.x_true = x_true - self.WB/2*np.cos(self.yaw)  
-        self.y_true = y_true - self.WB/2*np.sin(self.yaw)
+        self.x_true = true_posR[0] - self.WB/2*np.cos(self.yaw)  
+        self.y_true = true_posR[1] - self.WB/2*np.sin(self.yaw)
 
         self.timestamp = float(data.timestamp)
         #NOTE: in the simulator we don't have neither acceleromter or gyroscope (yet)

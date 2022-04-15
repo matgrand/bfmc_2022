@@ -54,9 +54,8 @@ CAM_K = np.array([[CAM_F*CAM_Sx,      0.0,            CAM_Ox],
                   [ 0.0,              CAM_F*CAM_Sy,   CAM_Oy],
                   [ 0.0,              0.0,            1.0]])
 # Estimator parameters
-EST_INIT_X      = 1.0               # [m]
+EST_INIT_X      = 3.0               # [m]
 EST_INIT_Y      = 3.0               # [m]
-EST_INIT_YAW    = np.deg2rad(20)    # [rad]
 
 
 class Automobile_Data():
@@ -115,6 +114,8 @@ class Automobile_Data():
         self.encoder_velocity = 0.0             # [m/s]     ENC:speed measure of the car from encoder
         self.filtered_encoder_velocity = 0.0    # [m/s]     ENC:filtered speed measure of the car from encoder
         self.encoder_distance = 0.0             # [m]       total absolute distance measured by the encoder, it never get reset
+        self.prev_dist = 0.0                    # [m]       previous distance
+        self.prev_gps_dist = 0.0
         # CAR POSE ESTIMATION
         self.x_est = 0.0                        # [m]       EST:x EKF estimated global coordinate
         self.y_est = 0.0                        # [m]       EST:y EKF estimated global coordinate
@@ -126,6 +127,8 @@ class Automobile_Data():
         self.yaw_loc_o = 0.0                    # [rad]     local:yaw origin wrt to global yaw from IMU
         self.dist_loc = 0.0                     # [m]       local:absolute distance, length of local trajectory
         self.dist_loc_o = 0.0                   # [m]       local:absolute distance origin, wrt global encoder distance
+        self.last_gps_sample_time = time.time() 
+        self.new_gps_sample_arrived = True
         # SONAR
         self.sonar_distance = 0.0               # [m]       SONAR: unfiltered distance from the sonar
         self.filtered_sonar_distance = 3.0      # [m]       SONAR: filtered distance from the sonar
@@ -158,7 +161,7 @@ class Automobile_Data():
         self.CAM_K = CAM_K
         # ESTIMATION PARAMETERS
         self.last_estimation_callback_time = None
-        self.est_init_state = np.array([EST_INIT_X, EST_INIT_Y, EST_INIT_YAW]).reshape(-1,1)
+        self.est_init_state = np.array([EST_INIT_X, EST_INIT_Y]).reshape(-1,1)
         self.ekf = AutomobileEKF(x0=self.est_init_state, WB=self.WB)
 
         # I/O interface
@@ -207,15 +210,25 @@ class Automobile_Data():
         """Update relative pose of the car
         right-hand frame of reference with x aligned with the direction of motion
         """  
-        self.yaw_loc = diff_angle(self.yaw, self.yaw_loc_o)
-        # self.yaw_loc = self.yaw - self.yaw_loc_o
-        prev_dist = self.dist_loc
-        self.dist_loc = np.abs(self.encoder_distance - self.dist_loc_o)
-        L = np.abs(self.dist_loc - prev_dist)
-        x_increment = L * np.cos(self.yaw_loc)
-        y_increment = L * np.sin(self.yaw_loc)
-        self.x_loc += x_increment
-        self.y_loc += y_increment
+        self.yaw_loc = self.yaw - self.yaw_loc_o
+        curr_dist = self.encoder_distance
+        self.dist_loc = np.abs(curr_dist - self.dist_loc_o)
+        L = np.abs(curr_dist - self.prev_dist)
+        dx = L * np.cos(self.yaw_loc)
+        dy = L * np.sin(self.yaw_loc)
+        self.x_loc += dx
+        self.y_loc += dy
+        self.prev_dist = curr_dist
+        #update gps estimation filler
+        if self.new_gps_sample_arrived:
+            self.last_gps_sample_time = time.time()    
+            self.new_gps_sample_arrived = False           
+        else:
+            yaw = self.yaw
+            dx = L * np.cos(yaw)
+            dy = L * np.sin(yaw)   
+            self.x_est += dx
+            self.y_est += dy            
 
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received
@@ -233,25 +246,32 @@ class Automobile_Data():
         else:
             DT = callback_time - self.last_estimation_callback_time
             self.last_estimation_callback_time = callback_time
-            # print(f'Starting estimation with sampling time {DT} ...')
-            
-        if DT>0:            
+
+        if DT>0:  
+            self.new_gps_sample_arrived = True   
+            #if the estimate is way off set the estimate to the current gps position
+            curr_x_est = self.ekf.x[0,0]
+            curr_y_est = self.ekf.x[1,0]
+            curr_est = np.array([curr_x_est, curr_y_est]).reshape(-1,1)
+            curr_gps = np.array([self.x, self.y]).reshape(-1,1)
+            if np.linalg.norm(curr_est - curr_gps) > 0.3:
+                self.ekf.x[0,0] = self.x
+                self.ekf.x[1,0] = self.y
+            #calculate velocity using the encoder for maximum precision
+            curr_gps_dist = self.encoder_distance
+            dist = curr_gps_dist - self.prev_gps_dist
+            velocity = dist / DT
+            self.prev_gps_dist = curr_gps_dist
             # INPUT: [SPEED, STEER]
-            u0 = self.filtered_encoder_velocity
-            u1 = self.steer
+            u0 = velocity
+            u1 = self.yaw
             u = np.array([u0, u1]).reshape(-1,1)
             # OUTPUT: [GPS:x, GPS:y, IMU:yaw]
             zx = self.x
             zy = self.y 
-            zth = self.yaw
-            z = np.array([zx, zy, zth]).reshape(-1,1)
+            z = np.array([zx, zy]).reshape(-1,1)
             # PREDICT and UPDATE STEPS
-            self.x_est, self.y_est, self.yaw_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
-
-            # print(f'with this input: {u}')
-            # print(f'and this output: {z}')
-            # print(f'this is the estimated state: ({self.x_est, self.y_est, self.yaw_est})')
-
+            self.x_est, self.y_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
 
     # COMMAND ACTIONS
     def drive_speed(self, speed=0.0) -> None:
@@ -267,6 +287,15 @@ class Automobile_Data():
         :param angle: [deg] desired angle, defaults to 0.0
         """    
         raise NotImplementedError()    
+    
+    def drive_distance(self, dist=0.0):
+        """Drive the car a given distance forward or backward
+        from the point it has been called and stop there, 
+        it uses control in position and not in velocity, 
+        used for precise movements
+        :param dist: distance to drive, defaults to 0.0
+        """
+        raise NotImplementedError()
 
     def drive(self, speed=0.0, angle=0.0) -> None:
         """Command a speed and steer angle to the car
