@@ -154,7 +154,9 @@ class Controller():
         if dist is None:
             dist = 10
         # print(f'bounding box: {bounding_box}')
+        #add errors 
         reg_label = [self.e2, self.e3, dist, curv]
+        #add sequ of points ahead
         for i in range(NUM_POINTS):
             reg_label.append(self.seq_yaws_ahead[i])
         np_arr = np.array(reg_label)
@@ -205,7 +207,7 @@ class Controller():
             action_vec[3] = 1
         return np.array(action_vec).reshape(1,4)
 
-    def get_random_noise(self, std=np.deg2rad(20), reset=10):
+    def get_random_noise(self, std=np.deg2rad(20), reset=20):
         if self.cnt == reset:
             self.cnt = 0
             self.noise = np.random.normal(0, std)

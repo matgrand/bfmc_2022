@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+SIMULATOR = True # True: run simulator, False: run real car
 
 import os
 import cv2 as cv
@@ -7,7 +8,12 @@ import numpy as np
 from time import sleep, time
 os.system('clear')
 print('Main simulator starting...')
-from automobile_data import Automobile_Data
+if SIMULATOR:
+    from automobile_data_simulator import AutomobileDataSimulator
+    from helper_functions import *
+else: #PI
+    from control.automobile_data_pi import AutomobileDataPi
+    from control.helper_functions import *
 from helper_functions import *
 from PathPlanning3 import PathPlanning
 from controller3 import Controller
@@ -19,30 +25,29 @@ with open("models/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
 # MAIN CONTROLS
-SIMULATOR = True # True: run simulator, False: run real car
 training = False
-generate_path = False if not training else True
+generate_path = True if training else False
 # folder = 'training_imgs' 
 folder = 'test_imgs'
 
 # os.system('rosservice call /gazebo/reset_simulation')
 
-LOOP_DELAY = 0.000
+LOOP_DELAY = 0.00
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.7# [m/s]
+DESIRED_SPEED = 0.0# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
 k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
-k3 = 0.6 #1.0 yaw error gain .8 with ff 
+k3 = 0.99 #1.0 yaw error gain .8 with ff 
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
-noise_std = np.deg2rad(25) # [rad] noise in the steering angle
+noise_std = np.deg2rad(22.0) # [rad] noise in the steering angle
 
 
 if __name__ == '__main__':
@@ -55,8 +60,12 @@ if __name__ == '__main__':
     
     # init the car data
     os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
-    car = Automobile_Data(simulator=SIMULATOR, trig_cam=True, trig_gps=True, trig_bno=True, 
-                            trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
+    if SIMULATOR:
+        car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
+                               trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
+    else:
+        car = AutomobileDataPi(trig_cam=True, trig_gps=False, trig_bno=True, 
+                               trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
     car.stop()
 
     # init trajectory
@@ -75,7 +84,10 @@ if __name__ == '__main__':
         #generate path
         if generate_path:
             path_nodes = [86,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
-                            97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
+                            97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355,
+                            87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
+                            97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355
+                            ]
             # path_nodes = [86,110,428,467] #,273,136,321,262]
             path.generate_path_passing_through(path_nodes, path_step_length) #[86,110,310,254,463] ,[86,436, 273,136,321,262,105,350,451,265]
             # [86,436, 273,136,321,262,105,350,373,451,265,145,160,353]
@@ -112,8 +124,8 @@ if __name__ == '__main__':
                 speed_ref, angle_ref, point_ahead = controller.get_training_control(car, path_ahead, DESIRED_SPEED, curv)
                 controller.save_data(frame, folder)
                 dist = info[3]
-                if dist is not None and 0.0 < dist < 0.5:
-                    speed_ref = 0.8 * speed_ref
+                if dist is not None and 0.0 < dist < 0.4:
+                    speed_ref = 0.1 * speed_ref
             else:
                 #Neural network control
                 lane_info = detect.detect_lane(frame)
@@ -126,11 +138,11 @@ if __name__ == '__main__':
                 points_local_path, _ = detect.estimate_local_path(frame)
 
                 # #stopping logic
-                if 0.0 < dist < 0.25:
+                if 0.0 < dist < 0.4:
                     print('Slowing down')
                     speed_ref = DESIRED_SPEED * 0.2
                     if 0.0 < dist < 0.1:
-                        speed_ref = DESIRED_SPEED * 0.02
+                        speed_ref = DESIRED_SPEED * 0.05
                         # print('Stopping')
                         # car.stop()
                         # sleep(0.4)
@@ -143,8 +155,8 @@ if __name__ == '__main__':
 
             ## ACTUATION
             sleep(ACTUATION_DELAY)
-            car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
-            # car.drive_angle(angle=angle_ref, direct=True)
+            # car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
+            car.drive_angle(angle=np.rad2deg(angle_ref))
 
             ## VISUALIZATION
             #project path ahead
@@ -176,6 +188,7 @@ if __name__ == '__main__':
 
             ## DEBUG INFO
             os.system('cls' if os.name=='nt' else 'clear')
+            print(f'Stop line distance: {dist:.2f}')
             print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
             print(f"xd: {xd:.3f} [m], yd: {yd:.3f} [m], yawd: {np.rad2deg(yawd):.3f} [deg], curv: {curv:.3f}") if generate_path else None
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")

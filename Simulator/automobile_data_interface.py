@@ -58,7 +58,7 @@ EST_INIT_X      = 3.0               # [m]
 EST_INIT_Y      = 3.0               # [m]
 
 
-EKF_STEP_BEFORE_TRUST = 5
+EKF_STEPS_BEFORE_TRUST = 15 #10 is fine, 15 is safe
 
 class Automobile_Data():
     def __init__(self,
@@ -228,8 +228,9 @@ class Automobile_Data():
             self.last_gps_sample_time = time.time()    
             self.new_gps_sample_arrived = False           
         else:
-            if (time.time() - self.last_gps_sample_time) > 0.8:
+            if (time.time() - self.last_gps_sample_time) > 0.8 and np.abs(self.filtered_encoder_velocity) > 0.1:
                 self.trust_gps = False #too much time passed from previous gps pos
+                self.gps_cnt = 0
             yaw = self.yaw
             dx = L * np.cos(yaw)
             dy = L * np.sin(yaw)   
@@ -270,35 +271,39 @@ class Automobile_Data():
             z = np.array([zx, zy]).reshape(-1,1)
             # PREDICT and UPDATE STEPS
             x_est, y_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
-
+            ## check if x_est and y_est are valid
             #if the estimate is way off set the estimate to the current gps position
             curr_x_est = self.ekf.x[0,0]
             curr_y_est = self.ekf.x[1,0]
             p_ekf = np.array([curr_x_est, curr_y_est]) #estimate of the kalmann filter
             p_gps = np.array([self.x, self.y])       #current gps position
-            p_enc = np.array([self.x_est, self.y_est]) #estimate using the encoder
+            p_enc = np.array([self.x_est, self.y_est]) #curr estimate using the encoder
+            #distances
             ekf_gps_diff =  np.linalg.norm(p_ekf - p_gps)
             enc_gps_diff =  np.linalg.norm(p_enc - p_gps)
-
+            #checks
             if ekf_gps_diff > 0.4 and enc_gps_diff > 0.4: #both estimates way off
+                #-> use gps
                 self.ekf.x[0,0] = p_gps[0]
                 self.ekf.x[1,0] = p_gps[1]
                 self.trust_gps = False
                 self.gps_cnt = 0
             elif ekf_gps_diff > 0.4 and enc_gps_diff <= 0.4: #only ekf estimate way off
+                #-> use encoder
                 self.ekf.x[0,0] = p_enc[0]
                 self.ekf.x[1,0] = p_enc[1]
                 self.trust_gps = False
-                self.gps_cnt = 2
+                self.gps_cnt = 0
             else: #both fairly accurate
-                if ekf_gps_diff > 0.25: 
+                #w8 for KF to converge before trusting gps
+                if ekf_gps_diff > 0.25: #a little off
                     self.trust_gps = False
                     self.gps_cnt = 0
                 else: 
                     self.gps_cnt +=1
-                    if self.gps_cnt > EKF_STEP_BEFORE_TRUST:
+                    if self.gps_cnt > EKF_STEPS_BEFORE_TRUST:
                         self.trust_gps = True
-
+            #update the estimated state, if gps is trusted
             if self.trust_gps:
                 self.x_est, self.y_est = x_est, y_est
 

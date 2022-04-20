@@ -85,7 +85,7 @@ class Detection:
         frame = cv.Canny(frame, 100, 200)
         frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
         frame = cv.resize(frame, IMG_SIZE)
-        # frame = cv.blur(frame, (2,2), 0)  #7,7 both is best
+
 
         # # add noise 1.5 ms 
         # std = 50
@@ -107,7 +107,7 @@ class Detection:
             blob = cv.dnn.blobFromImages(images, 1.0, IMG_SIZE, 0, swapRB=True, crop=False) 
         # assert blob.shape == (2, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
         self.lane_keeper.setInput(blob)
-        out = -self.lane_keeper.forward()
+        out = -self.lane_keeper.forward() #### NOTE: MINUS SIGN IF OLD NET
         output = out[0]
         output_flipped = out[1] if not faster else None
 
@@ -144,22 +144,22 @@ class Detection:
         IMG_SIZE = (32,32) #match with trainer
         #convert to gray
         frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        #keep the bottom 2/3 of the image
         frame = frame[int(frame.shape[0]*(2/5)):,:]
+        #keep the bottom 2/3 of the image
         #blur
         # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
         frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
+        frame = cv.Canny(frame, 100, 200)
         frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
         frame = cv.resize(frame, IMG_SIZE)
-        frame = cv.blur(frame, (2,2), 0)  #7,7 both is best
 
-        # # add noise 1.5 ms 
-        std = 50
-        # std = np.random.randint(1, std)
-        noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
-        frame = cv.subtract(frame, noisem)
-        noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
-        frame = cv.add(frame, noisep)
+        # # # add noise 1.5 ms 
+        # std = 50
+        # # std = np.random.randint(1, std)
+        # noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.subtract(frame, noisem)
+        # noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.add(frame, noisep)
 
         blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
         # assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
@@ -252,7 +252,7 @@ class Detection:
             return None, 0.0
 
     ## SIGN DETECTION
-    def tile_image(self, image, x,y,w,h, rows, cols, tile_widths, return_size=(32,32)):
+    def tile_image(self, image, x,y,w,h, rows, cols, tile_widths, return_size=(32,32), channels=3):
         assert image.shape[0] >= y + h, f'Image height is {image.shape[0]} but y is {y} and h is {h}'
         assert image.shape[1] >= x + w, f'Image width is {image.shape[1]} but x is {x} and w is {w}'
         assert [ws < w for ws in tile_widths], f'Tile width is {tile_widths} but w is {w}'
@@ -266,24 +266,35 @@ class Detection:
         num_scales = len(tile_widths)
         idx = 0
         img = image[y:y+h, x:x+w].copy()
-        img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-        imgs = np.zeros((num_scales*rows*cols, return_size[0], return_size[1]), dtype=np.uint8)
+        if channels == 3:
+            imgs = np.zeros((num_scales*rows*cols, return_size[0], return_size[1], channels), dtype=np.uint8)
+        elif channels == 1:
+            imgs = np.zeros((num_scales*rows*cols, return_size[0], return_size[1], channels), dtype=np.uint8)
+        else: 
+            raise ValueError(f'return_size must be 2 or 3, but is {return_size}')
         # centers = np.stack([centers_x, centers_y], axis=1)
         centers = []
-        widths = []
-        for s in range(num_scales):
+        widths_idxs = []
+        for s, i_s in enumerate(range(num_scales)):
             centers_x = np.linspace(int(tile_widths[s]/2), w-int(tile_widths[s]/2), cols, dtype=int)
             centers_y = np.linspace(int(tile_widths[s]/2), h-int(tile_widths[s]/2), rows, dtype=int)
             for i in range(rows):
                 for j in range(cols):
                     # img = image[y:y+h, x:x+w]
                     im = img[centers_y[i]-tile_widths[s]//2:centers_y[i]+tile_widths[s]//2, centers_x[j]-tile_widths[s]//2:centers_x[j]+tile_widths[s]//2].copy()
+                    
+                    # im = cv.resize(im, (2*return_size[0], 2*return_size[1]))
+                    # im = cv.blur(im, (5,5))
+                    # im = cv.Canny(im, 100, 200)
                     im = cv.resize(im, return_size)
+                    #bgr2hsv
+                    im = cv.cvtColor(im, cv.COLOR_BGR2HSV)
+
                     imgs[idx] = im
                     centers.append([x+centers_x[j], y+centers_y[i]])
-                    widths.append(tile_widths[s])
+                    widths_idxs.append(i_s)
                     idx += 1
-        return imgs, centers, widths
+        return imgs, centers, widths_idxs
                 
     def detect_sign(self, frame, show_ROI=False):
         """
@@ -294,22 +305,29 @@ class Detection:
         start_time = time()
         #test sign classifier
         SIZE = (16, 16)
-        ROWS = 4
-        COLS = 8
-        TILE_WIDTHS = [76//2] #assuming a frame is 640x480//320x240
+        CHANNELS = 3
+        ROWS = 6 #4
+        COLS = 12 #8
+        TILE_WIDTHS = [76//2]#[64//2, 76//2, 84//2]#[76//2] #assuming a frame is 640x480//320x240
         ROI_X = 440//2
         ROI_Y = 10//2
         ROI_WIDTH = 200//2
         ROI_HEIGHT = 140//2
         TOT_TILES = ROWS*COLS
-        VOTES_MAJORITY = 1
-        CONFIDENCE_THRESHOLD = 0.95
+        VOTES_MAJORITY = 4 #1
+        CONFIDENCE_THRESHOLD = 0.8
 
-        imgs, centers, widths = self.tile_image(frame, ROI_X, ROI_Y, ROI_WIDTH, ROI_HEIGHT, ROWS, COLS, TILE_WIDTHS, return_size=SIZE)
+        # preprocessing
+        frame_cp = frame.copy()
+        imgs, centers, widths_idxs = self.tile_image(frame_cp, ROI_X, ROI_Y, ROI_WIDTH, ROI_HEIGHT, ROWS, COLS, TILE_WIDTHS, return_size=SIZE, channels=CHANNELS)
 
         if show_ROI:
             canvas = frame.copy()
             canvas = cv.rectangle(canvas, (ROI_X, ROI_Y), (ROI_X+ROI_WIDTH, ROI_Y+ROI_HEIGHT), (0,255,0), 2)
+            # for i in range(imgs.shape[0]):
+            #     im = cv.resize(imgs[i].copy(), (4*SIZE[0], 4*SIZE[1]))
+            #     im = cv.cvtColor(im, cv.COLOR_HSV2BGR)
+            #     cv.imshow(f'sign_detection_{i}', im)
 
         blob = cv.dnn.blobFromImages(imgs, 1.0, SIZE, 0)
         # print(blob.shape)
@@ -317,19 +335,23 @@ class Detection:
         preds = self.sign_classifier.forward()
 
         votes = np.zeros(len(SIGN_NAMES))
+        width_votes =  np.zeros(len(TILE_WIDTHS))
         box_centers = np.zeros((len(SIGN_NAMES), 2))
         for i in range(TOT_TILES):
             soft_preds = my_softmax(preds[i])
             sign_index = np.argmax(preds[i])
             if soft_preds[sign_index] > CONFIDENCE_THRESHOLD:
+                # print(f'SIGN_{i} = {SIGN_NAMES[sign_index]} detected, confidence: {float(soft_preds[sign_index]):.2f}')
                 predicted_sign = self.sign_names[sign_index]
                 if predicted_sign != self.sign_names[-1]:
                     box_centers[sign_index] = (box_centers[sign_index]*votes[sign_index] + centers[i]) / (votes[sign_index] + 1.0)
                     votes[sign_index] += 1
+                    width_votes[widths_idxs[i]] += 1
 
         winner = np.argmax(votes)
+        width_winner_idx = np.argmax(width_votes)
         final_box_center = box_centers[winner].astype(int)
-        final_width = widths[winner]
+        final_width = TILE_WIDTHS[widths_idxs[width_winner_idx]]
         if votes[winner] > VOTES_MAJORITY:
             if show_ROI:
                 canvas = cv.rectangle(canvas, (final_box_center[0]-final_width//2, final_box_center[1]-final_width//2), (final_box_center[0]+final_width//2, final_box_center[1]+final_width//2), (0,255,0), 3)

@@ -125,7 +125,7 @@ YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track a
 STOP_LINE_APPROACH_DISTANCE = 0.3
 STOP_LINE_STOP_DISTANCE = 0.1
 assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
-STOP_WAIT_TIME = 3.5 #3.0
+STOP_WAIT_TIME = 0.1 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which is possible to start detecting a stop line again
 POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
@@ -230,6 +230,7 @@ class Brain:
 
         #localize the car and go to the first checkpoint
         #for now we will assume to be in the correct position
+        # TODO detetct first node and route fom that node
 
         #get start and end nodes from the chekpoint list
         assert len(self.checkpoints) >= 2, 'List of checkpoints needs 2 ore more nodes'
