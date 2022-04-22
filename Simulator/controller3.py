@@ -57,8 +57,8 @@ class Controller():
     
     def get_control(self, e2, e3, curv, desired_speed, gains=None):
 
-        self.e2 = e2
-        self.e3 = e3
+        self.e2 = e2 #lateral error [m]
+        self.e3 = e3 #yaw error [rad]
         alpha = e3
 
         # if not self.training:
@@ -83,7 +83,7 @@ class Controller():
 
         # yaw error (e3), proportional term
         d = POINT_AHEAD_CM/100.0 #distance point ahead, matched with lane_detection
-        delta = np.arctan((2*L*np.sin(alpha))/(1.0*d))
+        delta = np.arctan((2*L*np.sin(alpha))/d)
         proportional_term = k3 * delta
         # print(f'proportional term: {np.rad2deg(proportional_term):.2f}')
 

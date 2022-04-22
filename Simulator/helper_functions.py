@@ -233,7 +233,7 @@ def project_curvature(frame, car, curv):
     r = 1. / curv
     print("r: {}".format(r))
     x = np.linspace(start_from, start_from + d_ahead, num_points)
-    y = np.sqrt(r**2 - x**2) * np.sign(curv) + r
+    y = - np.sqrt(r**2 - x**2) * np.sign(curv) + r
     #stack x and y into one array
     points = np.stack((x,y), axis=1)
     #project points onto car frame, note: they are already inn car frame
@@ -249,7 +249,15 @@ def project_curvature(frame, car, curv):
 def project_stop_line():
     pass
 
-
+def get_yaw_closest_axis(angle):
+    """
+    Returns the angle multiple of pi/2 closest to the given angle 
+    e.g. returns one of these 4 possible options: [-pi/2, 0, pi/2, pi]
+    """
+    int_angle = round(angle/(np.pi/2))
+    assert int_angle in [-2,-1,0,1,2], f'angle: {int_angle}'
+    if int_angle == -2: int_angle = 2
+    return int_angle*np.pi/2
 
 
 

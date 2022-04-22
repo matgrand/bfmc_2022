@@ -25,7 +25,7 @@ with open("models/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
 # MAIN CONTROLS
-training = False
+training = True
 generate_path = True if training else False
 # folder = 'training_imgs' 
 folder = 'test_imgs'
@@ -38,7 +38,7 @@ VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.0# [m/s]
+DESIRED_SPEED = 1.# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -47,7 +47,7 @@ k3 = 0.99 #1.0 yaw error gain .8 with ff
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
-noise_std = np.deg2rad(22.0) # [rad] noise in the steering angle
+noise_std = np.deg2rad(0.0) # [rad] noise in the steering angle
 
 
 if __name__ == '__main__':
@@ -88,7 +88,7 @@ if __name__ == '__main__':
                             87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                             97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355
                             ]
-            # path_nodes = [86,110,428,467] #,273,136,321,262]
+            path_nodes = [86,110,428,467] #,273,136,321,262]
             path.generate_path_passing_through(path_nodes, path_step_length) #[86,110,310,254,463] ,[86,436, 273,136,321,262,105,350,451,265]
             # [86,436, 273,136,321,262,105,350,373,451,265,145,160,353]
             path.draw_path()
@@ -124,8 +124,8 @@ if __name__ == '__main__':
                 speed_ref, angle_ref, point_ahead = controller.get_training_control(car, path_ahead, DESIRED_SPEED, curv)
                 controller.save_data(frame, folder)
                 dist = info[3]
-                if dist is not None and 0.0 < dist < 0.4:
-                    speed_ref = 0.1 * speed_ref
+                # if dist is not None and 0.0 < dist < 0.4:
+                #     speed_ref = 0.1 * speed_ref
             else:
                 #Neural network control
                 lane_info = detect.detect_lane(frame)
@@ -155,8 +155,8 @@ if __name__ == '__main__':
 
             ## ACTUATION
             sleep(ACTUATION_DELAY)
-            # car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
-            car.drive_angle(angle=np.rad2deg(angle_ref))
+            car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
+            # car.drive_angle(angle=np.rad2deg(angle_ref))
 
             ## VISUALIZATION
             #project path ahead
@@ -174,6 +174,7 @@ if __name__ == '__main__':
             #project seq of points ahead
             if training:
                 frame, proj = project_onto_frame(frame, car, np.array(controller.seq_points_ahead), False, color=(100, 200, 100))
+                _ = project_curvature(frame, car, curv)
             else: 
                 frame, proj = project_onto_frame(frame, car, points_local_path, False, color=(100, 200, 100))
             
@@ -188,7 +189,8 @@ if __name__ == '__main__':
 
             ## DEBUG INFO
             os.system('cls' if os.name=='nt' else 'clear')
-            print(f'Stop line distance: {dist:.2f}')
+            print(f'Stop line distance: {dist:.2f}') if not training else None
+            print(f'Curvature: {curv:.2f}')
             print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
             print(f"xd: {xd:.3f} [m], yd: {yd:.3f} [m], yawd: {np.rad2deg(yawd):.3f} [deg], curv: {curv:.3f}") if generate_path else None
             print(f"e1: {controller.e1:.3f}, e2: {controller.e2:.3f}, e3: {np.rad2deg(controller.e3):.3f}")
@@ -203,6 +205,7 @@ if __name__ == '__main__':
             print(f'FPS = {1/(time()-loop_start_time):.1f}')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
             print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
+
 
             cv.imshow("Frame preview", frame)
             # cv.imshow('SIGNS ROI', signs_roi)

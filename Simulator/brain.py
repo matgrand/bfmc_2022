@@ -38,7 +38,8 @@ WAITING_FOR_REROUTING = 'waiting_for_rerouting'
 OVERTAKING_STATIC_CAR = 'overtaking_static_car'
 OVERTAKING_MOVING_CAR = 'overtaking_moving_car'
 TAILING_CAR = 'tailing_car'
-AVOIDING_OBSTACLE = 'avoiding_obstacle'
+AVOIDING_ROADBLOCK = 'avoiding_roadblock'
+PARKING = 'parking'
 
 class State():
     def __init__(self, name=None, method=None, activated=False):
@@ -110,8 +111,9 @@ class Event:
 
 #======================== CONDITIONS ==========================
 CONDITIONS = {
-    'can_switch_right':         False,  # if true, the car can switch to the right lane, for obstacle avoidance
-    'can_switch_left':          False,  # if true, the car can switch to the left lane, for overtaking or obstacle avoidance
+    'in_right_lane':            False,  # if true, the car can switch to the right lane, for obstacle avoidance
+    'in_left_lane':             False,  # if true, the car can switch to the left lane, for overtaking or obstacle avoidance
+    'is_dotted_line':           False,  # if true, the car is on a dotted line, for obstacle avoidance
     'highway':                  False,  # if true, the car is in a highway, the speed should be higher on highway, 
     'trust_gps':                True,   # if true the car will trust the gps, for example in expecting a sign or traffic light
                                         # can be set as false if there is a lot of package loss or the car has not received signal in a while
@@ -200,7 +202,9 @@ class Brain:
             OVERTAKING_STATIC_CAR:    State(OVERTAKING_STATIC_CAR, self.overtaking_static_car),
             OVERTAKING_MOVING_CAR:    State(OVERTAKING_MOVING_CAR, self.overtaking_moving_car),
             TAILING_CAR:              State(TAILING_CAR, self.tailing_car),
-            AVOIDING_OBSTACLE:        State(AVOIDING_OBSTACLE, self.avoiding_obstacle),
+            AVOIDING_ROADBLOCK:       State(AVOIDING_ROADBLOCK, self.avoiding_roadblock),
+            #parking
+            PARKING:                  State(PARKING, self.parking),
         }
 
         # INITIALIZE ROUTINES
@@ -254,6 +258,7 @@ class Brain:
         self.path_planner.draw_path()
         print('Starting...')
         # sleep(3)
+        cv.waitKey(0)
         self.switch_to_state(LANE_FOLLOWING)
         self.car.drive_speed(self.desired_speed)
 
@@ -431,14 +436,23 @@ class Brain:
             # retrieve global position of the car, can be done usiing the stop_line
             # or using the gps, but for now we will use the stop_line
             # NOTE: in the real car we need to have a GLOBAL YAW OFFSET to match the simulator with the real track
-            local_path_wf = self.next_event.path_ahead # wf = world frame
-            stop_line_position = self.next_event.point
-            # stop line frame: centered in the stop line with same orientation as world
-            local_path_slf = local_path_wf - stop_line_position #slf = stop line frame
-            alpha = self.car.yaw + YAW_GLOBAL_OFFSET
+
+            # local_path_wf = self.next_event.path_ahead # wf = world frame
+            # stop_line_position = self.next_event.point
+            # # stop line frame: centered in the stop line with same orientation as world
+            # local_path_slf = local_path_wf - stop_line_position #slf = stop line frame
+            # alpha = self.car.yaw + YAW_GLOBAL_OFFSET
+            # rot_matrix = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
+            # #stop line frame, but now oriented in the same direction of the car
+            # local_path_slf_rot = local_path_slf @ rot_matrix
+
+            local_path_slf_rot = self.next_event.path_ahead #local path in the stop line frame
+            # get orientation of the car in the stop line frame
+            yaw_car = self.car.yaw
+            alpha = yaw_car - get_yaw_closest_axis(yaw_car) #get the difference from the closest multiple of 90deg
+            assert abs(alpha) < np.pi/6, f'Car orientation wrt stopline is too big, it needs to be better aligned, alpha = {alpha}'
             rot_matrix = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
-            #stop line frame, but now oriented in the same direction of the car
-            local_path_slf_rot = local_path_slf @ rot_matrix
+            
             # ## get position of the car in the stop line frame
             # # car_position_slf = self.car.position - stop_line_position #with good gps estimate
             car_position_slf = -np.array([+d+0.3+0.13, +e2])#np.array([+d+0.2, -e2])
@@ -578,9 +592,11 @@ class Brain:
     def tailing_car(self):
         pass
 
-    def avoiding_obstacle(self):
+    def avoiding_roadblock(self):
         pass
 
+    def parking(self):
+        pass
     
     #=============== ROUTINES ===============#
     def follow_lane(self):
@@ -623,12 +639,12 @@ class Brain:
 
 #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
-        print('==========================================================')
+        print('==========================================================================')
         print(f'STATE: {self.curr_state}')
         print(f'UPCOMING_EVENT: {self.next_event}')
         print(f'ROUTINES: {self.active_routines_names}')
         self.run_current_state()
-        print('==========================================================')
+        print('==========================================================================')
         print()
         self.run_routines()
 
@@ -705,15 +721,27 @@ class Brain:
             name = e[0]
             dist = e[1]
             point = e[2]
-            path_ahead = e[3]
+            path_ahead = e[3] #path in global coordinates
             if path_ahead is not None:
+                loc_path = path_ahead - point
+                #get yaw of the stopline
+                assert path_ahead.shape[0] > 10, f'path_ahead is too short: {path_ahead.shape[0]}'
+                path_first_10 = path_ahead[:10]
+                diff10 = path_first_10[1:] - path_first_10[:-1]
+                yaw_raw = np.median(np.arctan2(diff10[:,1], diff10[:,0]))
+                yaw_stopline = get_yaw_closest_axis(yaw_raw)
+                rot_matrix = np.array([[np.cos(yaw_stopline), -np.sin(yaw_stopline)],
+                                        [np.sin(yaw_stopline), np.cos(yaw_stopline)]])
+                loc_path = loc_path @ rot_matrix
+                path_to_ret = loc_path
                 curv = get_curvature(path_ahead)
-                print(f'curv: {curv}')
+                print(f'yaw_stopline: {yaw_stopline}, name: {name}, curv: {curv}')
                 len_path_ahead = 0.01*len(path_ahead)
             else:
+                path_to_ret = None
                 curv = None
                 len_path_ahead = None
-            event = Event(name, dist, point, path_ahead, len_path_ahead, curv)
+            event = Event(name, dist, point, path_to_ret, len_path_ahead, curv)
             to_ret.append(event)
         #add end of path event
         # ee_dist = (len(self.path_planner.path) - 1 )*0.01
@@ -722,3 +750,4 @@ class Brain:
         to_ret.append(end_event)
         return to_ret
 
+    

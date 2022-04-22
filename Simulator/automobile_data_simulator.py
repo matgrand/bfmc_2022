@@ -11,6 +11,12 @@ from time import time,sleep
 from helper_functions import *
 
 ENCODER_TIMER = 0.01 #frequency of encoder reading
+STEER_UPDATE_FREQ = 50.0 #[Hz]
+SERVO_DEAD_TIME_DELAY = 0.15 #[s]
+MAX_SERVO_ANGULAR_VELOCITY = 3.5 #[rad/s]
+DELTA_ANGLE = np.rad2deg(MAX_SERVO_ANGULAR_VELOCITY) / STEER_UPDATE_FREQ
+MAX_STEER_COMMAND_FREQ = 50.0 # [Hz], If steer commands are sent at an hihger freq they will be discarded
+MAX_STEER_SAMPLES = int((2*SERVO_DEAD_TIME_DELAY) * MAX_STEER_COMMAND_FREQ)
 
 class AutomobileDataSimulator(Automobile_Data):
     def __init__(self,
@@ -32,10 +38,15 @@ class AutomobileDataSimulator(Automobile_Data):
         self.prev_y_true = self.y_true
         self.prev_timestamp = 0.0
         self.velocity_buffer = collections.deque(maxlen=20)
+        self.target_steer = 0.0
+        self.curr_steer = 0.0
+        self.steer_deque = collections.deque(maxlen=MAX_STEER_SAMPLES)
+        self.time_last_steer_command = time()
 
         # PUBLISHERS AND SUBSCRIBERS
         if trig_control:
             self.pub = rospy.Publisher('/automobile/command', String, queue_size=1)
+            self.steer_updater = rospy.Timer(rospy.Duration(1/STEER_UPDATE_FREQ), self.steer_update_callback)
         if trig_bno:
             self.sub_imu = rospy.Subscriber('/automobile/IMU', IMU, self.imu_callback)
         if trig_enc:
@@ -123,6 +134,25 @@ class AutomobileDataSimulator(Automobile_Data):
             self.prev_timestamp = curr_time
             self.update_rel_position()
 
+    def steer_update_callback(self, data) -> None:
+        # check self.steer_deque is not empty
+        if len(self.steer_deque) > 0:
+            curr_time = time()
+            angle, t = self.steer_deque.popleft()
+            if curr_time - t < SERVO_DEAD_TIME_DELAY: #we need to w8, time has not passed yet
+                self.steer_deque.appendleft((angle,t))
+            else: # enough time is passed, we can update the angle 
+                self.curr_steer = angle
+        diff = self.target_steer - self.curr_steer
+        if diff > 0.0:
+            incr = min(diff, DELTA_ANGLE)
+        elif diff < 0.0:
+            incr = max(diff, -DELTA_ANGLE)
+        else : return
+        self.curr_steer += incr
+        self.pub_steer(self.curr_steer)
+        print(F'CURRENT STEER: {self.curr_steer:.1f}')
+
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received
         :acts on: self.encoder_velocity
@@ -145,18 +175,20 @@ class AutomobileDataSimulator(Automobile_Data):
         reference = json.dumps(data)
         self.pub.publish(reference)
 
-    def drive_angle(self, angle=0.0) -> None:
+    def drive_angle(self, angle=0.0, direct=False) -> None:
         """Set the steering angle of the car
         :acts on: self.steer
         :param angle: [deg] desired angle, defaults to 0.0
         """        
         angle = Automobile_Data.normalizeSteer(angle)   # normalize steer
-        data = {}
-        data['action']        =  '2'
-        data['steerAngle']    =  float(angle)
-        reference = json.dumps(data)
-        self.pub.publish(reference)
-
+        curr_time = time()
+        if curr_time - self.time_last_steer_command > 1/MAX_STEER_COMMAND_FREQ: #cannot receive commands too fast
+            self.time_last_steer_command = curr_time
+            self.steer_deque.append((angle, curr_time))
+        else:
+            print('Missed steer command...')
+        # self.target_steer = angle #self.steer is updated in the callback
+        
     def stop(self, angle=0.0) -> None:
         """Hard/Emergency stop the car
         :acts on: self.speed, self.steer
@@ -165,6 +197,13 @@ class AutomobileDataSimulator(Automobile_Data):
         self.speed = 0.0
         data = {}
         data['action']        =  '3'
+        data['steerAngle']    =  float(angle)
+        reference = json.dumps(data)
+        self.pub.publish(reference)
+
+    def pub_steer(self, angle):
+        data = {}
+        data['action']        =  '2'
         data['steerAngle']    =  float(angle)
         reference = json.dumps(data)
         self.pub.publish(reference)
