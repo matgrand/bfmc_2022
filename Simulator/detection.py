@@ -22,7 +22,8 @@ TRAFFICLIGHT_CLASSIFIER_PATH = 'models/trafficlight_classifier_small.onnx'
 TRAFFIC_LIGHT_NAMES = ['traffic_light', 'NO_traffic_light']
 
 SIGN_CLASSIFIER_PATH = 'models/sign_classifier.onnx'
-SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
+# SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
+SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'traffic_light', 'NO_sign']
 
 OBSTACLE_CLASSIFIER_PATH = 'models/pedestrian_classifier_small.onnx'
 OBSTACLE_NAMES = ['pedestrian', 'roadblock', 'NO_obstacle'] #add cars
@@ -346,7 +347,7 @@ class Detection:
             if soft_preds[sign_index] > CONFIDENCE_THRESHOLD:
                 # print(f'SIGN_{i} = {SIGN_NAMES[sign_index]} detected, confidence: {float(soft_preds[sign_index]):.2f}')
                 predicted_sign = self.sign_names[sign_index]
-                if predicted_sign != self.sign_names[-1]:
+                if predicted_sign != self.sign_names[-1]: #avoid no_sign
                     box_centers[sign_index] = (box_centers[sign_index]*votes[sign_index] + centers[i]) / (votes[sign_index] + 1.0)
                     votes[sign_index] += 1
                     width_votes[widths_idxs[i]] += 1
