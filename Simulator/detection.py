@@ -305,7 +305,7 @@ class Detection:
         """
         start_time = time()
         #test sign classifier
-        SIZE = (32, 32)
+        SIZE = (16, 16)
         CHANNELS = 3
         ROWS = 6 #4
         COLS = 12 #8
@@ -356,14 +356,14 @@ class Detection:
         votes2[winner] = 0
         second_winner = np.argmax(votes2)
         tot_votes = np.sum(votes)
-        confidence = float(votes[winner]/max(tot_votes, VOTES_MAJORITY))
+        winning_confidence = float(votes[winner]/max(tot_votes, VOTES_MAJORITY))
         votes_advantage = votes[winner] - votes[second_winner]
         width_winner_idx = np.argmax(width_votes)
         final_box_center = box_centers[winner].astype(int)
         final_width = TILE_WIDTHS[widths_idxs[width_winner_idx]]
         # if votes[winner] > VOTES_MAJORITY:
         # if votes_advantage > VOTES_ADVANTAGE_THRESHOLD and votes[winner] > VOTES_MAJORITY:
-        if confidence > 0.8:
+        if winning_confidence > 0.8:
             if show_ROI:
                 canvas = cv.rectangle(canvas, (final_box_center[0]-final_width//2, final_box_center[1]-final_width//2), (final_box_center[0]+final_width//2, final_box_center[1]+final_width//2), (0,255,0), 3)
                 #put text
@@ -374,7 +374,7 @@ class Detection:
         self.avg_sign_detection_time = (self.avg_sign_detection_time*self.sign_detection_count + sign_detection_time) / (self.sign_detection_count + 1)
         self.sign_detection_count += 1
 
-        print(f'{self.sign_names[winner]} detected, confidence: {confidence:.2f}')
+        print(f'{self.sign_names[winner]} detected, confidence: {winning_confidence:.2f}')
 
         # sleep(0.1)
         if show_ROI:
