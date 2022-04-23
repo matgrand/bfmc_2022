@@ -14,3 +14,5 @@ training/*
 random_stuff/*.zip
 pedestrian_roadblock_imgs/*
 traffic_light_imgs/*
+sign_imgs/backgrounds/*
+sign_imgs/coco_val/*

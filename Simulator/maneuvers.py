@@ -147,7 +147,7 @@ class Maneuvers():
         print(f'pose: {car.xLoc, car.yLoc, car.yawLoc, car.distLoc}')
         print('SIXTH PART - END')    
         
-    def perpendicular_parking(self, way_exit = 'right'):
+    def perpendicular_parking(self, car,  way_exit = 'right'):
         # FIRST PART
         print('FIRST PART - START - turn right and go backwards')
         car.drive_angle(self.park_pp_turn_right)

@@ -304,7 +304,7 @@ class Detection:
         """
         start_time = time()
         #test sign classifier
-        SIZE = (16, 16)
+        SIZE = (32, 32)
         CHANNELS = 3
         ROWS = 6 #4
         COLS = 12 #8

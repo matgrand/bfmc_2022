@@ -10,13 +10,15 @@ import numpy as np
 from time import time,sleep
 from helper_functions import *
 
+REALISTIC = False
+
 ENCODER_TIMER = 0.01 #frequency of encoder reading
-STEER_UPDATE_FREQ = 50.0 #[Hz]
-SERVO_DEAD_TIME_DELAY = 0.15 #[s]
-MAX_SERVO_ANGULAR_VELOCITY = 3.5 #[rad/s]
+STEER_UPDATE_FREQ = 50.0 if REALISTIC else 150.0 #50#[Hz]
+SERVO_DEAD_TIME_DELAY = 0.15 if REALISTIC else 0.0 #0.15 #[s]
+MAX_SERVO_ANGULAR_VELOCITY = 3.0 if REALISTIC else 15.0 #3. #[rad/s]
 DELTA_ANGLE = np.rad2deg(MAX_SERVO_ANGULAR_VELOCITY) / STEER_UPDATE_FREQ
 MAX_STEER_COMMAND_FREQ = 50.0 # [Hz], If steer commands are sent at an hihger freq they will be discarded
-MAX_STEER_SAMPLES = int((2*SERVO_DEAD_TIME_DELAY) * MAX_STEER_COMMAND_FREQ)
+MAX_STEER_SAMPLES = max(int((2*SERVO_DEAD_TIME_DELAY) * MAX_STEER_COMMAND_FREQ), 10)
 
 class AutomobileDataSimulator(Automobile_Data):
     def __init__(self,
@@ -33,6 +35,7 @@ class AutomobileDataSimulator(Automobile_Data):
 
         # ADDITIONAL VARIABLES
         self.sonar_distance_buffer = collections.deque(maxlen=20)
+        self.lateral_sonar_distance_buffer = collections.deque(maxlen=20)
         self.timestamp = 0.0
         self.prev_x_true = self.x_true
         self.prev_y_true = self.y_true
@@ -54,6 +57,7 @@ class AutomobileDataSimulator(Automobile_Data):
             rospy.Timer(rospy.Duration(ENCODER_TIMER), self.encoder_distance_callback) #the callback will also do velocity
         if trig_sonar:
             self.sub_son = rospy.Subscriber('/automobile/sonar1', Range, self.sonar_callback)
+            self.sub_lateral_son = rospy.Subscriber('/automobile/sonar2', Range, self.lateral_sonar_callback)
         if trig_cam:
             self.bridge = CvBridge()
             self.sub_cam = rospy.Subscriber("/automobile/image_raw", Image, self.camera_callback)
@@ -69,12 +73,20 @@ class AutomobileDataSimulator(Automobile_Data):
         self.frame = self.bridge.imgmsg_to_cv2(data, "bgr8")
 
     def sonar_callback(self, data) -> None:
-        """Receive and store distance of an obstacle ahead in 
+        """Receive and store distance of an obstacle ahead 
         :acts on: self.sonar_distance, self.filtered_sonar_distance
         """        
         self.sonar_distance = data.range 
         self.sonar_distance_buffer.append(self.sonar_distance)
         self.filtered_sonar_distance = np.median(self.sonar_distance_buffer)
+
+    def lateral_sonar_callback(self, data) -> None:
+        """Receive and store distance of a lateral obstacle
+        :acts on: self.lateral_sonar_distance, self.filtered_lateral_sonar_distance
+        """        
+        self.lateral_sonar_distance = data.range 
+        self.lateral_sonar_distance_buffer.append(self.lateral_sonar_distance)
+        self.filtered_lateral_sonar_distance = np.median(self.lateral_sonar_distance_buffer)
 
     def position_callback(self, data) -> None:
         """Receive and store global coordinates from GPS
@@ -142,7 +154,7 @@ class AutomobileDataSimulator(Automobile_Data):
             if curr_time - t < SERVO_DEAD_TIME_DELAY: #we need to w8, time has not passed yet
                 self.steer_deque.appendleft((angle,t))
             else: # enough time is passed, we can update the angle 
-                self.curr_steer = angle
+                self.target_steer = angle
         diff = self.target_steer - self.curr_steer
         if diff > 0.0:
             incr = min(diff, DELTA_ANGLE)
@@ -151,7 +163,7 @@ class AutomobileDataSimulator(Automobile_Data):
         else : return
         self.curr_steer += incr
         self.pub_steer(self.curr_steer)
-        print(F'CURRENT STEER: {self.curr_steer:.1f}')
+        # print(F'CURRENT STEER: {self.curr_steer:.1f}')
 
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received

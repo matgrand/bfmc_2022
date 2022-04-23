@@ -134,8 +134,10 @@ class Automobile_Data():
         self.last_gps_sample_time = time.time() 
         self.new_gps_sample_arrived = True
         # SONAR
-        self.sonar_distance = 0.0               # [m]       SONAR: unfiltered distance from the sonar
-        self.filtered_sonar_distance = 3.0      # [m]       SONAR: filtered distance from the sonar
+        self.sonar_distance = 0.0               # [m]       SONAR: unfiltered distance from the front sonar
+        self.filtered_sonar_distance = 3.0      # [m]       SONAR: filtered distance from the front sonar
+        self.lateral_sonar_distance = 0.0       # [m]       SONAR: unfiltered distance from the lateral sonar
+        self.filtered_lateral_sonar_distance = 3.0#[m]      SONAR: filtered distance from the lateral sonar
         # CAMERA
         self.frame = np.zeros((FRAME_WIDTH, FRAME_HEIGHT)) # [ndarray] CAM:image of the camera
         # CONTROL ACTION
@@ -183,9 +185,16 @@ class Automobile_Data():
         :acts on: self.frame
         """        
         pass
+
     def sonar_callback(self, data) -> None:
-        """Receive and store distance of an obstacle ahead in 
+        """Receive and store distance of an obstacle ahead 
         :acts on: self.sonar_distance, self.filtered_sonar_distance
+        """        
+        pass
+
+    def lateral_sonar_callback(self, data) -> None:
+        """Receive and store distance of a lateral obstacle 
+        :acts on: self.lateral_sonar_distance, self.filtered_lateral_sonar_distance
         """        
         pass
 
