@@ -45,11 +45,14 @@ class AutomobileDataSimulator(Automobile_Data):
         self.curr_steer = 0.0
         self.steer_deque = collections.deque(maxlen=MAX_STEER_SAMPLES)
         self.time_last_steer_command = time()
+        self.target_dist = 0.0
+        self.arrived_at_dist = True
 
         # PUBLISHERS AND SUBSCRIBERS
         if trig_control:
             self.pub = rospy.Publisher('/automobile/command', String, queue_size=1)
             self.steer_updater = rospy.Timer(rospy.Duration(1/STEER_UPDATE_FREQ), self.steer_update_callback)
+            self.drive_dist_updater = rospy.Timer(rospy.Duration(ENCODER_TIMER), self.drive_distance_callback)
         if trig_bno:
             self.sub_imu = rospy.Subscriber('/automobile/IMU', IMU, self.imu_callback)
         if trig_enc:
@@ -200,6 +203,26 @@ class AutomobileDataSimulator(Automobile_Data):
         else:
             print('Missed steer command...')
         # self.target_steer = angle #self.steer is updated in the callback
+
+    def drive_distance(self, dist=0.0):
+        """Drive the car a given distance forward or backward
+        from the point it has been called and stop there, 
+        it uses control in position and not in velocity, 
+        used for precise movements
+        :param dist: distance to drive, defaults to 0.0
+        """
+        self.target_dist = self.encoder_distance + dist
+        self.arrived_at_dist = False
+
+    def drive_distance_callback(self, data) -> None:
+        Kp = 1.0
+        max_speed = 0.2
+        if not self.arrived_at_dist:
+            dist_error = self.target_dist - self.encoder_distance
+            self.drive_speed(min(Kp * dist_error, max_speed))
+            if np.abs(dist_error) < 0.01:
+                self.arrived_at_dist = True
+                self.drive_speed(0.0)
         
     def stop(self, angle=0.0) -> None:
         """Hard/Emergency stop the car

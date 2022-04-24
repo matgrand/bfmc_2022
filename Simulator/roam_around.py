@@ -66,6 +66,16 @@ if __name__ == '__main__':
             # TEST DETECTION HERE
             sign = detect.detect_sign(car.frame, show_ROI=True)
 
+            # #test drive distance
+            # car.drive_distance(1.0)
+            # sleep(10)
+            # car.stop()
+            # sleep(3)
+            # car.drive_distance(-1.0)
+            # sleep(10)
+            # car.stop()
+            # sleep(3)
+
 
 
 
