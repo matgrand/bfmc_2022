@@ -316,7 +316,7 @@ class Detection:
         ROI_WIDTH = 200//2
         ROI_HEIGHT = 140//2
         TOT_TILES = ROWS*COLS
-        VOTES_MAJORITY = 4 #1
+        VOTES_MAJORITY = 10 #1
         VOTES_ADVANTAGE_THRESHOLD = 2
         CONFIDENCE_THRESHOLD = 0.9
 
@@ -375,7 +375,7 @@ class Detection:
         self.avg_sign_detection_time = (self.avg_sign_detection_time*self.sign_detection_count + sign_detection_time) / (self.sign_detection_count + 1)
         self.sign_detection_count += 1
 
-        print(f'{self.sign_names[winner]} detected, confidence: {winning_confidence:.2f}')
+        print(f'{self.sign_names[winner]} detected, conf: {winning_confidence*100:.0f}, votes: {votes[winner]}/{tot_votes}')
 
         # sleep(0.1)
         if show_ROI:

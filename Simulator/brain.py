@@ -632,6 +632,8 @@ class Brain:
 
     def parking(self):
         LOCALIZING_PARKING_SPOT = 1
+        CHECKING_FOR_PARKED_CARS = 2
+        
 
         park_pos = self.next_event.point
 
