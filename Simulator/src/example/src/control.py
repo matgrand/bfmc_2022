@@ -128,8 +128,11 @@ class RemoteControlTransmitterProcess():
 IMG_SIZE = 1024
 FRAME_SIZE = 640
 
+CAM_FPS = 15.0
+
 class CarVisualizer(): 
-    def __init__(self) -> None:
+    def __init__(self, run_visualization=True) -> None:
+        self.use_ros_img = run_visualization
         #image
         self.img = np.zeros((IMG_SIZE, 2*IMG_SIZE, 3), np.uint8)
         #map
@@ -143,14 +146,16 @@ class CarVisualizer():
         
         imu_topic =  "/automobile/IMU"
         self.sub_imu = rospy.Subscriber(imu_topic, IMU, self.imu_callback)
-
-        self.sub_cam_top = rospy.Subscriber("/automobile/image_top", Image, self.camera_top_callback)
-        self.cv_image_top = np.zeros((IMG_SIZE, IMG_SIZE, 3), np.uint8)
-        self.bridge = CvBridge()
-
         self.x_true = 0.0       
         self.y_true = 0.0 
         self.yaw = 0.0
+        self.last_frame_time = time()
+
+        if self.use_ros_img:
+            self.sub_cam_top = rospy.Subscriber("/automobile/image_top", Image, self.camera_top_callback)
+            self.cv_image_top = np.zeros((IMG_SIZE, IMG_SIZE, 3), np.uint8)
+            self.bridge = CvBridge()
+
 
     def imu_callback(self, data):
         """Receive and store rotation from IMU 
@@ -158,9 +163,15 @@ class CarVisualizer():
         :param data: a geometry_msgs Twist message
         :type data: object
         """        
+        curr_time = time()
         self.x_true = float(data.posx)
         self.y_true = float(data.posy)
         self.yaw = float(data.yaw)
+        if curr_time - self.last_frame_time > 1/(2*CAM_FPS):
+            map_img = self.draw_car()
+            map_img = cv.resize(map_img, (IMG_SIZE, IMG_SIZE))
+            self.img[:, IMG_SIZE:] = map_img
+            self.last_frame_time = curr_time
 
     def camera_top_callback(self, data):
         """Receive and store camera frame
@@ -170,9 +181,7 @@ class CarVisualizer():
         img = self.bridge.imgmsg_to_cv2(data, "bgr8")
         img = cv.resize(img, (IMG_SIZE, IMG_SIZE))
         self.img[:, :IMG_SIZE] = img
-        map_img = self.draw_car()
-        map_img = cv.resize(map_img, (IMG_SIZE, IMG_SIZE))
-        self.img[:, IMG_SIZE:] = map_img
+
 
     def draw_car(self):
         x = self.x_true
@@ -216,28 +225,33 @@ if __name__ == '__main__':
         if args[1] == '-view-only':
             print('View only mode, [esc] will not stop the program,\nu can only stop the program with [ctrl]+[c]')
             view_only = True
+            control_only = False
+        elif args[1] == '-control-only':
+            print('Control only mode.')
+            control_only = True
+            view_only = False
         else:
             view_only = False
-            print('Invalid argument, the only valid argument is "-view-only"')
+            control_only = False
+            print('Invalid argument, the only valid arguments are "-view-only"')
     run_control = not view_only
+    run_visualization = not control_only
     
     try:
         cv.namedWindow('Car visualization', cv.WINDOW_NORMAL)
         cv.resizeWindow('Car visualization', FRAME_SIZE*2, FRAME_SIZE)
-        cam = CarVisualizer()
+        cam = CarVisualizer(run_visualization)
         if run_control:
             nod = RemoteControlTransmitterProcess()
-        # nod.run()
+
         while not rospy.is_shutdown():
-            cv.imshow("Car visualization", cam.img)
+            cv.imshow("Car visualization", cam.img) 
             key = cv.waitKey(1)
             if key == 27 and run_control:
                 cv.destroyAllWindows()
                 nod.keyboardListenerThread.stop()
                 break
-            sleep(0.005) if run_control else sleep(1/15.0)
-
-
+            sleep(1/CAM_FPS)
 
     except rospy.ROSInterruptException:
         pass

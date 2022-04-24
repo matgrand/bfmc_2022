@@ -206,7 +206,6 @@ if __name__ == '__main__':
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
             print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
 
-
             cv.imshow("Frame preview", frame)
             # cv.imshow('SIGNS ROI', signs_roi)
             # cv.imshow('FRONT ROI', front_obstacle_roi)

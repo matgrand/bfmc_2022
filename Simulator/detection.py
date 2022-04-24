@@ -320,7 +320,6 @@ class Detection:
         VOTES_ADVANTAGE_THRESHOLD = 2
         CONFIDENCE_THRESHOLD = 0.9
 
-
         # preprocessing
         frame_cp = frame.copy()
         imgs, centers, widths_idxs = self.tile_image(frame_cp, ROI_X, ROI_Y, ROI_WIDTH, ROI_HEIGHT, ROWS, COLS, TILE_WIDTHS, return_size=SIZE, channels=CHANNELS)
@@ -328,13 +327,8 @@ class Detection:
         if show_ROI:
             canvas = frame.copy()
             canvas = cv.rectangle(canvas, (ROI_X, ROI_Y), (ROI_X+ROI_WIDTH, ROI_Y+ROI_HEIGHT), (0,255,0), 2)
-            # for i in range(imgs.shape[0]):
-            #     im = cv.resize(imgs[i].copy(), (4*SIZE[0], 4*SIZE[1]))
-            #     im = cv.cvtColor(im, cv.COLOR_HSV2BGR)
-            #     cv.imshow(f'sign_detection_{i}', im)
 
         blob = cv.dnn.blobFromImages(imgs, 1.0, SIZE, 0)
-        # print(blob.shape)
         self.sign_classifier.setInput(blob)
         preds = self.sign_classifier.forward()
 
@@ -345,7 +339,6 @@ class Detection:
             soft_preds = my_softmax(preds[i])
             sign_index = np.argmax(preds[i])
             if soft_preds[sign_index] > CONFIDENCE_THRESHOLD:
-                # print(f'SIGN_{i} = {SIGN_NAMES[sign_index]} detected, confidence: {float(soft_preds[sign_index]):.2f}')
                 predicted_sign = self.sign_names[sign_index]
                 if predicted_sign != self.sign_names[-1]: #avoid no_sign
                     box_centers[sign_index] = (box_centers[sign_index]*votes[sign_index] + centers[i]) / (votes[sign_index] + 1.0)
@@ -353,36 +346,28 @@ class Detection:
                     width_votes[widths_idxs[i]] += 1
 
         winner = np.argmax(votes)
-        votes2 = votes.copy()
-        votes2[winner] = 0
-        second_winner = np.argmax(votes2)
         tot_votes = np.sum(votes)
         winning_confidence = float(votes[winner]/max(tot_votes, VOTES_MAJORITY))
-        votes_advantage = votes[winner] - votes[second_winner]
         width_winner_idx = np.argmax(width_votes)
-        final_box_center = box_centers[winner].astype(int)
         final_width = TILE_WIDTHS[widths_idxs[width_winner_idx]]
-        # if votes[winner] > VOTES_MAJORITY:
-        # if votes_advantage > VOTES_ADVANTAGE_THRESHOLD and votes[winner] > VOTES_MAJORITY:
+        final_box_center = box_centers[winner].astype(int)
         if winning_confidence > 0.8:
             if show_ROI:
                 canvas = cv.rectangle(canvas, (final_box_center[0]-final_width//2, final_box_center[1]-final_width//2), (final_box_center[0]+final_width//2, final_box_center[1]+final_width//2), (0,255,0), 3)
-                #put text
-                font = cv.FONT_HERSHEY_SIMPLEX
-                canvas = cv.putText(canvas, self.sign_names[winner], (final_box_center[0]-final_width//2, final_box_center[1]-final_width//2), font, 1, (0,255,0), 2, cv.LINE_AA)
-
+                canvas = cv.putText(canvas, self.sign_names[winner], (final_box_center[0]-final_width//2, final_box_center[1]-final_width//2), cv.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2, cv.LINE_AA)
+                cv.imshow('Sign detection', canvas)   
+                cv.waitKey(1)
+            return self.sign_names[winner], winning_confidence, final_box_center, final_width
+            
         sign_detection_time = 1000*(time() - start_time)
         self.avg_sign_detection_time = (self.avg_sign_detection_time*self.sign_detection_count + sign_detection_time) / (self.sign_detection_count + 1)
         self.sign_detection_count += 1
 
-        print(f'{self.sign_names[winner]} detected, conf: {winning_confidence*100:.0f}, votes: {votes[winner]}/{tot_votes}')
-
-        # sleep(0.1)
+        # print(f'{self.sign_names[winner]} detected, conf: {winning_confidence*100:.0f}, votes: {votes[winner]}/{tot_votes}')
         if show_ROI:
             cv.imshow('Sign detection', canvas)   
             cv.waitKey(1)
-        return self.sign_names[winner]
-
+        return None, winning_confidence, final_box_center, final_width
 
     def classify_frontal_obstacle(self, frame, conf_threshold=0.5, show_ROI=False):
         """

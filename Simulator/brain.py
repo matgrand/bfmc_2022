@@ -6,6 +6,7 @@ import os
 from time import time, sleep
 from copy import copy, deepcopy
 from numpy.linalg import norm
+from collections import deque
 
 from automobile_data_interface import Automobile_Data
 from helper_functions import *
@@ -146,13 +147,19 @@ ALWAYS_TRUST_GPS = True  # if true the car will always trust the gps (bypass)
 ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
 
+#PARKING
 PARKING_DISTANCE_SLOW_DOWN_THRESHOLD = 1.0
 PARKING_DISTANCE_STOP_THRESHOLD = 0.1
 SUBPATH_LENGTH_FOR_PARKING = 300 # length in samples of the path to consider around the parking position, max
-USE_GPS_FOR_PARKING = True
-USE_SIGN_FOR_PARKING = False
+USE_GPS_FOR_PARKING = False
+USE_SIGN_FOR_PARKING = True
 assert USE_GPS_FOR_PARKING ^ USE_SIGN_FOR_PARKING, 'XOR-> use at least one and only one of the two'
 PARK_MAX_SECONDS_W8_GPS = 10.0 #[s] max seconds to wait for gps to be available 
+MAX_PARK_SEARCH_DIST = 2.0 #[m] max distance to search for parking
+PARK_SEARCH_SPEED = 0.1 #[m/s] speed to search for parking
+PARK_MANOUVER_SPEED = 0.2 #[m/s] speed to perform the parking manouver
+DIST_SIGN_FIRST_T_SPOT = 0.9 #[m] distance from the sign to the first parking spot
+DIST_SIGN_SECOND_T_SPOT = 1.5 #[m] distance from the sign to the second parking spot
 
 #==============================================================
 #=========================== BRAIN ============================
@@ -631,28 +638,59 @@ class Brain:
         pass
 
     def parking(self):
+        #Substates
         LOCALIZING_PARKING_SPOT = 1
         CHECKING_FOR_PARKED_CARS = 2
-        
-
-        park_pos = self.next_event.point
-
-
+        T_STEP1 = 3
+        T_STEP2 = 4
+        T_STEP3 = 5
+        T_STEP4 = 6
+        S_STEP1 = 7
+        S_STEP2 = 8
+        S_STEP3 = 9
+        S_STEP4 = 10
+        S_STEP5 = 11
+        S_STEP6 = 12
+        S_STEP7 = 13
+        S_STEP8 = 14
+        PARK_END = 15
+        #park types
+        T_PARK = 't'
+        S_PARK = 's'
         if self.curr_state.just_switched:
-            #We just got in the parking state, we came from lane following, we are reasonably close to the stopline and we are not moving
-            #self.curr_state.var1 will hold the parking substate
-            park_state = ''
-            sleep(5)
-            exit(1)
+            # We just got in the parking state, we came from lane following, we are reasonably close to the parking spot and we are not moving
+            # self.curr_state.var1 will hold the parking substate, the parking type, and if it has just changed state
+            park_state = LOCALIZING_PARKING_SPOT
+            #find park type with position
+            park_pos = self.next_event.point
+            s_pos = np.array(self.path_planner.get_coord('177'))
+            t_pos = np.array(self.path_planner.get_coord('162'))
+            print(park_pos)
+            print(s_pos)
+            print(t_pos)
+            d_s = norm(park_pos - s_pos) #distances from the s parking spot
+            d_t = norm(park_pos - t_pos) #distances from the t parking spot
+            if d_s < d_t and d_s < 0.2: park_type = S_PARK
+            elif d_t <= d_s and d_t < 0.2: park_type = T_PARK
+            else:
+                print('ERROR: PARKING -> parking spot is not close to expected parking spot position!')
+                exit()
+            self.curr_state.var1 = (park_state, park_type, True)           
+            self.curr_state.just_switched = False
+        
+        park_pos = self.next_event.point
+        park_state, park_type, just_changed = self.curr_state.var1
 
+        #first state: localizing with precision the parking spot
+        if park_state == LOCALIZING_PARKING_SPOT:
+            self.activate_routines([FOLLOW_LANE]) 
 
-
-
-            if USE_GPS_FOR_PARKING:
+            if USE_GPS_FOR_PARKING: #TODO finish implemeting
                 if not self.conditions[TRUST_GPS]:
                     curr_time = time()
                     passed_time = curr_time - self.curr_state.start_time
                     if passed_time > PARK_MAX_SECONDS_W8_GPS:
+                        print('ERROR: GPS Timout!')
                         raise NotImplementedError #TODO: implement
                     print(f'Parking: GPS not trusted, waiting for GPS to be trusted for {passed_time}/{PARK_MAX_SECONDS_W8_GPS} [s]...')
                     return
@@ -665,12 +703,89 @@ class Brain:
                 if car_idx_on_path < park_index_on_path:
                     print('Behind parking spot')
                 else: print('In front of parking spot')
-                
+            elif USE_SIGN_FOR_PARKING:
+                SIGN_DEQUE_LENGTH = 10
+                if just_changed:
+                    #create a deque of past SIGN_DEQUE_LENGTH sing detection results
+                    park_sign_queue = deque(maxlen=SIGN_DEQUE_LENGTH)
+                    self.curr_state.var2 = park_sign_queue #assign var2 to the queue
+                    self.car.reset_rel_pose() #reset the car pose to the current pose
+                    self.curr_state.var1 = (park_state, park_type, False) #set var1, with just_changed to false
+
+                sign, _, _, _ = self.detect.detect_sign(self.car.frame)
+                if sign is not None:
+                    self.curr_state.var2.append(sign)
+                park_sign_queue = self.curr_state.var2
+                if len(park_sign_queue) > SIGN_DEQUE_LENGTH-2:
+                    mode = max(set(park_sign_queue), key=park_sign_queue.count) #get the mode of the deque
+                    if mode == 'park':
+                        print('Reached parking spot, keep going until the sign disappears')
+                        if sign is None or sign != 'park':
+                            print('Sign disappeared, setting up things for searching for parked cars')
+                            self.car.stop()
+                            sleep(3)
+                            self.car.reset_rel_pose()
+                            #go to next substate
+                            self.curr_state.var1 = (CHECKING_FOR_PARKED_CARS, park_type, True)
+                    else:
+                        print('ERROR: PARKING: Sign not detected OR we are not in front of a parking spot!')
+                        self.car.stop()
+                        sleep(3)
+                        exit()
+                else: 
+                    print('Waiting for sign...')
+                    self.car.drive_speed(PARK_SEARCH_SPEED)
+                    dist_from_search_start = self.car.dist_loc
+                    if dist_from_search_start > MAX_PARK_SEARCH_DIST:
+                        print('ERROR: PARKING: Car didnt find the parking sign after more than {} [m]'.format(MAX_PARK_SEARCH_DIST))
+                        self.car.stop()
+                        sleep(3)
+                        exit()
+
+
+        #second state: checking if there are parked cars in the parking spots    
+        elif park_state == CHECKING_FOR_PARKED_CARS:
+            print('Checking for parked cars...')
+            sleep(1)
+        
+        # T parking manouver
+        elif park_state == T_STEP1:
+            pass
+        elif park_state == T_STEP2:
+            pass
+        elif park_state == T_STEP3:
+            pass
+        elif park_state == T_STEP4:
+            pass
+        
+        # S parking manouver
+        elif park_state == S_STEP1:
+            pass
+        elif park_state == S_STEP2:
+            pass
+        elif park_state == S_STEP3:
+            pass
+        elif park_state == S_STEP4:
+            pass
+        elif park_state == S_STEP5:
+            pass
+        elif park_state == S_STEP6:
+            pass
+        elif park_state == S_STEP7:
+            pass
+        elif park_state == S_STEP8:
+            pass
+
+        #end of manouver, go to next event
+        elif park_state == PARK_END:
+            sleep(3)
+            self.switch_to_state(LANE_FOLLOWING)
+            self.go_to_next_event()
+
+
             
-            self.curr_state.just_switched = False
-        sleep(3)
-        self.switch_to_state(LANE_FOLLOWING)
-        self.go_to_next_event()
+        
+
     
     #=============== ROUTINES ===============#
     def follow_lane(self):
