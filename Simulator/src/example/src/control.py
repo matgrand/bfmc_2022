@@ -221,6 +221,8 @@ class CarVisualizer():
 if __name__ == '__main__':
     #get arguments
     args = sys.argv
+    view_only = False
+    control_only = False
     if len(args) > 1:
         if args[1] == '-view-only':
             print('View only mode, [esc] will not stop the program,\nu can only stop the program with [ctrl]+[c]')
