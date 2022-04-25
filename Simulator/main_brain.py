@@ -57,13 +57,15 @@ if __name__ == '__main__':
 
     # init the car data
     os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
+    # sleep(1.5)
     if SIMULATOR:
         car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
     else:
         car = AutomobileDataPi(trig_cam=True, trig_gps=False, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
-    
+    sleep(1.5)
+    car.encoder_distance = 0.0
     
     #stop the car with ctrl+c
     def handler(signum, frame):

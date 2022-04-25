@@ -23,7 +23,7 @@ START_Y = 14.8
 MIN_SPEED = -0.3                    # [m/s]     minimum speed
 MAX_SPEED = 2.5                     # [m/s]     maximum speed
 MAX_ACCEL = 5.5                     # [m/ss]    maximum accel
-MAX_STEER = 27.0                    # [deg]     maximum steering angle
+MAX_STEER = 28.0                    # [deg]     maximum steering angle
 
 # Vehicle parameters
 LENGTH = 0.45  			            # [m]       car body length

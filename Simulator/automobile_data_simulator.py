@@ -229,6 +229,7 @@ class AutomobileDataSimulator(Automobile_Data):
         :acts on: self.speed, self.steer
         :param angle: [deg] stop angle, defaults to 0.0
         """
+        self.steer_deque.append((angle, time()))
         self.speed = 0.0
         data = {}
         data['action']        =  '3'

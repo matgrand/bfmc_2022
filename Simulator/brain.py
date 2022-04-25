@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-from locale import currency
 import numpy as np
 import cv2 as cv
 import os
@@ -19,8 +18,8 @@ from helper_functions import *
 SHOW_IMGS = True
 
 START_NODE = 86
-END_NODE = 285#285#236#169#116
-CHECKPOINTS = [86,203,280,285,116,236,329,162,226]
+END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
+CHECKPOINTS = [86,203,190,203,190,280,285,116,236,329,162,226]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -130,6 +129,14 @@ CONDITIONS = {
     CAR_ON_PATH:              True,   # if true, the car is on the path, if the gps is trusted and the position is too far from the path it will be set to false
 }
 
+#======================== ACHIEVEMENTS ========================
+#consider adding all the tasks, may be too cumbersome
+PARK_ACHIEVED = 'park_achieved'
+
+ACHIEVEMENTS = {
+    PARK_ACHIEVED: False
+}
+
 #==============================================================
 #========================= PARAMTERS ==========================
 #==============================================================
@@ -157,9 +164,20 @@ assert USE_GPS_FOR_PARKING ^ USE_SIGN_FOR_PARKING, 'XOR-> use at least one and o
 PARK_MAX_SECONDS_W8_GPS = 10.0 #[s] max seconds to wait for gps to be available 
 MAX_PARK_SEARCH_DIST = 2.0 #[m] max distance to search for parking
 PARK_SEARCH_SPEED = 0.1 #[m/s] speed to search for parking
-PARK_MANOUVER_SPEED = 0.2 #[m/s] speed to perform the parking manouver
-DIST_SIGN_FIRST_T_SPOT = 0.9 #[m] distance from the sign to the first parking spot
-DIST_SIGN_SECOND_T_SPOT = 1.5 #[m] distance from the sign to the second parking spot
+PARK_MANOUVER_SPEED = 0.25 #[m/s] speed to perform the parking manouver
+DIST_SIGN_FIRST_T_SPOT = 0.8 #[m] distance from the sign to the first parking spot
+DIST_T_SPOTS = 0.45 #[m] distance from the sign to the second parking spot
+DIST_SIGN_FIRST_S_SPOT = 0.9 #[m] distance from the sign to the first parking spot
+DIST_S_SPOTS = 0.7 #[m] distance from the sign to the second parking spot
+FURTHER_DIST_S = 0.7 #[m] distance to proceed further in order to perform the s manouver
+FURTHER_DIST_T = 0.7 #[m] distance to proceed further in order to perform the t manouver
+T_ANGLE = 27.0 #[deg] angle to perform the t manouver
+S_ANGLE = 27.0 #[deg] angle to perform the s manouver
+DIST_2T = 0.8 #[m] distance to perform the 2nd part of t manouver
+DIST_3T = 0.1 #[m] distance to perform the 3rd part of t manouver 
+DIST_2S = 0.4 #[m] distance to perform the 2nd part of s manouver
+DIST_4S = 0.05 #[m] distance to perform the 4th part of s manouver
+STEER_ACTUATION_DELAY_PARK = 0.5 #[s] delay to perform the steering manouver
 
 #==============================================================
 #=========================== BRAIN ============================
@@ -204,6 +222,7 @@ class Brain:
             self.debug_frame = None
 
         self.conditions = CONDITIONS
+        self.achievements = ACHIEVEMENTS
 
         # INITIALIZE STATES
         self.states = { 
@@ -641,19 +660,21 @@ class Brain:
         #Substates
         LOCALIZING_PARKING_SPOT = 1
         CHECKING_FOR_PARKED_CARS = 2
+        STEP0 = 69
         T_STEP1 = 3
         T_STEP2 = 4
         T_STEP3 = 5
         T_STEP4 = 6
-        S_STEP1 = 7
-        S_STEP2 = 8
-        S_STEP3 = 9
-        S_STEP4 = 10
-        S_STEP5 = 11
-        S_STEP6 = 12
-        S_STEP7 = 13
-        S_STEP8 = 14
-        PARK_END = 15
+        T_STEP5 = 7
+        S_STEP1 = 8
+        S_STEP2 = 9
+        S_STEP3 = 10
+        S_STEP4 = 11
+        S_STEP5 = 12
+        S_STEP6 = 13
+        S_STEP7 = 14
+        S_STEP8 = 15
+        PARK_END = 16
         #park types
         T_PARK = 't'
         S_PARK = 's'
@@ -681,6 +702,7 @@ class Brain:
         park_pos = self.next_event.point
         park_state, park_type, just_changed = self.curr_state.var1
 
+        #############################################################################################
         #first state: localizing with precision the parking spot
         if park_state == LOCALIZING_PARKING_SPOT:
             self.activate_routines([FOLLOW_LANE]) 
@@ -704,33 +726,38 @@ class Brain:
                     print('Behind parking spot')
                 else: print('In front of parking spot')
             elif USE_SIGN_FOR_PARKING:
-                SIGN_DEQUE_LENGTH = 10
+                SIGN_DEQUE_LENGTH = 15
                 if just_changed:
                     #create a deque of past SIGN_DEQUE_LENGTH sing detection results
                     park_sign_queue = deque(maxlen=SIGN_DEQUE_LENGTH)
                     self.curr_state.var2 = park_sign_queue #assign var2 to the queue
                     self.car.reset_rel_pose() #reset the car pose to the current pose
                     self.curr_state.var1 = (park_state, park_type, False) #set var1, with just_changed to false
+                    self.curr_state.var3 = False #parking sign reached or not
 
-                sign, _, _, _ = self.detect.detect_sign(self.car.frame)
+                sign, _, _, _ = self.detect.detect_sign(self.car.frame, show_ROI=True)
                 if sign is not None:
                     self.curr_state.var2.append(sign)
+                else: self.curr_state.var2.append('None')
                 park_sign_queue = self.curr_state.var2
+                parking_spot_reached = self.curr_state.var3
                 if len(park_sign_queue) > SIGN_DEQUE_LENGTH-2:
                     mode = max(set(park_sign_queue), key=park_sign_queue.count) #get the mode of the deque
-                    if mode == 'park':
+                    if mode == 'park' or parking_spot_reached:
+                        self.curr_state.var3 = True #parking sign reached
                         print('Reached parking spot, keep going until the sign disappears')
-                        if sign is None or sign != 'park':
+                        # if sign is None or sign != 'park':
+                        if mode != 'park':
                             print('Sign disappeared, setting up things for searching for parked cars')
                             self.car.stop()
-                            sleep(3)
-                            self.car.reset_rel_pose()
                             #go to next substate
                             self.curr_state.var1 = (CHECKING_FOR_PARKED_CARS, park_type, True)
+                    elif mode != 'park' and not parking_spot_reached and self.car.dist_loc < 2.0:
+                        print('Searching...')
                     else:
                         print('ERROR: PARKING: Sign not detected OR we are not in front of a parking spot!')
                         self.car.stop()
-                        sleep(3)
+                        sleep(5)
                         exit()
                 else: 
                     print('Waiting for sign...')
@@ -739,46 +766,247 @@ class Brain:
                     if dist_from_search_start > MAX_PARK_SEARCH_DIST:
                         print('ERROR: PARKING: Car didnt find the parking sign after more than {} [m]'.format(MAX_PARK_SEARCH_DIST))
                         self.car.stop()
-                        sleep(3)
+                        sleep(5)
                         exit()
 
-
+        #############################################################################################
         #second state: checking if there are parked cars in the parking spots    
         elif park_state == CHECKING_FOR_PARKED_CARS:
             print('Checking for parked cars...')
-            sleep(1)
+            if just_changed:
+                self.activate_routines([FOLLOW_LANE])
+                self.car.reset_rel_pose()
+                self.curr_state.var2 = (False, False, False, False) #(car in spot1, car in spot2, looked for car in spot1, looked for car in spot2)
+                self.car.drive_speed(PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+
+            car_in_spot1, car_in_spot2, checked1, checked2 = self.curr_state.var2
+            curr_dist = self.car.dist_loc
+
+            if park_type == T_PARK:
+                dist_first_spot = DIST_SIGN_FIRST_T_SPOT
+                dist_spots = DIST_T_SPOTS
+                further_dist = FURTHER_DIST_T
+            elif park_type == S_PARK:
+                dist_first_spot = DIST_SIGN_FIRST_S_SPOT
+                dist_spots = DIST_S_SPOTS
+                further_dist = FURTHER_DIST_S
+            else:
+                print('ERROR: PARKING: Unknown parking type!')
+                self.car.stop()
+                sleep(5)
+                exit()
+
+            if (dist_first_spot < curr_dist < (dist_first_spot+0.1)) and not checked1:
+                self.car.stop()
+                sleep(0.2)
+                #get lateral sonar distance
+                lateral_sonar_dist = self.car.filtered_lateral_sonar_distance
+                checked1 = True
+                if lateral_sonar_dist < 0.5:
+                    print('Car in spot 1')
+                    car_in_spot1 = True
+                self.car.drive_speed(PARK_MANOUVER_SPEED)
+            elif (dist_first_spot+dist_spots < curr_dist < (dist_first_spot+dist_spots+0.1)) and not checked2:
+                self.car.stop()
+                sleep(0.2)
+                #get lateral sonar distance
+                lateral_sonar_dist = self.car.filtered_lateral_sonar_distance
+                checked2 = True
+                if lateral_sonar_dist < 0.5:
+                    print('Car in spot 2')
+                    car_in_spot2 = True
+                self.car.drive_speed(PARK_MANOUVER_SPEED)
+            elif dist_first_spot+dist_spots+further_dist < curr_dist:
+                self.car.stop()
+                print('Ending search for parked cars')
+                print('Car in spot 1: {}'.format(car_in_spot1))
+                print('Car in spot 2: {}'.format(car_in_spot2))
+                sleep(1)
+                self.curr_state.var1 = (STEP0, park_type, True)
+
+            self.curr_state.var2 = (car_in_spot1, car_in_spot2, checked1, checked2) #update var2 at the end of every iteration
         
-        # T parking manouver
-        elif park_state == T_STEP1:
-            pass
+        #############################################################################################
+        #STEP 0 -> ALIGN WITH THE PARKING SPOT
+        elif park_state == STEP0:
+            #we are standing still at the end of the 2 parking spots 
+            print('STEP0 -> Aligning with the parking spot...')
+
+            car_in_spot1, car_in_spot2, _, _ = self.curr_state.var2
+
+            if just_changed:
+                if car_in_spot1 and car_in_spot2: #TODO change the behaviour: go to next event or something
+                    print('ERROR: PARKING: Car in both spots!')
+                    self.car.stop()
+                    sleep(3)
+                    exit()
+                elif not car_in_spot2:
+                    print('Spot 2 is free. Going to spot 2 now')
+                    park_state = T_STEP2 if park_type == T_PARK else S_STEP2
+                    self.curr_state.var1 = (park_state, park_type, True)
+                else: #car in spot2, spot1 free
+                    print('Spot 1 is free. Going to spot 1 now')
+                    self.activate_routines([FOLLOW_LANE])
+                    self.car.reset_rel_pose()
+                    self.car.drive_speed(-PARK_MANOUVER_SPEED)
+                    self.curr_state.var1 = (park_state, park_type, False)
+
+            if not car_in_spot1 and car_in_spot2:
+                dist = self.car.dist_loc
+                print(f'Distance: {dist}')
+                dist_spots = DIST_S_SPOTS if park_type == S_PARK else DIST_T_SPOTS
+                if dist > dist_spots:
+                    self.car.stop()
+                    print('Aligned with first parking spot')
+                    sleep(1)
+                    park_state = T_STEP2 if park_type == T_PARK else S_STEP2
+                    self.curr_state.var1 = (park_state, park_type, True)
+
         elif park_state == T_STEP2:
-            pass
+            print('T-parking manouver step 2, we are aligned with the parking spot, going right and backward')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(+T_ANGLE)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(-PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_2T:
+                self.car.stop()
+                self.curr_state.var1 = (T_STEP3, park_type, True)
         elif park_state == T_STEP3:
-            pass
+            print('T-parking manouver step 3, going backward')
+            print(f'Distance: {self.car.dist_loc:.2f}/{DIST_3T}')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(0.0)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(-PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_3T:
+                self.car.stop()
+                print('Parked')
+                self.achievements[PARK_ACHIEVED] = True #<><><><><><><><><><><><><> PARK ACHIEVED <><><><><><><><><><><><><>
+                sleep(3.0)
+                self.curr_state.var1 = (T_STEP4, park_type, True)
         elif park_state == T_STEP4:
-            pass
+            print('T-parking manouver step 4, going forward')
+            print(f'Distance: {self.car.dist_loc:.2f}/{DIST_3T}')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(0.0)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_3T:
+                self.car.stop()
+                self.curr_state.var1 = (T_STEP5, park_type, True)
+        elif park_state == T_STEP5:
+            print('T-parking manouver step 5, going right and forward')
+            print(f'Distance: {self.car.dist_loc:.2f}/{DIST_2T}')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(+T_ANGLE)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(+PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_2T:
+                self.car.stop()
+                print('Back in lane')
+                self.curr_state.var1 = (PARK_END, park_type, True)
         
-        # S parking manouver
-        elif park_state == S_STEP1:
-            pass
+        # # S parking manouver
+        # elif park_state == S_STEP1:
+        #     print('S-parking manouver step 1')
         elif park_state == S_STEP2:
-            pass
+            print('S-parking manouver step 2')
+            print(f'Distance: {self.car.dist_loc:.2f}/{DIST_2S}')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(+S_ANGLE)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(-PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_2S:
+                self.car.stop()
+                self.curr_state.var1 = (S_STEP3, park_type, True)
         elif park_state == S_STEP3:
-            pass
+            print('S-parking manouver step 3')
+            print(f'Distance: {self.car.dist_loc:.2f}/{DIST_2S}')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(-S_ANGLE)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(-PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_2S:
+                self.car.stop()
+                self.curr_state.var1 = (S_STEP4, park_type, True)
         elif park_state == S_STEP4:
-            pass
+            print('S-parking manouver step 4')
+            print(f'Distance: {self.car.dist_loc:.2f}/{DIST_4S}')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(0.0)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(+PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_4S:
+                self.car.stop()
+                print('Parked')
+                self.achievements[PARK_ACHIEVED] = True #<><><><><><><><><><><><><> PARK ACHIEVED <><><><><><><><><><><><><>
+                sleep(3.0)
+                self.curr_state.var1 = (S_STEP5, park_type, True)
         elif park_state == S_STEP5:
-            pass
+            print('S-parking manouver step 5')
+            print(f'Distance: {self.car.dist_loc:.2f}/{DIST_4S}')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(0.0)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(-PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_4S:
+                self.car.stop()
+                print('Parked')
+                self.curr_state.var1 = (S_STEP6, park_type, True)
         elif park_state == S_STEP6:
-            pass
+            print('S-parking manouver step 6')
+            print(f'Distance: {self.car.dist_loc:.2f}/{DIST_2S}')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(-S_ANGLE)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(+PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_2S:
+                self.car.stop()
+                self.curr_state.var1 = (S_STEP7, park_type, True)
         elif park_state == S_STEP7:
-            pass
-        elif park_state == S_STEP8:
-            pass
+            print('S-parking manouver step 7')
+            print(f'Distance: {self.car.dist_loc:.2f}/{DIST_2S}')
+            self.activate_routines([])
+            if just_changed:
+                self.car.drive_angle(+S_ANGLE)
+                sleep(STEER_ACTUATION_DELAY_PARK)
+                self.car.reset_rel_pose()
+                self.car.drive_speed(+PARK_MANOUVER_SPEED)
+                self.curr_state.var1 = (park_state, park_type, False)
+            if self.car.dist_loc > DIST_2S:
+                self.car.stop()
+                self.curr_state.var1 = (PARK_END, park_type, True)
 
         #end of manouver, go to next event
         elif park_state == PARK_END:
-            sleep(3)
             self.switch_to_state(LANE_FOLLOWING)
             self.go_to_next_event()
 
@@ -792,6 +1020,8 @@ class Brain:
         e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
         _, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
         angle_ref = np.rad2deg(angle_ref)
+        if self.car.speed < 0.1: #inverse driving in reverse
+            angle_ref = -angle_ref
         print(f'angle_ref: {angle_ref}')
         self.car.drive_angle(angle_ref)
 
