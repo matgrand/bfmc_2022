@@ -19,7 +19,8 @@ SHOW_IMGS = True
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [86,203,190,203,190,280,285,116,236,329,162,226]
+CHECKPOINTS = [86,203,190,203,190,203,190,203,190,
+280,285,116,236,329,162,226]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -150,7 +151,7 @@ STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which 
 POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
 USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
-ALWAYS_TRUST_GPS = True  # if true the car will always trust the gps (bypass)
+ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
 ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
 
@@ -158,24 +159,27 @@ assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWA
 PARKING_DISTANCE_SLOW_DOWN_THRESHOLD = 1.0
 PARKING_DISTANCE_STOP_THRESHOLD = 0.1
 SUBPATH_LENGTH_FOR_PARKING = 300 # length in samples of the path to consider around the parking position, max
-USE_GPS_FOR_PARKING = False
-USE_SIGN_FOR_PARKING = True
-assert USE_GPS_FOR_PARKING ^ USE_SIGN_FOR_PARKING, 'XOR-> use at least one and only one of the two'
+ALWAYS_USE_GPS_FOR_PARKING = False #debug
+ALWAYS_USE_SIGN_FOR_PARKING = False #debug
+DEFAULT_PARKING_METHOD = 'gps' #'gps' or 'sign' 
+assert not (ALWAYS_USE_GPS_FOR_PARKING and ALWAYS_USE_SIGN_FOR_PARKING)
 PARK_MAX_SECONDS_W8_GPS = 10.0 #[s] max seconds to wait for gps to be available 
 MAX_PARK_SEARCH_DIST = 2.0 #[m] max distance to search for parking
+IDX_OFFSET_FROM_SAVED_PARK_POSITION = 56 +13 #index offset from the saved parking position
+PARK_SIGN_DETETCTION_PATIENCE = 8.0 #[s] max seconds to wait for a sign to be available
 PARK_SEARCH_SPEED = 0.1 #[m/s] speed to search for parking
 PARK_MANOUVER_SPEED = 0.25 #[m/s] speed to perform the parking manouver
-DIST_SIGN_FIRST_T_SPOT = 0.8 #[m] distance from the sign to the first parking spot
+DIST_SIGN_FIRST_T_SPOT = 0.75 #[m] distance from the sign to the first parking spot
 DIST_T_SPOTS = 0.45 #[m] distance from the sign to the second parking spot
 DIST_SIGN_FIRST_S_SPOT = 0.9 #[m] distance from the sign to the first parking spot
 DIST_S_SPOTS = 0.7 #[m] distance from the sign to the second parking spot
-FURTHER_DIST_S = 0.7 #[m] distance to proceed further in order to perform the s manouver
-FURTHER_DIST_T = 0.7 #[m] distance to proceed further in order to perform the t manouver
+FURTHER_DIST_S = 0.72 #[m] distance to proceed further in order to perform the s manouver
+FURTHER_DIST_T = 0.69 #[m] distance to proceed further in order to perform the t manouver
 T_ANGLE = 27.0 #[deg] angle to perform the t manouver
 S_ANGLE = 27.0 #[deg] angle to perform the s manouver
 DIST_2T = 0.8 #[m] distance to perform the 2nd part of t manouver
 DIST_3T = 0.1 #[m] distance to perform the 3rd part of t manouver 
-DIST_2S = 0.4 #[m] distance to perform the 2nd part of s manouver
+DIST_2S = 0.38 #[m] distance to perform the 2nd part of s manouver
 DIST_4S = 0.05 #[m] distance to perform the 4th part of s manouver
 STEER_ACTUATION_DELAY_PARK = 0.5 #[s] delay to perform the steering manouver
 
@@ -206,6 +210,11 @@ class Brain:
         self.checkpoints = checkpoints if checkpoints is not None else CHECKPOINTS
         self.checkpoint_idx = 0
         self.desired_speed = desired_speed
+        self.parking_method = DEFAULT_PARKING_METHOD 
+        if ALWAYS_USE_GPS_FOR_PARKING:
+            self.parking_method = 'gps'
+        if ALWAYS_USE_SIGN_FOR_PARKING:
+            self.parking_method = 'sign'
 
         #current and previous states (class State)
         self.curr_state = State()
@@ -705,69 +714,82 @@ class Brain:
         #############################################################################################
         #first state: localizing with precision the parking spot
         if park_state == LOCALIZING_PARKING_SPOT:
+            print('LOCALIZING_PARKING_SPOT')
             self.activate_routines([FOLLOW_LANE]) 
 
-            if USE_GPS_FOR_PARKING: #TODO finish implemeting
-                if not self.conditions[TRUST_GPS]:
+            if (self.parking_method == 'gps' or ALWAYS_USE_GPS_FOR_PARKING) and not ALWAYS_USE_SIGN_FOR_PARKING: 
+                print('Using gps for parking')
+                if just_changed:
+                    trusted_gps_once = False #this will become true if we trusted the gps at least once. We will use local pos afterward
+                    self.curr_state.var2 = trusted_gps_once #var2 
+                    self.curr_state.var1 = (park_state, park_type, False) #just_changed = False
+
+                trusted_gps_once = self.curr_state.var2
+                
+                if not self.conditions[TRUST_GPS] and not trusted_gps_once: 
+                    self.car.stop()
                     curr_time = time()
                     passed_time = curr_time - self.curr_state.start_time
                     if passed_time > PARK_MAX_SECONDS_W8_GPS:
                         print('ERROR: GPS Timout!')
-                        raise NotImplementedError #TODO: implement
+                        self.curr_state.var1 = (LOCALIZING_PARKING_SPOT, park_type, True)
+                        self.parking_method = 'sign'
+                        # raise NotImplementedError #TODO: implement -> prob use sign
                     print(f'Parking: GPS not trusted, waiting for GPS to be trusted for {passed_time}/{PARK_MAX_SECONDS_W8_GPS} [s]...')
-                    return
-                car_est_pos = np.array([self.car.x_est, self.car.y_est])
-                park_index_on_path = int(self.next_event.dist*100) #one sample for every cm in the path
-                path_to_analyze = self.path_planner.path[max(0, park_index_on_path-SUBPATH_LENGTH_FOR_PARKING):
-                                    min(park_index_on_path+SUBPATH_LENGTH_FOR_PARKING, len(self.path_planner.path))]
-                car_idx_on_path = np.argmin(norm(path_to_analyze - car_est_pos, axis=1))
-                park_index_on_path = SUBPATH_LENGTH_FOR_PARKING
-                if car_idx_on_path < park_index_on_path:
-                    print('Behind parking spot')
-                else: print('In front of parking spot')
-            elif USE_SIGN_FOR_PARKING:
-                SIGN_DEQUE_LENGTH = 15
+                else: #gps is trusted or we have already trusted it
+                    self.curr_state.var2 = trusted_gps_once = True #we trusted gps once
+                    car_est_pos = np.array([self.car.x_est, self.car.y_est])
+                    # car_est_pos = np.array([self.car.x_true, self.car.y_true]) # DEBUG ONLY
+                    park_index_on_path = int(self.next_event.dist*100) #one sample for every cm in the path
+                    path_to_analyze = self.path_planner.path[max(0, park_index_on_path-SUBPATH_LENGTH_FOR_PARKING):
+                                        min(park_index_on_path+SUBPATH_LENGTH_FOR_PARKING, len(self.path_planner.path))]
+                    car_idx_on_path = np.argmin(norm(path_to_analyze - car_est_pos, axis=1))
+                    park_index_on_path = SUBPATH_LENGTH_FOR_PARKING
+                    if car_idx_on_path < park_index_on_path:
+                        print('Behind parking spot')
+                        self.car.drive_speed(PARK_SEARCH_SPEED)
+                        if car_idx_on_path > park_index_on_path - IDX_OFFSET_FROM_SAVED_PARK_POSITION:
+                            print('We arrived at the parking spot')
+                            self.car.stop()
+                            self.curr_state.var1 = (CHECKING_FOR_PARKED_CARS, park_type, True)
+                        else: print('getting closer...')
+                    else: 
+                        print('ERROR: PARKING: In front of parking spot')
+                        self.car.stop()
+                        sleep(3)
+                        raise NotImplementedError 
+            elif (self.parking_method == 'sign' or ALWAYS_USE_SIGN_FOR_PARKING) and not ALWAYS_USE_GPS_FOR_PARKING:
+                print('Using sign for parking')
                 if just_changed:
-                    #create a deque of past SIGN_DEQUE_LENGTH sing detection results
-                    park_sign_queue = deque(maxlen=SIGN_DEQUE_LENGTH)
-                    self.curr_state.var2 = park_sign_queue #assign var2 to the queue
+                    #create a deque of past PARK_SIGN_DETETCTION_PATIENCE sing detection results
+                    park_sign_counter = 0
+                    self.curr_state.var2 = park_sign_counter #assign var2 to the queue
                     self.car.reset_rel_pose() #reset the car pose to the current pose
                     self.curr_state.var1 = (park_state, park_type, False) #set var1, with just_changed to false
                     self.curr_state.var3 = False #parking sign reached or not
+                    self.car.drive_speed(PARK_SEARCH_SPEED)
+                    self.curr_state.var1 = (park_state, park_type, False)
 
                 sign, _, _, _ = self.detect.detect_sign(self.car.frame, show_ROI=True)
-                if sign is not None:
-                    self.curr_state.var2.append(sign)
-                else: self.curr_state.var2.append('None')
-                park_sign_queue = self.curr_state.var2
+                park_sign_counter = self.curr_state.var2
                 parking_spot_reached = self.curr_state.var3
-                if len(park_sign_queue) > SIGN_DEQUE_LENGTH-2:
-                    mode = max(set(park_sign_queue), key=park_sign_queue.count) #get the mode of the deque
-                    if mode == 'park' or parking_spot_reached:
+
+                if not parking_spot_reached: 
+                    if sign == 'park': park_sign_counter += 1
+                    else: park_sign_counter = 0
+                    if park_sign_counter >= PARK_SIGN_DETETCTION_PATIENCE:
                         self.curr_state.var3 = True #parking sign reached
+                        park_sign_counter = 0
                         print('Reached parking spot, keep going until the sign disappears')
-                        # if sign is None or sign != 'park':
-                        if mode != 'park':
-                            print('Sign disappeared, setting up things for searching for parked cars')
-                            self.car.stop()
-                            #go to next substate
-                            self.curr_state.var1 = (CHECKING_FOR_PARKED_CARS, park_type, True)
-                    elif mode != 'park' and not parking_spot_reached and self.car.dist_loc < 2.0:
-                        print('Searching...')
-                    else:
-                        print('ERROR: PARKING: Sign not detected OR we are not in front of a parking spot!')
+                else: #parking sign reached
+                    if sign != 'park':
+                        park_sign_counter += 1
+                    if park_sign_counter >= PARK_SIGN_DETETCTION_PATIENCE:
+                        print('Sign disappeared, setting up things for searching for parked cars')
                         self.car.stop()
-                        sleep(5)
-                        exit()
-                else: 
-                    print('Waiting for sign...')
-                    self.car.drive_speed(PARK_SEARCH_SPEED)
-                    dist_from_search_start = self.car.dist_loc
-                    if dist_from_search_start > MAX_PARK_SEARCH_DIST:
-                        print('ERROR: PARKING: Car didnt find the parking sign after more than {} [m]'.format(MAX_PARK_SEARCH_DIST))
-                        self.car.stop()
-                        sleep(5)
-                        exit()
+                        #go to next substate
+                        self.curr_state.var1 = (CHECKING_FOR_PARKED_CARS, park_type, True)
+                self.curr_state.var2 = park_sign_counter
 
         #############################################################################################
         #second state: checking if there are parked cars in the parking spots    
