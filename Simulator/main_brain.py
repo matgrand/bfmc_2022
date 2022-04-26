@@ -26,13 +26,13 @@ class_list = []
 with open("data/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
-LOOP_DELAY = 0.05
+LOOP_DELAY = 0.02
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.6# [m/s]
+DESIRED_SPEED = 0.5# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -57,6 +57,7 @@ if __name__ == '__main__':
 
     # init the car data
     os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
+    os.system('rosservice call gazebo/unpause_physics')
     # sleep(1.5)
     if SIMULATOR:
         car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
@@ -71,8 +72,9 @@ if __name__ == '__main__':
     def handler(signum, frame):
         print("Exiting ...")
         car.stop()
+        os.system('rosservice call gazebo/pause_physics')
         cv.destroyAllWindows()
-        sleep(0.1)
+        sleep(.99)
         exit()
     signal.signal(signal.SIGINT, handler)
     

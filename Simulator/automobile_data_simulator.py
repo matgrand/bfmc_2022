@@ -181,14 +181,9 @@ class AutomobileDataSimulator(Automobile_Data):
         """Set the speed of the car
         :acts on: self.speed 
         :param speed: speed of the car [m/s], defaults to 0.0
-        """                
-        speed = Automobile_Data.normalizeSpeed(speed)   # normalize speed
-        self.speed = speed
-        data = {}
-        data['action']        =  '1'
-        data['speed']         =  float(speed)
-        reference = json.dumps(data)
-        self.pub.publish(reference)
+        """   
+        self.arrived_at_dist = True #ovrride the drive distance        
+        self.pub_speed(speed)
 
     def drive_angle(self, angle=0.0, direct=False) -> None:
         """Set the steering angle of the car
@@ -215,11 +210,12 @@ class AutomobileDataSimulator(Automobile_Data):
         self.arrived_at_dist = False
 
     def drive_distance_callback(self, data) -> None:
-        Kp = 1.0
+        Kp = 0.5
         max_speed = 0.2
         if not self.arrived_at_dist:
             dist_error = self.target_dist - self.encoder_distance
-            self.drive_speed(min(Kp * dist_error, max_speed))
+            # print(F'DISTANCE ERROR: {dist_error:.2f}, arrrived at dist: {self.arrived_at_dist}')
+            self.pub_speed(min(Kp * dist_error, max_speed))
             if np.abs(dist_error) < 0.01:
                 self.arrived_at_dist = True
                 self.drive_speed(0.0)
@@ -241,5 +237,14 @@ class AutomobileDataSimulator(Automobile_Data):
         data = {}
         data['action']        =  '2'
         data['steerAngle']    =  float(angle)
+        reference = json.dumps(data)
+        self.pub.publish(reference)
+
+    def pub_speed(self, speed):
+        speed = Automobile_Data.normalizeSpeed(speed)   # normalize speed
+        self.speed = speed
+        data = {}
+        data['action']        =  '1'
+        data['speed']         =  float(speed)
         reference = json.dumps(data)
         self.pub.publish(reference)

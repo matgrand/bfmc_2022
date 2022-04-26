@@ -226,7 +226,8 @@ class Automobile_Data():
         self.yaw_loc = self.yaw - self.yaw_loc_o
         curr_dist = self.encoder_distance
         self.dist_loc = np.abs(curr_dist - self.dist_loc_o)
-        L = np.abs(curr_dist - self.prev_dist)
+        signed_L = curr_dist - self.prev_dist
+        L = np.abs(signed_L)
         dx = L * np.cos(self.yaw_loc)
         dy = L * np.sin(self.yaw_loc)
         self.x_loc += dx
@@ -241,8 +242,8 @@ class Automobile_Data():
                 self.trust_gps = False #too much time passed from previous gps pos
                 self.gps_cnt = 0
             yaw = self.yaw
-            dx = L * np.cos(yaw)
-            dy = L * np.sin(yaw)   
+            dx = signed_L * np.cos(yaw)
+            dy = signed_L * np.sin(yaw)   
             self.x_est += dx
             self.y_est += dy            
 
@@ -290,6 +291,7 @@ class Automobile_Data():
             #distances
             ekf_gps_diff =  np.linalg.norm(p_ekf - p_gps)
             enc_gps_diff =  np.linalg.norm(p_enc - p_gps)
+            enc_gps_diff = 0.5 #NOTE DEBUG
             #checks
             if ekf_gps_diff > 0.4 and enc_gps_diff > 0.4: #both estimates way off
                 #-> use gps

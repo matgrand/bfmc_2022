@@ -43,6 +43,7 @@ OVERTAKING_MOVING_CAR = 'overtaking_moving_car'
 TAILING_CAR = 'tailing_car'
 AVOIDING_ROADBLOCK = 'avoiding_roadblock'
 PARKING = 'parking'
+CROSSWALK_NAVIGATION = 'crosswalk_navigation'
 
 class State():
     def __init__(self, name=None, method=None, activated=False):
@@ -58,6 +59,7 @@ class State():
         self.var1 = None
         self.var2 = None
         self.var3 = None
+        self.var4 = None
     def __str__(self):
         return self.name.upper() if self.name is not None else 'None'
     def run(self):
@@ -73,6 +75,7 @@ CONTROL_FOR_SEMAPHORE = 'control_for_semaphore'
 CONTROL_FOR_PEDESTRIANS = 'control_for_pedestrians'
 CONTROL_FOR_VEHICLES = 'control_for_vehicles'
 CONTROL_FOR_ROADBLOCKS = 'control_for_roadblocks'
+CONTROL_FOR_OBSTACLES = 'control_for_obstacles'
 
 class Routine():
     def __init__(self, name, method, activated=False):
@@ -82,6 +85,9 @@ class Routine():
         self.start_time = None
         self.start_position = None
         self.start_distance = None
+        self.var1 = None
+        self.var2 = None
+        self.var3 = None
     def __str__(self):
         return self.name
     def run(self):
@@ -110,6 +116,7 @@ class Event:
         self.path_ahead = path_ahead    # sequence of points after the event, only for intersections or roundabouts
         self.length_path_ahead = length_path_ahead   # length of the path after the event, only for intersections or roundabouts
         self.curvature = curvature      # curvature of the path ahead of the event
+        self.encoder_dist_event = None  # encoder distance of the event, gets updated at stopline approach or park(for park) or in highway exit(for highway exit)
     def __str__(self):
         return self.name.upper() if self.name is not None else 'None'
 
@@ -142,12 +149,13 @@ ACHIEVEMENTS = {
 #========================= PARAMTERS ==========================
 #==============================================================
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
-STOP_LINE_APPROACH_DISTANCE = 0.3
-STOP_LINE_STOP_DISTANCE = 0.1
+STOP_LINE_APPROACH_DISTANCE = 0.4
+STOP_LINE_STOP_DISTANCE = 0.05
 assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
-STOP_WAIT_TIME = 0.1 #3.0
+STOP_WAIT_TIME = 0.2 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which is possible to start detecting a stop line again
+DIST_TO_STOP_BEFORE_STOP_LINE = 0.1 #distance from the stop line to stop the car
 POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
 USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
@@ -168,13 +176,13 @@ MAX_PARK_SEARCH_DIST = 2.0 #[m] max distance to search for parking
 IDX_OFFSET_FROM_SAVED_PARK_POSITION = 56 +13 #index offset from the saved parking position
 PARK_SIGN_DETETCTION_PATIENCE = 8.0 #[s] max seconds to wait for a sign to be available
 PARK_SEARCH_SPEED = 0.1 #[m/s] speed to search for parking
-PARK_MANOUVER_SPEED = 0.25 #[m/s] speed to perform the parking manouver
+PARK_MANOUVER_SPEED = 0.15 #[m/s] speed to perform the parking manouver
 DIST_SIGN_FIRST_T_SPOT = 0.75 #[m] distance from the sign to the first parking spot
 DIST_T_SPOTS = 0.45 #[m] distance from the sign to the second parking spot
 DIST_SIGN_FIRST_S_SPOT = 0.9 #[m] distance from the sign to the first parking spot
 DIST_S_SPOTS = 0.7 #[m] distance from the sign to the second parking spot
-FURTHER_DIST_S = 0.72 #[m] distance to proceed further in order to perform the s manouver
-FURTHER_DIST_T = 0.69 #[m] distance to proceed further in order to perform the t manouver
+FURTHER_DIST_S = 0.69 #[m] distance to proceed further in order to perform the s manouver
+FURTHER_DIST_T = 0.64 #[m] distance to proceed further in order to perform the t manouver
 T_ANGLE = 27.0 #[deg] angle to perform the t manouver
 S_ANGLE = 27.0 #[deg] angle to perform the s manouver
 DIST_2T = 0.8 #[m] distance to perform the 2nd part of t manouver
@@ -182,6 +190,21 @@ DIST_3T = 0.1 #[m] distance to perform the 3rd part of t manouver
 DIST_2S = 0.38 #[m] distance to perform the 2nd part of s manouver
 DIST_4S = 0.05 #[m] distance to perform the 4th part of s manouver
 STEER_ACTUATION_DELAY_PARK = 0.5 #[s] delay to perform the steering manouver
+SLEEP_AFTER_STOPPING = 0.3
+
+# OBSTACLES
+OBSTACLE_IS_ALWAYS_PEDESTRIAN = True
+OBSTACLE_IS_ALWAYS_CAR = False
+OBSTACLE_IS_ALWAYS_ROADBLOCK = False
+assert OBSTACLE_IS_ALWAYS_PEDESTRIAN ^ OBSTACLE_IS_ALWAYS_CAR ^ OBSTACLE_IS_ALWAYS_ROADBLOCK or not (OBSTACLE_IS_ALWAYS_PEDESTRIAN or OBSTACLE_IS_ALWAYS_CAR or OBSTACLE_IS_ALWAYS_ROADBLOCK)
+OBSTACLE_DISTANCE_THRESHOLD = 0.5 #[m] distance from the obstacle to consider it as an obstacle
+PEDESTRIAN_CONTROL_DISTANCE = 0.35 #[m] distance to keep from the pedestrian
+PEDESTRIAN_TIMEOUT = 2.0 #[s] time to w8 after the pedestrian cleared the road
+TAILING_DISTANCE = 0.3 #[m] distance to keep from the vehicle while tailing
+
+#CHECKS
+MAX_DIST_AWAY_FROM_LANE = 0.8 #[m] max distance from the lane to trip the state checker
+MAX_ERROR_ON_LOCAL_DIST = 0.05 #[m] max error on the local distance
 
 #==============================================================
 #=========================== BRAIN ============================
@@ -224,6 +247,9 @@ class Brain:
         self.next_event = Event()
         self.event_idx = 0
 
+        #stop line with higher precision
+        self.stop_line_distance_median = 1.0
+
         #debug
         self.debug = debug
         if self.debug and SHOW_IMGS:
@@ -261,6 +287,8 @@ class Brain:
             AVOIDING_ROADBLOCK:       State(AVOIDING_ROADBLOCK, self.avoiding_roadblock),
             #parking
             PARKING:                  State(PARKING, self.parking),
+            #crosswalk navigation
+            CROSSWALK_NAVIGATION:     State(CROSSWALK_NAVIGATION, self.crosswalk_navigation),
         }
 
         # INITIALIZE ROUTINES
@@ -274,6 +302,7 @@ class Brain:
             CONTROL_FOR_PEDESTRIANS:  Routine(CONTROL_FOR_PEDESTRIANS,  self.control_for_pedestrians), 
             CONTROL_FOR_VEHICLES:     Routine(CONTROL_FOR_VEHICLES,  self.control_for_roadblocks),   
             CONTROL_FOR_ROADBLOCKS:   Routine(CONTROL_FOR_ROADBLOCKS,  self.control_for_roadblocks),
+            CONTROL_FOR_OBSTACLES:    Routine(CONTROL_FOR_OBSTACLES,  self.control_for_obstacles),
         }
         self.active_routines_names = []
 
@@ -285,7 +314,8 @@ class Brain:
     #=============== STATES ===============#
     def start_state(self):
         #exception: states should not perform actions
-        self.car.stop()
+        self.car.drive_speed(0.0)
+        sleep(SLEEP_AFTER_STOPPING)
         print('Generating route...')
 
         #localize the car and go to the first checkpoint
@@ -324,15 +354,24 @@ class Brain:
             prev_event_dist = self.prev_event.dist
             end_dist = len(self.path_planner.path)*0.01
             dist_to_end = end_dist - prev_event_dist
+            assert dist_to_end > 0.3, f'Distance to end is too small, {dist_to_end:.2f}, choose better checkpoints'
             self.curr_state.var1 = dist_to_end
             self.car.drive_speed(self.desired_speed)
             self.curr_state.just_switched = False
-        #end condition on the distance, can be done with GPS instead, or both
+        #end condition on the distance, can be done with GPS instead, or both TODO
         dist_to_end = self.curr_state.var1
-        stopping_in = np.abs(dist_to_end - self.car.dist_loc)
+        print(f'Distance to end: {dist_to_end:.2f}')
+        print(f'Prev event : {self.prev_event}')
+        print(f'Next event : {self.next_event}')
+        print(f'ENC DIST = {self.car.encoder_distance}')
+        print(f'prev_event.encoder_dist_event = {self.prev_event.encoder_dist_event}')
+        dist_from_prev_event = self.car.encoder_distance - self.prev_event.encoder_dist_event #NOTE this assume that after a ie a parking the encoder dist is ~0
+        assert dist_from_prev_event > -0.3, f'Distance from prev event is too small, {dist_from_prev_event:.2f}'
+        stopping_in = dist_to_end - dist_from_prev_event
         print(f'Stoppig in {stopping_in-0.1} [m]')
         if stopping_in < 0.1:
-            self.car.stop() #TODO control in position
+            self.car.drive_speed(0.0) #TODO control in position
+            sleep(SLEEP_AFTER_STOPPING)
             self.go_to_next_event()
             #start routing for next checkpoint
             self.next_checkpoint()
@@ -345,21 +384,24 @@ class Brain:
         #start driving if it's the first time it has been called
         if self.curr_state.just_switched:
             self.car.drive_speed(self.desired_speed)
-            self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE])
+            self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES])
             self.curr_state.just_switched = False
         
+        #check parking
         if self.next_event.name == PARKING_EVENT:
-            self.activate_routines([FOLLOW_LANE]) #we dont need stoplines in parking
+            self.activate_routines([FOLLOW_LANE, CONTROL_FOR_OBSTACLES]) #we dont need stoplines in parking
             dist_between_events = self.next_event.dist - self.prev_event.dist
             #Relative positioning is reset at every stopline, so we can use that to approximately calculate the distance to the parking spot
             approx_dist_from_parking = dist_between_events - self.car.dist_loc
             print(f'Approx dist from parking: {approx_dist_from_parking}')
             if approx_dist_from_parking < PARKING_DISTANCE_SLOW_DOWN_THRESHOLD: #we are reasonably close to the parking spot
                 # self.activate_routines([FOLLOW_LANE, SLOW_DOWN])
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 self.switch_to_state(PARKING)
 
         #NOTE: TEMPORARY solution
+        #check highway exit case
         if self.next_event.name == HIGHWAY_EXIT_EVENT:
             self.go_to_next_event()
 
@@ -375,14 +417,36 @@ class Brain:
 
 
     def approaching_stop_line(self):
-        self.activate_routines([FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE])
+        self.activate_routines([FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES])
         dist = self.detect.est_dist_to_stop_line
-        #check if we are here by mistake
+        # #check if we are here by mistake
         if dist > STOP_LINE_APPROACH_DISTANCE:
             self.switch_to_state(LANE_FOLLOWING)
             self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE])
             self.car.drive_speed(self.desired_speed)
-        elif dist < STOP_LINE_STOP_DISTANCE: #STOP THE CAR
+
+        if self.stop_line_distance_median is not None: #we have a median, => we have an accurate position for the stopline
+            print('Driving towards stop line... at distance: ', self.stop_line_distance_median)
+            self.activate_routines([FOLLOW_LANE, SLOW_DOWN]) #deactivate detect stop line, TEST
+            dist_to_drive = self.stop_line_distance_median - self.car.encoder_distance
+            self.car.drive_distance(dist_to_drive)
+            if dist_to_drive < DIST_TO_STOP_BEFORE_STOP_LINE: 
+                # self.car.drive_speed(0.0)
+                print(f'Arrievd at stop line. Using median distance: {self.stop_line_distance_median}')
+                print(f'                           encoder distance: { self.car.encoder_distance:.2f}')
+                # sleep(1.0)
+                decide_next_state = True
+            else: decide_next_state = False
+        else: #alternative, if we don't have a median, we just use the (possibly inaccurate) network estimaiton
+            print('WARNING: APPROACHING_STOP_LINE: stop distance may be imprecise')
+            if dist < STOP_LINE_STOP_DISTANCE:
+                # self.car.drive_speed(0.0)
+                print('Stopped at stop line. Using network distance: ', self.detect.est_dist_to_stop_line) 
+                decide_next_state = True
+                assert self.stop_line_distance_median is None, 'stop_line_distance_median is not None'
+            else: decide_next_state = False
+        if decide_next_state:
+            print('Deciding next state, based on next event...')
             next_event_name = self.next_event.name
             # Events with stopline
             if next_event_name == INTERSECTION_STOP_EVENT:
@@ -396,16 +460,29 @@ class Brain:
             elif next_event_name == ROUNDABOUT_EVENT:
                 self.switch_to_state(ROUNDABOUT_NAVIGATION)
             elif next_event_name == CROSSWALK_EVENT:
-                self.switch_to_state(WAITING_FOR_PEDESTRIAN)
+                self.switch_to_state(CROSSWALK_NAVIGATION) #directly go to lane keeping, the pedestrian will be managed in that state
             # Events without stopline = LOGIC ERROR
             elif next_event_name == PARKING_EVENT:
                 print('WARNING: UNEXPECTED STOP LINE FOUND WITH PARKING AS NEXT EVENT')
+                self.car.stop()
+                sleep(3)
                 exit() #TODO: handle this case
             elif next_event_name == HIGHWAY_EXIT_EVENT:
                 print('WARNING: UNEXPECTED STOP LINE FOUND WITH HIGHWAY EXIT AS NEXT EVENT')
+                self.car.stop()
+                sleep(3)
                 exit() #TODO: handle this case
+            else:
+                print('ERROR: UNEXPECTED STOP LINE FOUND WITH UNKNOWN EVENT AS NEXT EVENT')
+                self.car.stop()
+                sleep(3)
+                exit()
             #Every time we stop for a stopline, we reset the local frame of reference
+            dist_from_line = dist if self.stop_line_distance_median is None else self.stop_line_distance_median - self.car.encoder_distance
+            assert dist_from_line < 0.5, f'dist_from_line is too large, {dist_from_line:.2f}'
             self.car.reset_rel_pose() 
+            self.next_event.encoder_dist_event = self.car.encoder_distance + dist_from_line
+            self.activate_routines([]) #deactivate all routines
 
     def intersection_navigation(self):
         self.activate_routines([])
@@ -495,13 +572,23 @@ class Brain:
         print('State: tracking_local_path') #var1=initial distance from stop_line, #var2=path to follow
         self.activate_routines([])
         if self.curr_state.just_switched:
-            self.car.stop()
+            self.car.drive_speed(0.0)
+            sleep(SLEEP_AFTER_STOPPING)
             #get distance from the line and lateral error e2
             self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
-            if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE:
-                d = self.detect.est_dist_to_stop_line
-            else: d = 0.0
+            if self.stop_line_distance_median is None:
+                print('We DONT have the median, using simple net estimation')
+                print(len(self.routines[DETECT_STOP_LINE].var2))
+                if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE:
+                    d = self.detect.est_dist_to_stop_line
+                else: d = 0.0
+            else: #we have an accurate position for the stopline
+                print('We HAVE the median, using median estimation')
+                print(len(self.routines[DETECT_STOP_LINE].var2))
+                d = self.stop_line_distance_median - self.car.encoder_distance 
+            sleep(.8)
             e2, _, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
+            e2 = 0.0 # NOTE e2 is usually bad
             # retrieve global position of the car, can be done usiing the stop_line
             # or using the gps, but for now we will use the stop_line
             # NOTE: in the real car we need to have a GLOBAL YAW OFFSET to match the simulator with the real track
@@ -550,7 +637,8 @@ class Brain:
                 cv.imshow('Path', self.path_planner.map)
                 cv.waitKey(1)
                 #debug
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 # sleep(1.0)
                 cv.namedWindow('local_path', cv.WINDOW_NORMAL)
                 local_map_img = np.zeros_like(self.path_planner.map)
@@ -611,7 +699,7 @@ class Brain:
             cv.imshow('Path', self.path_planner.map)
             cv.waitKey(1)
         if np.abs(get_curvature(local_path_cf)) < 0.5: #the local path is straight
-            max_idx = len(local_path_cf)-30 #dont follow until the end
+            max_idx = len(local_path_cf)-60 #dont follow until the end
         else: #curvy path
             max_idx = len(local_path_cf)-1  #follow until the end
         # State exit conditions
@@ -636,17 +724,41 @@ class Brain:
         self.switch_to_state(TRACKING_LOCAL_PATH)
 
     def waiting_for_pedestrian(self):
-        self.switch_to_state(LANE_FOLLOWING) #temporary
-        self.go_to_next_event() #temporary
-        pass
-
+        dist_ahead = self.car.filtered_sonar_distance
+        if self.curr_state.just_switched:
+            self.car.drive_speed(0.0)
+            sleep(SLEEP_AFTER_STOPPING)
+            self.activate_routines([])
+            dist_to_keep = dist_ahead - PEDESTRIAN_CONTROL_DISTANCE
+            print('dist_ahead: ', dist_ahead)
+            print(f'dist_to_keep: {dist_to_keep}')
+            self.car.drive_distance(dist_to_keep) #go to a safe dist from the pedestrian and w8 there
+            self.curr_state.var1 = time() #last time I saw the pedestrian, initiliaze it
+            self.curr_state.just_switched = False
+        if dist_ahead < OBSTACLE_DISTANCE_THRESHOLD:
+            print('Waiting for pedestrian...')
+            self.activate_routines([])
+            self.curr_state.var1 = last_seen_pedestrian_time = time()
+        else: 
+            last_seen_pedestrian_time = self.curr_state.var1
+            self.activate_routines([])
+            curr_time = time()
+            print(f'Pedestrian has cleared the road, keep waiting for: {curr_time - last_seen_pedestrian_time}/{PEDESTRIAN_TIMEOUT}')
+            if curr_time - last_seen_pedestrian_time > PEDESTRIAN_TIMEOUT:
+                # self.switch_to_state(LANE_FOLLOWING) 
+                self.car.stop()
+                sleep(SLEEP_AFTER_STOPPING)
+                print(f'Swithching back to {self.prev_state}')
+                self.switch_to_prev_state() #NOTE
+            
     def waiting_for_green(self):
         #temporary fix
         self.switch_to_state(WAITING_AT_STOPLINE)
 
     def waiting_at_stopline(self):
         self.activate_routines([]) #no routines
-        self.car.stop()
+        self.car.drive_speed(0.0)
+        sleep(SLEEP_AFTER_STOPPING)
         if (time() - self.curr_state.start_time) > STOP_WAIT_TIME:
             self.switch_to_state(INTERSECTION_NAVIGATION)
 
@@ -723,18 +835,19 @@ class Brain:
                     trusted_gps_once = False #this will become true if we trusted the gps at least once. We will use local pos afterward
                     self.curr_state.var2 = trusted_gps_once #var2 
                     self.curr_state.var1 = (park_state, park_type, False) #just_changed = False
+                    self.car.reset_rel_pose() 
 
                 trusted_gps_once = self.curr_state.var2
                 
                 if not self.conditions[TRUST_GPS] and not trusted_gps_once: 
-                    self.car.stop()
+                    self.car.drive_speed(0.0)
                     curr_time = time()
                     passed_time = curr_time - self.curr_state.start_time
                     if passed_time > PARK_MAX_SECONDS_W8_GPS:
                         print('ERROR: GPS Timout!')
+                        print('Using sign for parking...')
                         self.curr_state.var1 = (LOCALIZING_PARKING_SPOT, park_type, True)
                         self.parking_method = 'sign'
-                        # raise NotImplementedError #TODO: implement -> prob use sign
                     print(f'Parking: GPS not trusted, waiting for GPS to be trusted for {passed_time}/{PARK_MAX_SECONDS_W8_GPS} [s]...')
                 else: #gps is trusted or we have already trusted it
                     self.curr_state.var2 = trusted_gps_once = True #we trusted gps once
@@ -745,17 +858,17 @@ class Brain:
                                         min(park_index_on_path+SUBPATH_LENGTH_FOR_PARKING, len(self.path_planner.path))]
                     car_idx_on_path = np.argmin(norm(path_to_analyze - car_est_pos, axis=1))
                     park_index_on_path = SUBPATH_LENGTH_FOR_PARKING
-                    if car_idx_on_path < park_index_on_path:
+                    if car_idx_on_path < park_index_on_path and self.car.dist_loc < MAX_PARK_SEARCH_DIST:
                         print('Behind parking spot')
                         self.car.drive_speed(PARK_SEARCH_SPEED)
                         if car_idx_on_path > park_index_on_path - IDX_OFFSET_FROM_SAVED_PARK_POSITION:
                             print('We arrived at the parking spot')
-                            self.car.stop()
+                            self.car.drive_speed(0.0)
                             self.curr_state.var1 = (CHECKING_FOR_PARKED_CARS, park_type, True)
-                        else: print('getting closer...')
+                        else: print(f'getting closer...  dist: {self.car.dist_loc:.2f}/{MAX_PARK_SEARCH_DIST:.2f}')
                     else: 
-                        print('ERROR: PARKING: In front of parking spot')
-                        self.car.stop()
+                        print('ERROR: PARKING: In front of parking spot, or maximum search distance reached')
+                        self.car.drive_speed(0.0)
                         sleep(3)
                         raise NotImplementedError 
             elif (self.parking_method == 'sign' or ALWAYS_USE_SIGN_FOR_PARKING) and not ALWAYS_USE_GPS_FOR_PARKING:
@@ -786,7 +899,7 @@ class Brain:
                         park_sign_counter += 1
                     if park_sign_counter >= PARK_SIGN_DETETCTION_PATIENCE:
                         print('Sign disappeared, setting up things for searching for parked cars')
-                        self.car.stop()
+                        self.car.drive_speed(0.0)
                         #go to next substate
                         self.curr_state.var1 = (CHECKING_FOR_PARKED_CARS, park_type, True)
                 self.curr_state.var2 = park_sign_counter
@@ -797,6 +910,8 @@ class Brain:
             print('Checking for parked cars...')
             if just_changed:
                 self.activate_routines([FOLLOW_LANE])
+                assert self.next_event.name == PARKING_EVENT
+                self.next_event.encoder_dist_event = self.car.encoder_distance + 0.1
                 self.car.reset_rel_pose()
                 self.curr_state.var2 = (False, False, False, False) #(car in spot1, car in spot2, looked for car in spot1, looked for car in spot2)
                 self.car.drive_speed(PARK_MANOUVER_SPEED)
@@ -820,8 +935,8 @@ class Brain:
                 exit()
 
             if (dist_first_spot < curr_dist < (dist_first_spot+0.1)) and not checked1:
-                self.car.stop()
-                sleep(0.2)
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 #get lateral sonar distance
                 lateral_sonar_dist = self.car.filtered_lateral_sonar_distance
                 checked1 = True
@@ -830,8 +945,8 @@ class Brain:
                     car_in_spot1 = True
                 self.car.drive_speed(PARK_MANOUVER_SPEED)
             elif (dist_first_spot+dist_spots < curr_dist < (dist_first_spot+dist_spots+0.1)) and not checked2:
-                self.car.stop()
-                sleep(0.2)
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 #get lateral sonar distance
                 lateral_sonar_dist = self.car.filtered_lateral_sonar_distance
                 checked2 = True
@@ -840,12 +955,18 @@ class Brain:
                     car_in_spot2 = True
                 self.car.drive_speed(PARK_MANOUVER_SPEED)
             elif dist_first_spot+dist_spots+further_dist < curr_dist:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 print('Ending search for parked cars')
                 print('Car in spot 1: {}'.format(car_in_spot1))
                 print('Car in spot 2: {}'.format(car_in_spot2))
                 sleep(1)
                 self.curr_state.var1 = (STEP0, park_type, True)
+            if dist_first_spot+dist_spots+further_dist + MAX_ERROR_ON_LOCAL_DIST < curr_dist:
+                print(f'ERROR: PARKING: CHECKING_CARS: Overshoot distance, error: {dist_first_spot+dist_spots+further_dist + MAX_ERROR_ON_LOCAL_DIST-curr_dist:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
 
             self.curr_state.var2 = (car_in_spot1, car_in_spot2, checked1, checked2) #update var2 at the end of every iteration
         
@@ -879,11 +1000,17 @@ class Brain:
                 print(f'Distance: {dist}')
                 dist_spots = DIST_S_SPOTS if park_type == S_PARK else DIST_T_SPOTS
                 if dist > dist_spots:
-                    self.car.stop()
+                    self.car.drive_speed(0.0)
+                    sleep(SLEEP_AFTER_STOPPING)
                     print('Aligned with first parking spot')
                     sleep(1)
                     park_state = T_STEP2 if park_type == T_PARK else S_STEP2
                     self.curr_state.var1 = (park_state, park_type, True)
+                if dist > dist_spots + MAX_ERROR_ON_LOCAL_DIST:
+                    print(f'ERROR: PARKING: STEP0: Overshoot distance, error:{dist_spots + MAX_ERROR_ON_LOCAL_DIST - dist:.2f}')
+                    self.car.stop()
+                    sleep(3)
+                    raise NotImplementedError
 
         elif park_state == T_STEP2:
             print('T-parking manouver step 2, we are aligned with the parking spot, going right and backward')
@@ -895,8 +1022,14 @@ class Brain:
                 self.car.drive_speed(-PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_2T:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 self.curr_state.var1 = (T_STEP3, park_type, True)
+            if self.car.dist_loc > DIST_2T + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: T_STEP2: Overshoot distance, error:{DIST_2T + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
         elif park_state == T_STEP3:
             print('T-parking manouver step 3, going backward')
             print(f'Distance: {self.car.dist_loc:.2f}/{DIST_3T}')
@@ -908,11 +1041,17 @@ class Brain:
                 self.car.drive_speed(-PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_3T:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 print('Parked')
                 self.achievements[PARK_ACHIEVED] = True #<><><><><><><><><><><><><> PARK ACHIEVED <><><><><><><><><><><><><>
                 sleep(3.0)
                 self.curr_state.var1 = (T_STEP4, park_type, True)
+            if self.car.dist_loc > DIST_3T + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: T_STEP3: Overshoot distance, error:{DIST_3T + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
         elif park_state == T_STEP4:
             print('T-parking manouver step 4, going forward')
             print(f'Distance: {self.car.dist_loc:.2f}/{DIST_3T}')
@@ -924,8 +1063,14 @@ class Brain:
                 self.car.drive_speed(PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_3T:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 self.curr_state.var1 = (T_STEP5, park_type, True)
+            if self.car.dist_loc > DIST_3T + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: T_STEP4: Overshoot distance, error:{DIST_3T + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
         elif park_state == T_STEP5:
             print('T-parking manouver step 5, going right and forward')
             print(f'Distance: {self.car.dist_loc:.2f}/{DIST_2T}')
@@ -937,9 +1082,15 @@ class Brain:
                 self.car.drive_speed(+PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_2T:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 print('Back in lane')
                 self.curr_state.var1 = (PARK_END, park_type, True)
+            if self.car.dist_loc > DIST_2T + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: T_STEP5: Overshoot distance, error:{DIST_2T + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
         
         # # S parking manouver
         # elif park_state == S_STEP1:
@@ -955,8 +1106,14 @@ class Brain:
                 self.car.drive_speed(-PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_2S:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 self.curr_state.var1 = (S_STEP3, park_type, True)
+            if self.car.dist_loc > DIST_2S + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: S_STEP2: Overshoot distance, error:{DIST_2S + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
         elif park_state == S_STEP3:
             print('S-parking manouver step 3')
             print(f'Distance: {self.car.dist_loc:.2f}/{DIST_2S}')
@@ -968,8 +1125,14 @@ class Brain:
                 self.car.drive_speed(-PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_2S:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 self.curr_state.var1 = (S_STEP4, park_type, True)
+            if self.car.dist_loc > DIST_2S + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: S_STEP3: Overshoot distance, error:{DIST_2S + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
         elif park_state == S_STEP4:
             print('S-parking manouver step 4')
             print(f'Distance: {self.car.dist_loc:.2f}/{DIST_4S}')
@@ -981,11 +1144,17 @@ class Brain:
                 self.car.drive_speed(+PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_4S:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 print('Parked')
                 self.achievements[PARK_ACHIEVED] = True #<><><><><><><><><><><><><> PARK ACHIEVED <><><><><><><><><><><><><>
                 sleep(3.0)
                 self.curr_state.var1 = (S_STEP5, park_type, True)
+            if self.car.dist_loc > DIST_4S + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: S_STEP4: Overshoot distance, error:{DIST_4S + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
         elif park_state == S_STEP5:
             print('S-parking manouver step 5')
             print(f'Distance: {self.car.dist_loc:.2f}/{DIST_4S}')
@@ -997,9 +1166,15 @@ class Brain:
                 self.car.drive_speed(-PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_4S:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 print('Parked')
                 self.curr_state.var1 = (S_STEP6, park_type, True)
+            if self.car.dist_loc > DIST_4S + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: S_STEP5: Overshoot distance, error:{DIST_4S + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
         elif park_state == S_STEP6:
             print('S-parking manouver step 6')
             print(f'Distance: {self.car.dist_loc:.2f}/{DIST_2S}')
@@ -1011,8 +1186,14 @@ class Brain:
                 self.car.drive_speed(+PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_2S:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 self.curr_state.var1 = (S_STEP7, park_type, True)
+            if self.car.dist_loc > DIST_2S + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: S_STEP6: Overshoot distance, error:{DIST_2S + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
         elif park_state == S_STEP7:
             print('S-parking manouver step 7')
             print(f'Distance: {self.car.dist_loc:.2f}/{DIST_2S}')
@@ -1024,19 +1205,24 @@ class Brain:
                 self.car.drive_speed(+PARK_MANOUVER_SPEED)
                 self.curr_state.var1 = (park_state, park_type, False)
             if self.car.dist_loc > DIST_2S:
-                self.car.stop()
+                self.car.drive_speed(0.0)
+                sleep(SLEEP_AFTER_STOPPING)
                 self.curr_state.var1 = (PARK_END, park_type, True)
+            if self.car.dist_loc > DIST_2S + MAX_ERROR_ON_LOCAL_DIST:
+                print(f'ERROR: PARKING: S_STEP7: Overshoot distance, error:{DIST_2S + MAX_ERROR_ON_LOCAL_DIST - self.car.dist_loc:.2f}')
+                self.car.stop()
+                sleep(3)
+                raise NotImplementedError
 
         #end of manouver, go to next event
         elif park_state == PARK_END:
             self.switch_to_state(LANE_FOLLOWING)
             self.go_to_next_event()
 
-
-            
-        
-
-    
+    def crosswalk_navigation(self):
+        self.activate_routines([CONTROL_FOR_OBSTACLES])
+        self.go_to_next_event()
+        self.switch_to_state(LANE_FOLLOWING)
     #=============== ROUTINES ===============#
     def follow_lane(self):
         e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
@@ -1049,7 +1235,30 @@ class Brain:
 
     def detect_stop_line(self):
         #update the variable self.detect.est_dist_to_stop_line
-        self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
+        dist = self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
+
+        past_detections = self.routines[DETECT_STOP_LINE].var2
+        assert STOP_LINE_APPROACH_DISTANCE-0.1 > 0.1, 'STOP_LINE_APPROACH_DISTANCE too small, must be >0.2'
+        if dist < STOP_LINE_APPROACH_DISTANCE-0.1:
+            DETECTION_DEQUE_LENGTH = 50
+            SAMPLE_BEFORE_CONFIDENCE = 20
+            # var1 holds last detection time
+            last_detection_time = self.routines[DETECT_STOP_LINE].var1 if self.routines[DETECT_STOP_LINE].var1 is not None else time() - 1.0
+            curr_time = time()
+
+            if curr_time - last_detection_time > 0.5:
+                # var2 holds the list of past detections, reset 
+                self.routines[DETECT_STOP_LINE].var2 = past_detections = deque(maxlen=DETECTION_DEQUE_LENGTH)
+            
+            assert past_detections is not None, 'past_detections is None, wrong initialization'
+
+            adapted_distance = dist + self.car.encoder_distance
+
+            past_detections.append(adapted_distance)
+            self.stop_line_distance_median = np.mean(past_detections) if len(past_detections) > SAMPLE_BEFORE_CONFIDENCE else None
+            self.routines[DETECT_STOP_LINE].var1 = curr_time
+        else:
+            self.stop_line_distance_median = None 
 
     def slow_down(self):
         self.car.drive_speed(self.desired_speed*0.2)
@@ -1072,10 +1281,57 @@ class Brain:
     def control_for_roadblocks(self):
         pass
 
+    def control_for_obstacles(self):
+        #check for obstacles
+        if self.car.filtered_sonar_distance < OBSTACLE_DISTANCE_THRESHOLD:
+            # obstacle = self.detect.classify_frontal_obstacle(self.car.frame)    #TODO SAMIRA
+            if OBSTACLE_IS_ALWAYS_CAR: obstacle = 'car'
+            if OBSTACLE_IS_ALWAYS_PEDESTRIAN: obstacle = 'pedestrian'
+            if OBSTACLE_IS_ALWAYS_ROADBLOCK: obstacle = 'roadblock'
+            if obstacle == 'car':
+                self.switch_to_state(TAILING_CAR)
+            elif obstacle == 'pedestrian':
+                self.switch_to_state(WAITING_FOR_PEDESTRIAN)
+            elif obstacle == 'roadblock':
+                self.switch_to_state(AVOIDING_ROADBLOCK)
+            else:
+                print('ERROR: OBSTACLE CLASSIFICATION: Unknown obstacle')
+                exit()
+
     # STATE CHECKS
     def check_logic(self):
         print('check_logic')
-        pass
+        #check if car is in a lane
+        if self.car.trust_gps:
+            path = self.path_planner.path
+            car_pos = np.array([self.car.x_est, self.car.y_est])
+            diff = norm(car_pos - path, axis=1)
+            min_diff = np.min(diff)
+            if min_diff > MAX_DIST_AWAY_FROM_LANE: #TODO #IMPLEMENT THIS CASE
+                print(f'ERROR: CHECKS: Car is not on path, distance = {min_diff:.2f}')
+                self.car.stop()
+                while True:
+                    if cv.waitKey(10) == 27:
+                        break
+                exit()
+        
+                #check that x_est,y_est are roughly equal to x_true,y_true
+        if self.car.trust_gps:
+            p_est = np.array([self.car.x_est, self.car.y_est])
+            p_true = np.array([self.car.x_true, self.car.y_true])
+            diff = np.linalg.norm(p_est - p_true)
+            if diff > 0.15:
+                print("CHECKS: AUTOMOBILE_DATA: difference between estimated and true position is too large: %f" % diff)
+                self.car.stop()
+                color=(255,0,255) if self.car.trust_gps else (100,0,100)
+                draw_car(self.path_planner.map, self.car.x_true, self.car.y_true, self.car.yaw, color=(0,180,0))
+                draw_car(self.path_planner.map, self.car.x_est, self.car.y_est, self.car.yaw, color=color)
+                cv.imshow('Path', self.path_planner.map)
+                while True:
+                    if cv.waitKey(10) == 27:
+                        break
+                exit()
+        
     
     #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
@@ -1090,6 +1346,7 @@ class Brain:
         print('==========================================================================')
         print()
         self.run_routines()
+        self.check_logic()
 
     def run_current_state(self):
         self.curr_state.run()
@@ -1128,7 +1385,7 @@ class Brain:
         self.curr_state.just_switched = True
 
     def switch_to_prev_state(self):
-        self.switch_to_state(self.prev_state)
+        self.switch_to_state(self.prev_state.name)
     
     def go_to_next_event(self):
         """
