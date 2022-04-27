@@ -45,11 +45,14 @@ class AutomobileDataSimulator(Automobile_Data):
         self.curr_steer = 0.0
         self.steer_deque = collections.deque(maxlen=MAX_STEER_SAMPLES)
         self.time_last_steer_command = time()
+        self.target_dist = 0.0
+        self.arrived_at_dist = True
 
         # PUBLISHERS AND SUBSCRIBERS
         if trig_control:
             self.pub = rospy.Publisher('/automobile/command', String, queue_size=1)
             self.steer_updater = rospy.Timer(rospy.Duration(1/STEER_UPDATE_FREQ), self.steer_update_callback)
+            self.drive_dist_updater = rospy.Timer(rospy.Duration(ENCODER_TIMER), self.drive_distance_callback)
         if trig_bno:
             self.sub_imu = rospy.Subscriber('/automobile/IMU', IMU, self.imu_callback)
         if trig_enc:
@@ -178,14 +181,9 @@ class AutomobileDataSimulator(Automobile_Data):
         """Set the speed of the car
         :acts on: self.speed 
         :param speed: speed of the car [m/s], defaults to 0.0
-        """                
-        speed = Automobile_Data.normalizeSpeed(speed)   # normalize speed
-        self.speed = speed
-        data = {}
-        data['action']        =  '1'
-        data['speed']         =  float(speed)
-        reference = json.dumps(data)
-        self.pub.publish(reference)
+        """   
+        self.arrived_at_dist = True #ovrride the drive distance        
+        self.pub_speed(speed)
 
     def drive_angle(self, angle=0.0, direct=False) -> None:
         """Set the steering angle of the car
@@ -200,12 +198,34 @@ class AutomobileDataSimulator(Automobile_Data):
         else:
             print('Missed steer command...')
         # self.target_steer = angle #self.steer is updated in the callback
+
+    def drive_distance(self, dist=0.0):
+        """Drive the car a given distance forward or backward
+        from the point it has been called and stop there, 
+        it uses control in position and not in velocity, 
+        used for precise movements
+        :param dist: distance to drive, defaults to 0.0
+        """
+        self.target_dist = self.encoder_distance + dist
+        self.arrived_at_dist = False
+
+    def drive_distance_callback(self, data) -> None:
+        Kp = 0.5
+        max_speed = 0.2
+        if not self.arrived_at_dist:
+            dist_error = self.target_dist - self.encoder_distance
+            # print(F'DISTANCE ERROR: {dist_error:.2f}, arrrived at dist: {self.arrived_at_dist}')
+            self.pub_speed(min(Kp * dist_error, max_speed))
+            if np.abs(dist_error) < 0.01:
+                self.arrived_at_dist = True
+                self.drive_speed(0.0)
         
     def stop(self, angle=0.0) -> None:
         """Hard/Emergency stop the car
         :acts on: self.speed, self.steer
         :param angle: [deg] stop angle, defaults to 0.0
         """
+        self.steer_deque.append((angle, time()))
         self.speed = 0.0
         data = {}
         data['action']        =  '3'
@@ -217,5 +237,14 @@ class AutomobileDataSimulator(Automobile_Data):
         data = {}
         data['action']        =  '2'
         data['steerAngle']    =  float(angle)
+        reference = json.dumps(data)
+        self.pub.publish(reference)
+
+    def pub_speed(self, speed):
+        speed = Automobile_Data.normalizeSpeed(speed)   # normalize speed
+        self.speed = speed
+        data = {}
+        data['action']        =  '1'
+        data['speed']         =  float(speed)
         reference = json.dumps(data)
         self.pub.publish(reference)

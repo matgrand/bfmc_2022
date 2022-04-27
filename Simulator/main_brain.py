@@ -1,5 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR = True # True: run simulator, False: run real car
+SIMULATOR = False # True: run simulator, False: run real car
+SHOW_IMGS = False
 
 import os, signal
 import cv2 as cv
@@ -26,51 +27,63 @@ class_list = []
 with open("data/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
-LOOP_DELAY = 0.05
+LOOP_DELAY = 0.01
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.6# [m/s]
+DESIRED_SPEED = 0.2# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
 k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
-k3 = 0.6 #1.0 yaw error gain .8 with ff 
+k3 = 0.99 #1.0 yaw error gain .8 with ff 
 k3D = 0.08 #0.08 derivative gain of yaw error
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
-noise_std = np.deg2rad(25) # [rad] noise in the steering angle
+
+#load camera with opencv
+cap = cv.VideoCapture(0)
+cap.set(cv.CAP_PROP_FRAME_WIDTH, 320)
+cap.set(cv.CAP_PROP_FRAME_HEIGHT, 240)
+cap.set(cv.CAP_PROP_FPS, 30)
+
+
 
 if __name__ == '__main__':
 
-    cv.namedWindow('frame', cv.WINDOW_NORMAL)
-    cv.resizeWindow('frame',640,480)
-    # show windows
-    cv.namedWindow('Path', cv.WINDOW_NORMAL)
-    cv.resizeWindow('Path', 600, 600)
-    cv.namedWindow('Map', cv.WINDOW_NORMAL)
-    cv.resizeWindow('Map', 600, 600)
+    if SHOW_IMGS:
+        cv.namedWindow('frame', cv.WINDOW_NORMAL)
+        cv.resizeWindow('frame',640,480)
+        # show windows
+        cv.namedWindow('Path', cv.WINDOW_NORMAL)
+        cv.resizeWindow('Path', 600, 600)
+        cv.namedWindow('Map', cv.WINDOW_NORMAL)
+        cv.resizeWindow('Map', 600, 600)
 
 
     # init the car data
     os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
+    os.system('rosservice call gazebo/unpause_physics') if SIMULATOR else None
+    # sleep(1.5)
     if SIMULATOR:
         car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
     else:
-        car = AutomobileDataPi(trig_cam=True, trig_gps=False, trig_bno=True, 
+        car = AutomobileDataPi(trig_cam=False, trig_gps=False, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
-    
+    sleep(1.5)
+    car.encoder_distance = 0.0
     
     #stop the car with ctrl+c
     def handler(signum, frame):
         print("Exiting ...")
         car.stop()
+        os.system('rosservice call gazebo/pause_physics') if SIMULATOR else None 
         cv.destroyAllWindows()
-        sleep(0.1)
+        sleep(.99)
         exit()
     signal.signal(signal.SIGINT, handler)
     
@@ -86,11 +99,11 @@ if __name__ == '__main__':
     #initiliaze the brain
     brain = Brain(car=car, controller=controller, detection=detect, path_planner=path, desired_speed=DESIRED_SPEED)
 
-
-    map1 = map.copy()
-    draw_car(map1, car.x_true, car.y_true, car.yaw)
-    cv.imshow('Map', map1)
-    cv.waitKey(1)
+    if SHOW_IMGS:
+        map1 = map.copy()
+        draw_car(map1, car.x_true, car.y_true, car.yaw)
+        cv.imshow('Map', map1)
+        cv.waitKey(1)
 
 
     try:
@@ -102,13 +115,22 @@ if __name__ == '__main__':
 
             loop_start_time = time()
 
-            map1 = map.copy()
-            draw_car(map1, car.x, car.y, car.yaw, color=(180,0,0))
-            color=(255,0,255) if car.trust_gps else (100,0,100)
-            draw_car(map1, car.x_true, car.y_true, car.yaw, color=(0,180,0))
-            draw_car(map1, car.x_est, car.y_est, car.yaw, color=color)
-            cv.imshow('Map', map1)
-            cv.waitKey(1)
+            if SHOW_IMGS:
+                map1 = map.copy()
+                draw_car(map1, car.x, car.y, car.yaw, color=(180,0,0))
+                color=(255,0,255) if car.trust_gps else (100,0,100)
+                draw_car(map1, car.x_true, car.y_true, car.yaw, color=(0,180,0))
+                draw_car(map1, car.x_est, car.y_est, car.yaw, color=color)
+                cv.imshow('Map', map1)
+                cv.waitKey(1)
+
+            if not SIMULATOR:
+                ret, frame = cap.read()
+                brain.car.frame = frame
+                if not ret:
+                    print("No image from camera")
+                    frame = np.zeros((240, 320, 3), np.uint8)
+                    continue
 
             # RUN BRAIN
             brain.run()
@@ -119,10 +141,11 @@ if __name__ == '__main__':
             print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
             print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
 
-            cv.imshow('frame', car.frame)
-            if cv.waitKey(1) == 27:
-                cv.destroyAllWindows()
-                break
+            if SHOW_IMGS:
+                cv.imshow('frame', car.frame)
+                if cv.waitKey(1) == 27:
+                    cv.destroyAllWindows()
+                    break
             
             sleep(LOOP_DELAY)
             loop_time = time() - loop_start_time
