@@ -7,7 +7,7 @@ from copy import copy, deepcopy
 from numpy.linalg import norm
 from collections import deque
 
-from automobile_data_interface import Automobile_Data
+from control.automobile_data_interface import Automobile_Data
 from helper_functions import *
 from PathPlanning4 import PathPlanning
 from controller3 import Controller
@@ -15,12 +15,11 @@ from detection import Detection
 
 from helper_functions import *
 
-SHOW_IMGS = True
+SHOW_IMGS = False
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [86,203,190,203,190,203,190,203,190,
-280,285,116,236,329,162,226]
+CHECKPOINTS = [298,275, 98, 137]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -148,6 +147,7 @@ ACHIEVEMENTS = {
 #==============================================================
 #========================= PARAMTERS ==========================
 #==============================================================
+SIMULATOR_FLAG = False
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
 STOP_LINE_APPROACH_DISTANCE = 0.4
 STOP_LINE_STOP_DISTANCE = 0.05
@@ -160,7 +160,7 @@ POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
 USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
 ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
-ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
+ALWAYS_DISTRUST_GPS = True #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
 
 #PARKING
@@ -330,7 +330,7 @@ class Brain:
         self.path_planner.compute_shortest_path(start_node, end_node)
         #initialize the list of events on the path
         print('Augmenting path...')
-        events = self.path_planner.augment_path()
+        events = self.path_planner.augment_path(draw=SHOW_IMGS)
         print(f'Path augmented')
         #add the events to the list of events, increasing it
         self.events = self.create_sequence_of_events(events)
@@ -1226,6 +1226,8 @@ class Brain:
     #=============== ROUTINES ===============#
     def follow_lane(self):
         e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
+        #NOTE 
+        e3 = -e3
         _, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
         angle_ref = np.rad2deg(angle_ref)
         if self.car.speed < 0.1: #inverse driving in reverse
@@ -1302,7 +1304,7 @@ class Brain:
     def check_logic(self):
         print('check_logic')
         #check if car is in a lane
-        if self.car.trust_gps:
+        if self.conditions[TRUST_GPS]:
             path = self.path_planner.path
             car_pos = np.array([self.car.x_est, self.car.y_est])
             diff = norm(car_pos - path, axis=1)
@@ -1310,26 +1312,27 @@ class Brain:
             if min_diff > MAX_DIST_AWAY_FROM_LANE: #TODO #IMPLEMENT THIS CASE
                 print(f'ERROR: CHECKS: Car is not on path, distance = {min_diff:.2f}')
                 self.car.stop()
-                while True:
+                while True and SHOW_IMGS:
                     if cv.waitKey(10) == 27:
                         break
                 exit()
         
                 #check that x_est,y_est are roughly equal to x_true,y_true
-        if self.car.trust_gps:
+        if self.car.trust_gps and SIMULATOR_FLAG:
             p_est = np.array([self.car.x_est, self.car.y_est])
             p_true = np.array([self.car.x_true, self.car.y_true])
             diff = np.linalg.norm(p_est - p_true)
             if diff > 0.15:
                 print("CHECKS: AUTOMOBILE_DATA: difference between estimated and true position is too large: %f" % diff)
                 self.car.stop()
-                color=(255,0,255) if self.car.trust_gps else (100,0,100)
-                draw_car(self.path_planner.map, self.car.x_true, self.car.y_true, self.car.yaw, color=(0,180,0))
-                draw_car(self.path_planner.map, self.car.x_est, self.car.y_est, self.car.yaw, color=color)
-                cv.imshow('Path', self.path_planner.map)
-                while True:
-                    if cv.waitKey(10) == 27:
-                        break
+                if SHOW_IMGS:
+                    color=(255,0,255) if self.car.trust_gps else (100,0,100)
+                    draw_car(self.path_planner.map, self.car.x_true, self.car.y_true, self.car.yaw, color=(0,180,0))
+                    draw_car(self.path_planner.map, self.car.x_est, self.car.y_est, self.car.yaw, color=color)
+                    cv.imshow('Path', self.path_planner.map)
+                    while True:
+                        if cv.waitKey(10) == 27:
+                            break
                 exit()
         
     
@@ -1408,7 +1411,7 @@ class Brain:
         else: 
             #it was the last checkpoint
             print('Reached last checkpoint...\nExiting...')
-            cv.destroyAllWindows()
+            cv.destroyAllWindows() if SHOW_IMGS else None
             exit()
 
     def create_sequence_of_events(self, events):

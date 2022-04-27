@@ -22,8 +22,8 @@ TRAFFICLIGHT_CLASSIFIER_PATH = 'models/trafficlight_classifier_small.onnx'
 TRAFFIC_LIGHT_NAMES = ['traffic_light', 'NO_traffic_light']
 
 SIGN_CLASSIFIER_PATH = 'models/sign_classifier.onnx'
-# SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
-SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'traffic_light', 'NO_sign']
+SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
+# SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'traffic_light', 'NO_sign']
 
 OBSTACLE_CLASSIFIER_PATH = 'models/pedestrian_classifier_small.onnx'
 OBSTACLE_NAMES = ['pedestrian', 'roadblock', 'NO_obstacle'] #add cars
@@ -290,7 +290,7 @@ class Detection:
                     im = cv.resize(im, return_size)
                     # im = cv.blur(im, (2,2))
                     #bgr2hsv
-                    im = cv.cvtColor(im, cv.COLOR_BGR2HSV)
+                    # im = cv.cvtColor(im, cv.COLOR_BGR2HSV)
 
                     imgs[idx] = im
                     centers.append([x+centers_x[j], y+centers_y[i]])
@@ -316,9 +316,9 @@ class Detection:
         ROI_WIDTH = 200//2
         ROI_HEIGHT = 140//2
         TOT_TILES = ROWS*COLS
-        VOTES_MAJORITY = 10 #1
+        VOTES_MAJORITY = 2 #1
         VOTES_ADVANTAGE_THRESHOLD = 2
-        CONFIDENCE_THRESHOLD = 0.9
+        CONFIDENCE_THRESHOLD = 0.8
 
         # preprocessing
         frame_cp = frame.copy()
@@ -357,13 +357,15 @@ class Detection:
                 canvas = cv.putText(canvas, self.sign_names[winner], (final_box_center[0]-final_width//2, final_box_center[1]-final_width//2), cv.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2, cv.LINE_AA)
                 cv.imshow('Sign detection', canvas)   
                 cv.waitKey(1)
+                print(f'{self.sign_names[winner]} detected, conf: {winning_confidence*100:.0f}, votes: {votes[winner]}/{tot_votes}')
+
             return self.sign_names[winner], winning_confidence, final_box_center, final_width
             
         sign_detection_time = 1000*(time() - start_time)
         self.avg_sign_detection_time = (self.avg_sign_detection_time*self.sign_detection_count + sign_detection_time) / (self.sign_detection_count + 1)
         self.sign_detection_count += 1
 
-        # print(f'{self.sign_names[winner]} detected, conf: {winning_confidence*100:.0f}, votes: {votes[winner]}/{tot_votes}')
+        print(f'{self.sign_names[winner]} detected, conf: {winning_confidence*100:.0f}, votes: {votes[winner]}/{tot_votes}')
         if show_ROI:
             cv.imshow('Sign detection', canvas)   
             cv.waitKey(1)

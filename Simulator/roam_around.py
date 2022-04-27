@@ -64,20 +64,20 @@ if __name__ == '__main__':
 
             ################################################################
             # TEST DETECTION HERE
-            # sign = detect.detect_sign(car.frame, show_ROI=True)
+            sign = detect.detect_sign(car.frame, show_ROI=True)
 
-            #test drive distance
-            print('driving 0.5')
-            car.drive_distance(0.5)
-            sleep(15)
-            print('stopping')
-            car.stop()
-            sleep(3)
-            print('driving 0.1')
-            car.drive_distance(0.9)
-            sleep(15)
-            car.stop()
-            sleep(3)
+            # #test drive distance
+            # print('driving 0.5')
+            # car.drive_distance(0.5)
+            # sleep(15)
+            # print('stopping')
+            # car.stop()
+            # sleep(3)
+            # print('driving 0.1')
+            # car.drive_distance(0.9)
+            # sleep(15)
+            # car.stop()
+            # sleep(3)
 
 
 

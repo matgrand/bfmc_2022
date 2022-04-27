@@ -1,12 +1,14 @@
 #!/usr/bin/python3
 from time import time, sleep
-import copy
 import networkx as nx
 import numpy as np
 import cv2 as cv
 from pyclothoids import Clothoid
 
 from helper_functions import *
+
+SHOW_IMGS = False
+
 # EVENT TYPES #match with brain.py
 INTERSECTION_STOP_EVENT = 'intersection_stop_event'
 INTERSECTION_TRAFFIC_LIGHT_EVENT = 'intersection_traffic_light_event'
@@ -514,6 +516,6 @@ class PathPlanning():
 
         # draw trajectory
         cv.polylines(self.map, [mR2pix(self.path)], False, (200, 200, 0), thickness=4, lineType=cv.LINE_AA)
-
-        cv.imshow('Path', self.map)
-        cv.waitKey(1)
+        if SHOW_IMGS:
+            cv.imshow('Path', self.map)
+            cv.waitKey(1)
