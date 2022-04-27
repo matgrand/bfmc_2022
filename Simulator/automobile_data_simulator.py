@@ -10,7 +10,7 @@ import numpy as np
 from time import time,sleep
 from helper_functions import *
 
-REALISTIC = False
+REALISTIC = True
 
 ENCODER_TIMER = 0.01 #frequency of encoder reading
 STEER_UPDATE_FREQ = 50.0 if REALISTIC else 150.0 #50#[Hz]
