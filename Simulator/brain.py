@@ -22,7 +22,7 @@ from helper_functions import *
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [86,99,116,102, 136,116,90,125]#150,155,203, 205,185,190,193,203,190,203]
+CHECKPOINTS = [86,283,99,116,102, 136,116,90,125]#150,155,203, 205,185,190,193,203,190,203]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -157,7 +157,7 @@ assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
 STOP_WAIT_TIME = 0.2 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which is possible to start detecting a stop line again
-DIST_TO_STOP_BEFORE_STOP_LINE = 0.1 #distance from the stop line to stop the car
+DIST_TO_STOP_BEFORE_STOP_LINE = 0.05 #distance from the stop line to stop the car
 POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
 USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
@@ -600,7 +600,7 @@ class Brain:
                 d = self.stop_line_distance_median - self.car.encoder_distance 
             sleep(.8)
             e2, _, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
-            e2 = 0.0 # NOTE e2 is usually bad
+            # e2 = 0.0 # NOTE e2 is usually bad
             # retrieve global position of the car, can be done usiing the stop_line
             # or using the gps, but for now we will use the stop_line
             # NOTE: in the real car we need to have a GLOBAL YAW OFFSET to match the simulator with the real track
@@ -729,7 +729,7 @@ class Brain:
                 img, _ = project_onto_frame(img, self.car, point_ahead, align_to_car=False, color=(0,0,255))
                 cv.imshow('brain_debug', img)
                 cv.waitKey(1)
-            gains = [0.0, .0, .99, 0.08] #k1,k2,k3,k3D
+            gains = [0.0, .0, 1.5, 0.08] #k1,k2,k3,k3D
             e2 = local_path_cf[idx_car_on_path][1] 
             yaw_error = np.arctan2(point_ahead[1], point_ahead[0]) 
             out_speed, out_angle = self.controller.get_control(e2, yaw_error, 0.0, self.desired_speed, gains=gains)

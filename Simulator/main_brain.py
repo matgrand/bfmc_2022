@@ -33,7 +33,7 @@ VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.3# [m/s]
+DESIRED_SPEED = 0.5# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
