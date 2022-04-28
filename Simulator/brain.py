@@ -1,5 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = False
+SIMULATOR_FLAG = True
+SHOW_IMGS = True
 
 import numpy as np
 import cv2 as cv
@@ -8,6 +9,8 @@ from time import time, sleep
 from copy import copy, deepcopy
 from numpy.linalg import norm
 from collections import deque
+
+from main_carSP import DESIRED_SPEED
 if not SIMULATOR_FLAG:
     from control.automobile_data_interface import Automobile_Data
 else:
@@ -19,11 +22,10 @@ from detection import Detection
 
 from helper_functions import *
 
-SHOW_IMGS = False
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [298,275, 98, 137]
+CHECKPOINTS = [86,99,116,102, 136,116,90,125]#150,155,203, 205,185,190,193,203,190,203]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -163,7 +165,7 @@ POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
 USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
 ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
-ALWAYS_DISTRUST_GPS = True #if true, the car will always distrust the gps (bypass)
+ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
 
 #PARKING
@@ -193,7 +195,7 @@ DIST_3T = 0.1 #[m] distance to perform the 3rd part of t manouver
 DIST_2S = 0.38 #[m] distance to perform the 2nd part of s manouver
 DIST_4S = 0.05 #[m] distance to perform the 4th part of s manouver
 STEER_ACTUATION_DELAY_PARK = 0.5 #[s] delay to perform the steering manouver
-SLEEP_AFTER_STOPPING = 0.3
+SLEEP_AFTER_STOPPING = 0.3 #[s] WARNING: this stops the state machine. So be careful increasing it
 
 # OBSTACLES
 OBSTACLE_IS_ALWAYS_PEDESTRIAN = True
@@ -337,12 +339,14 @@ class Brain:
         print(f'Path augmented')
         #add the events to the list of events, increasing it
         self.events = self.create_sequence_of_events(events)
-        self.event_idx = 0
+        self.event_idx = 1
         self.next_event = self.events[0]
+        self.prev_event.dist = 0.0
+        self.car.reset_rel_pose()
         print(f'EVENTS: idx: {self.event_idx}')
         for e in self.events:
             print(e)
-        self.go_to_next_event()
+        
         #draw the path 
         self.path_planner.draw_path()
         print('Starting...')
@@ -368,15 +372,22 @@ class Brain:
         print(f'Next event : {self.next_event}')
         print(f'ENC DIST = {self.car.encoder_distance}')
         print(f'prev_event.encoder_dist_event = {self.prev_event.encoder_dist_event}')
+        print(f'next_event.encoder_dist_event = {self.next_event.encoder_dist_event}')
+        
+        # self.car.stop()
+        # sleep(5)
+        # self.car.drive_speed(self.desired_speed)
+
         dist_from_prev_event = self.car.encoder_distance - self.prev_event.encoder_dist_event #NOTE this assume that after a ie a parking the encoder dist is ~0
+        
         assert dist_from_prev_event > -0.3, f'Distance from prev event is too small, {dist_from_prev_event:.2f}'
         stopping_in = dist_to_end - dist_from_prev_event
         print(f'Stoppig in {stopping_in-0.1} [m]')
         if stopping_in < 0.1:
             self.car.drive_speed(0.0) #TODO control in position
             sleep(SLEEP_AFTER_STOPPING)
-            self.next_event.encoder_dist_event = self.car.encoder_distance + stopping_in
             self.go_to_next_event()
+            self.prev_event.encoder_dist_event = self.car.encoder_distance + stopping_in #set the encoder distance of the last event
             #start routing for next checkpoint
             self.next_checkpoint()
             self.switch_to_state(START_STATE)
@@ -611,10 +622,11 @@ class Brain:
             
             # ## get position of the car in the stop line frame
             # # car_position_slf = self.car.position - stop_line_position #with good gps estimate
-            car_position_slf = -np.array([+d+0.3+0.13, +e2])#np.array([+d+0.2, -e2])
-            local_path_cf = local_path_slf_rot - car_position_slf #cf = car frame
-            #rotate from slf to cf
+            car_position_slf = -np.array([+d+0.3+0.15, +e2])#np.array([+d+0.2, -e2])
+            local_path_cf = local_path_slf_rot 
             local_path_cf = local_path_cf @ rot_matrix
+            local_path_cf = local_path_cf - car_position_slf #cf = car frame
+            #rotate from slf to cf
             self.curr_state.var1 = local_path_cf
 
             self.curr_state.just_switched = False
@@ -650,6 +662,8 @@ class Brain:
                 w = local_map_img.shape[1]
                 local_map_img[w//2-2:w//2+2, :] = 255
                 local_map_img[:, h//2-2:h//2+2] = 255
+
+                cv.circle(local_map_img, (w//2,h//2), 50, (255, 0, 255), 5)
                 for i in range(len(local_path_cf)):
                     if (i%3 == 0):
                         p = local_path_cf[i]
@@ -728,6 +742,7 @@ class Brain:
         self.switch_to_state(TRACKING_LOCAL_PATH)
 
     def waiting_for_pedestrian(self):
+        self.activate_routines([FOLLOW_LANE])
         dist_ahead = self.car.filtered_sonar_distance
         if self.curr_state.just_switched:
             self.car.drive_speed(0.0)
@@ -1227,11 +1242,12 @@ class Brain:
         self.activate_routines([CONTROL_FOR_OBSTACLES])
         self.go_to_next_event()
         self.switch_to_state(LANE_FOLLOWING)
+    
     #=============== ROUTINES ===============#
     def follow_lane(self):
         e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
         #NOTE 
-        e3 = -e3
+        e3 = -e3 if not SIMULATOR_FLAG else e3 
         _, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
         angle_ref = np.rad2deg(angle_ref)
         if self.car.speed < 0.1: #inverse driving in reverse
@@ -1409,7 +1425,7 @@ class Brain:
         self.checkpoint_idx += 1
         if self.checkpoint_idx < (len(self.checkpoints)-1): #check if it's last
             #update events
-            self.prev_event = deepcopy(self.next_event)
+            self.prev_event = self.next_event#deepcopy(self.next_event)
             pass
         else: 
             #it was the last checkpoint

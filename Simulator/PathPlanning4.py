@@ -306,6 +306,7 @@ class PathPlanning():
             index_min_dist = np.argmin(distances)
             min_dist = distances[index_min_dist]
             if min_dist < 0.1:
+                p = self.path[index_min_dist]
                 path_exit_points.append(p)
                 path_exit_point_idx.append(index_min_dist)
                 if draw:
@@ -333,6 +334,7 @@ class PathPlanning():
             index_min_dist = np.argmin(distances)
             min_dist = distances[index_min_dist]
             if min_dist < 0.05:
+                p = self.path[index_min_dist]
                 path_event_points.append(p)
                 path_event_points_idx.append(index_min_dist)
                 path_event_types.append(self.event_types[i])

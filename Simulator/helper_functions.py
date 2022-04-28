@@ -98,6 +98,9 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
         # return frame, proj
         return frame, None
 
+    #add diffrence com to back wheels
+    rel_pos_points = rel_pos_points - np.array([0.13, 0.0, 0.0])
+
     #rotate the points around the relative y axis, pitch
     beta = -car.CAM_PITCH
     rot_matrix = np.array([[np.cos(beta), 0, np.sin(beta)],

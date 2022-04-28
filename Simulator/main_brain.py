@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR = False # True: run simulator, False: run real car
-SHOW_IMGS = False
+SIMULATOR = True # True: run simulator, False: run real car
+SHOW_IMGS = True
 
 import os, signal
 import cv2 as cv
@@ -33,12 +33,12 @@ VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.2# [m/s]
+DESIRED_SPEED = 0.3# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
 k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
-k3 = 0.99 #1.0 yaw error gain .8 with ff 
+k3 = 0.6 #1.0 yaw error gain .8 with ff 
 k3D = 0.08 #0.08 derivative gain of yaw error
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
