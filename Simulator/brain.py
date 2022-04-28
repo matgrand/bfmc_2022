@@ -6,11 +6,9 @@ import numpy as np
 import cv2 as cv
 import os
 from time import time, sleep
-from copy import copy, deepcopy
 from numpy.linalg import norm
 from collections import deque
 
-from main_carSP import DESIRED_SPEED
 if not SIMULATOR_FLAG:
     from control.automobile_data_interface import Automobile_Data
 else:
@@ -21,7 +19,6 @@ from controller3 import Controller
 from detection import Detection
 
 from helper_functions import *
-
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
