@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+SIMULATOR_FLAG = False
+
 import numpy as np
 import cv2 as cv
 import os
@@ -6,8 +8,10 @@ from time import time, sleep
 from copy import copy, deepcopy
 from numpy.linalg import norm
 from collections import deque
-
-from control.automobile_data_interface import Automobile_Data
+if not SIMULATOR_FLAG:
+    from control.automobile_data_interface import Automobile_Data
+else:
+    from automobile_data_interface import Automobile_Data
 from helper_functions import *
 from PathPlanning4 import PathPlanning
 from controller3 import Controller
@@ -147,7 +151,6 @@ ACHIEVEMENTS = {
 #==============================================================
 #========================= PARAMTERS ==========================
 #==============================================================
-SIMULATOR_FLAG = False
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
 STOP_LINE_APPROACH_DISTANCE = 0.4
 STOP_LINE_STOP_DISTANCE = 0.05
@@ -372,6 +375,7 @@ class Brain:
         if stopping_in < 0.1:
             self.car.drive_speed(0.0) #TODO control in position
             sleep(SLEEP_AFTER_STOPPING)
+            self.next_event.encoder_dist_event = self.car.encoder_distance + stopping_in
             self.go_to_next_event()
             #start routing for next checkpoint
             self.next_checkpoint()
@@ -1317,7 +1321,7 @@ class Brain:
                         break
                 exit()
         
-                #check that x_est,y_est are roughly equal to x_true,y_true
+        #check that x_est,y_est are roughly equal to x_true,y_true
         if self.car.trust_gps and SIMULATOR_FLAG:
             p_est = np.array([self.car.x_est, self.car.y_est])
             p_true = np.array([self.car.x_true, self.car.y_true])
@@ -1335,7 +1339,6 @@ class Brain:
                             break
                 exit()
         
-    
     #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
         #update trust_gps
