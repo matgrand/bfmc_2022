@@ -46,6 +46,7 @@ TAILING_CAR = 'tailing_car'
 AVOIDING_ROADBLOCK = 'avoiding_roadblock'
 PARKING = 'parking'
 CROSSWALK_NAVIGATION = 'crosswalk_navigation'
+CLASSIFYING_OBSTACLE = 'classifying_obstacle'
 
 class State():
     def __init__(self, name=None, method=None, activated=False):
@@ -126,6 +127,7 @@ class Event:
 IN_RIGHT_LANE = 'in_right_lane'
 IN_LEFT_LANE = 'in_left_lane'
 IS_DOTTED_LINE = 'is_dotted_line'
+CAN_OVERTAKE = 'can_overtake'
 HIGHWAY = 'highway'
 TRUST_GPS = 'trust_gps'
 CAR_ON_PATH = 'car_on_path'
@@ -133,6 +135,7 @@ CONDITIONS = {
     IN_RIGHT_LANE:            False,  # if true, the car can switch to the right lane, for obstacle avoidance
     IN_LEFT_LANE:             False,  # if true, the car can switch to the left lane, for overtaking or obstacle avoidance
     IS_DOTTED_LINE:           False,  # if true, the car is on a dotted line, for obstacle avoidance
+    CAN_OVERTAKE:             True,
     HIGHWAY:                  False,  # if true, the car is in a highway, the speed should be higher on highway, 
     TRUST_GPS:                True,   # if true the car will trust the gps, for example in expecting a sign or traffic light
                                         # can be set as false if there is a lot of package loss or the car has not received signal in a while
@@ -195,14 +198,23 @@ STEER_ACTUATION_DELAY_PARK = 0.5 #[s] delay to perform the steering manouver
 SLEEP_AFTER_STOPPING = 0.3 #[s] WARNING: this stops the state machine. So be careful increasing it
 
 # OBSTACLES
-OBSTACLE_IS_ALWAYS_PEDESTRIAN = True
-OBSTACLE_IS_ALWAYS_CAR = False
+OBSTACLE_IS_ALWAYS_PEDESTRIAN = False
+OBSTACLE_IS_ALWAYS_CAR = True
 OBSTACLE_IS_ALWAYS_ROADBLOCK = False
+MIN_DIST_BETWEEN_OBSTACLES = 0.5 #dont detect obstacle for this distance after detecting one of them
 assert OBSTACLE_IS_ALWAYS_PEDESTRIAN ^ OBSTACLE_IS_ALWAYS_CAR ^ OBSTACLE_IS_ALWAYS_ROADBLOCK or not (OBSTACLE_IS_ALWAYS_PEDESTRIAN or OBSTACLE_IS_ALWAYS_CAR or OBSTACLE_IS_ALWAYS_ROADBLOCK)
 OBSTACLE_DISTANCE_THRESHOLD = 0.5 #[m] distance from the obstacle to consider it as an obstacle
+OBSTACLE_CONTROL_DISTANCE = 0.2 #distance to where to stop wrt the obstacle
+OBSTACLE_IMGS_CAPTURE_START_DISTANCE = 0.4 #dist from where we capture imgs 
+OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE = 0.25 #dist up to we capture imgs
+assert OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE > OBSTACLE_CONTROL_DISTANCE
 PEDESTRIAN_CONTROL_DISTANCE = 0.35 #[m] distance to keep from the pedestrian
 PEDESTRIAN_TIMEOUT = 2.0 #[s] time to w8 after the pedestrian cleared the road
 TAILING_DISTANCE = 0.3 #[m] distance to keep from the vehicle while tailing
+OVERTAKE_STEER_ANGLE = 27.0 #[deg]
+OVERTAKE_STATIC_CAR_SPEED = 0.1  #[m/s]
+OT_STATIC_SWITCH = 0.35
+OT_STATIC_LANE_FOLLOW = 0.5
 
 #CHECKS
 MAX_DIST_AWAY_FROM_LANE = 0.8 #[m] max distance from the lane to trip the state checker
@@ -291,6 +303,7 @@ class Brain:
             PARKING:                  State(PARKING, self.parking),
             #crosswalk navigation
             CROSSWALK_NAVIGATION:     State(CROSSWALK_NAVIGATION, self.crosswalk_navigation),
+            CLASSIFYING_OBSTACLE:     State(CLASSIFYING_OBSTACLE, self.classifying_obstacle)
         }
 
         # INITIALIZE ROUTINES
@@ -429,7 +442,7 @@ class Brain:
 
 
     def approaching_stop_line(self):
-        self.activate_routines([FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES])
+        self.activate_routines([SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES]) #FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES
         dist = self.detect.est_dist_to_stop_line
         # #check if we are here by mistake
         if dist > STOP_LINE_APPROACH_DISTANCE:
@@ -439,7 +452,7 @@ class Brain:
 
         if self.stop_line_distance_median is not None: #we have a median, => we have an accurate position for the stopline
             print('Driving towards stop line... at distance: ', self.stop_line_distance_median)
-            self.activate_routines([FOLLOW_LANE, SLOW_DOWN]) #deactivate detect stop line, TEST
+            self.activate_routines([SLOW_DOWN]) #FOLLOW_LANE, SLOW_DOWN#deactivate detect stop line
             dist_to_drive = self.stop_line_distance_median - self.car.encoder_distance
             self.car.drive_distance(dist_to_drive)
             if dist_to_drive < DIST_TO_STOP_BEFORE_STOP_LINE: 
@@ -765,7 +778,7 @@ class Brain:
                 self.car.stop()
                 sleep(SLEEP_AFTER_STOPPING)
                 print(f'Swithching back to {self.prev_state}')
-                self.switch_to_prev_state() #NOTE
+                self.switch_to_state(LANE_FOLLOWING) #NOTE
             
     def waiting_for_green(self):
         #temporary fix
@@ -782,13 +795,70 @@ class Brain:
         pass
 
     def overtaking_static_car(self):
-        pass
+        self.activate_routines([])
+        #states
+        OT_SWITCHING_LANE = 1
+        OT_LANE_FOLLOWING = 2 
+        OT_SWITCHING_BACK = 3
+
+        if self.curr_state.just_switched:
+            self.curr_state.var1 = (OT_SWITCHING_LANE, True)
+            self.curr_state.var2 = self.car.encoder_distance
+            self.curr_state.just_switched = False
+        sub_state, just_sub_switched = self.curr_state.var1
+        dist_prev_manouver = self.curr_state.var2
+        if sub_state == OT_SWITCHING_LANE:
+            if just_sub_switched:
+                self.car.drive_angle(-OVERTAKE_STEER_ANGLE)
+                dist_prev_manouver = self.car.encoder_distance
+                self.car.drive_speed(OVERTAKE_STATIC_CAR_SPEED)
+                just_sub_switched = False
+            dist = self.car.encoder_distance - dist_prev_manouver 
+            assert dist > -0.05
+            print(f'Switching lane: {dist:.2f}/{OT_STATIC_SWITCH:.2f}')
+            if dist > OT_STATIC_SWITCH:
+                sub_state, just_sub_switched = OT_LANE_FOLLOWING, True
+                dist_prev_manouver = self.car.encoder_distance
+        elif sub_state == OT_LANE_FOLLOWING:
+            self.activate_routines([FOLLOW_LANE])
+            dist = self.car.encoder_distance - dist_prev_manouver
+            print(f'Following lane: {dist:.2f}/{OT_STATIC_SWITCH:.2f}')
+            if dist > OT_STATIC_LANE_FOLLOW:
+                sub_state, just_sub_switched = OT_SWITCHING_BACK, True
+                dist_prev_manouver = self.car.encoder_distance 
+        elif sub_state == OT_SWITCHING_BACK:
+            if just_sub_switched:
+                self.car.drive_angle(OVERTAKE_STEER_ANGLE)
+                dist_prev_manouver = self.car.encoder_distance
+                just_sub_switched = False
+            dist = self.car.encoder_distance - dist_prev_manouver 
+            assert dist > -0.05
+            print(f'Switching back: {dist:.2f}/{OT_STATIC_SWITCH:.2f}')
+            if dist > OT_STATIC_SWITCH:
+                self.switch_to_state(LANE_FOLLOWING)
+        else:
+            print('ERROR: OVERTAKE: Wrong substate')
+            self.car.stop()
+            sleep(3)
+            exit()
+
+        self.curr_state.var1 = (sub_state, just_sub_switched)
+        self.curr_state.var2 = dist_prev_manouver
 
     def overtaking_moving_car(self):
         pass
 
     def tailing_car(self):
-        pass
+        dist = self.car.filtered_sonar_distance
+        if dist > OBSTACLE_DISTANCE_THRESHOLD:
+            self.switch_to_state(LANE_FOLLOWING)
+        else:
+            dist_to_drive = dist - TAILING_DISTANCE
+            self.car.drive_distance(dist_to_drive)
+            if self.conditions[CAN_OVERTAKE]:
+                if -0.05 < dist_to_drive < 0.05:
+                    self.switch_to_state(OVERTAKING_STATIC_CAR)
+
 
     def avoiding_roadblock(self):
         pass
@@ -1240,6 +1310,65 @@ class Brain:
         self.go_to_next_event()
         self.switch_to_state(LANE_FOLLOWING)
     
+    def classifying_obstacle(self):
+        self.activate_routines([FOLLOW_LANE])
+        IMGS_DEQUE_MAX_LEN = 15
+        dist = self.car.filtered_sonar_distance
+        if self.curr_state.just_switched:
+            #drive to fixed dist from the obstacle
+            dist_to_drive = dist - OBSTACLE_CONTROL_DISTANCE
+            self.car.drive_distance(dist_to_drive)
+            #initialize deque of images
+            self.curr_state.var1 = deque(maxlen=IMGS_DEQUE_MAX_LEN) #stored in var1
+            dist_save_imgs = dist_to_drive 
+            self.curr_state.var2 = (0, np.linspace(OBSTACLE_IMGS_CAPTURE_START_DISTANCE, OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE, IMGS_DEQUE_MAX_LEN)) #var2 holds a touple: (index, position where to take the image)
+            self.curr_state.just_switched=False
+
+        if dist >= OBSTACLE_DISTANCE_THRESHOLD: #
+            print('Sonar got confused: switch back to previous state')
+            sleep(0.5)
+            self.switch_to_prev_state()
+
+        #more readable variables
+        imgs_deque = self.curr_state.var1
+        idx, img_distances = self.curr_state.var2
+
+        if dist > OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE: #we are approaching the obstacle
+            print('Capturing imgs')
+            if dist < img_distances[idx]:
+                print(f'Saving img {idx}, at distance: {img_distances[idx]}, sonar_dist: {dist} ')
+                frame_to_save = self.car.frame.copy()
+                imgs_deque.append(frame_to_save)
+                idx += 1
+        else:
+            if len(imgs_deque) > 0:
+                ## DO SOMETHING WITH THE IMAGES
+                # obstacle = self.detect.classify_frontal_obstacle(self.car.frame)    #TODO SAMIRA
+                # for i,img in enumerate(imgs_deque):
+                #     cv.imshow(f'img {i}', img)
+                # SWITCH STATE
+                if OBSTACLE_IS_ALWAYS_CAR: obstacle = 'car'
+                if OBSTACLE_IS_ALWAYS_PEDESTRIAN: obstacle = 'pedestrian'
+                if OBSTACLE_IS_ALWAYS_ROADBLOCK: obstacle = 'roadblock'
+                if obstacle == 'car':
+                    self.switch_to_state(TAILING_CAR)
+                elif obstacle == 'pedestrian':
+                    self.switch_to_state(WAITING_FOR_PEDESTRIAN)
+                elif obstacle == 'roadblock':
+                    self.switch_to_state(AVOIDING_ROADBLOCK)
+                else:
+                    print('ERROR: OBSTACLE CLASSIFICATION: Unknown obstacle')
+                    exit()
+            else:
+                print('ERROR: FRONT DETECTION: Couldnt capture images while approachin obstacle')
+                self.car.stop()
+                sleep(3)
+                exit()
+
+        #reassing the variables
+        self.curr_state.var1 = imgs_deque
+        self.curr_state.var2 = (idx, img_distances)
+
     #=============== ROUTINES ===============#
     def follow_lane(self):
         e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
@@ -1302,20 +1431,17 @@ class Brain:
 
     def control_for_obstacles(self):
         #check for obstacles
-        if self.car.filtered_sonar_distance < OBSTACLE_DISTANCE_THRESHOLD:
-            # obstacle = self.detect.classify_frontal_obstacle(self.car.frame)    #TODO SAMIRA
-            if OBSTACLE_IS_ALWAYS_CAR: obstacle = 'car'
-            if OBSTACLE_IS_ALWAYS_PEDESTRIAN: obstacle = 'pedestrian'
-            if OBSTACLE_IS_ALWAYS_ROADBLOCK: obstacle = 'roadblock'
-            if obstacle == 'car':
-                self.switch_to_state(TAILING_CAR)
-            elif obstacle == 'pedestrian':
-                self.switch_to_state(WAITING_FOR_PEDESTRIAN)
-            elif obstacle == 'roadblock':
-                self.switch_to_state(AVOIDING_ROADBLOCK)
-            else:
-                print('ERROR: OBSTACLE CLASSIFICATION: Unknown obstacle')
-                exit()
+        last_obstacle_dist = self.routines[CONTROL_FOR_OBSTACLES].var1 if self.routines[CONTROL_FOR_OBSTACLES].var1 is not None else self.car.encoder_distance - 1.0
+        curr_dist = self.car.encoder_distance
+        if curr_dist - last_obstacle_dist > MIN_DIST_BETWEEN_OBSTACLES:
+            dist = self.car.filtered_sonar_distance
+            if dist < OBSTACLE_DISTANCE_THRESHOLD + 0.1:
+                self.car.drive_speed(self.desired_speed*0.2)
+            if dist < OBSTACLE_DISTANCE_THRESHOLD:
+                self.switch_to_state(CLASSIFYING_OBSTACLE)
+                self.routines[CONTROL_FOR_OBSTACLES].var1 = curr_dist
+
+
 
     # STATE CHECKS
     def check_logic(self):
