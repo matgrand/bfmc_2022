@@ -373,8 +373,10 @@ class PathPlanning():
         self.prev_index = min_index + closest_index - (1+look_ahead)
 
         path_ahead = self.get_path_ahead(min_index+closest_index, limit_search_to)
+
+        path_ahead_curv = path_ahead[0:min(30, len(path_ahead))]
         
-        avg_curv = get_curvature(path_ahead, v_des)
+        avg_curv = get_curvature(path_ahead_curv, v_des)
 
         info = self.path_data[min_index+closest_index]
 
@@ -394,6 +396,16 @@ class PathPlanning():
         cv.circle(self.map, mR2pix(self.stop_points[index_closest]), 8, (0, 255, 0), 4)
         return self.stop_points[index_closest, 0], self.stop_points[index_closest, 1]
 
+    def get_closest_point_on_path(self, nx, ny):
+        """
+        Returns the closest point on the path to the given point
+        """
+        index_closest = np.argmin(np.hypot(nx - self.path[:,0], ny - self.path[:,1]))
+        print(f'Closest point on path is {self.path[index_closest, :]}, Point is {nx, ny}')
+        #draw a circle around the closest point
+        cv.circle(self.map, mR2pix(self.path[index_closest]), 8, (0, 255, 0), 4)
+        return self.path[index_closest, 0], self.path[index_closest, 1]
+
     def augment_path(self, default_distance=120, tol=0.01): #100
         print("Augmenting path...")
         #intersection ins
@@ -407,6 +419,7 @@ class PathPlanning():
                 nx, ny = self.get_coord(n)
                 if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
                     nx, ny = self.get_closest_stop_point(nx, ny)
+                    nx, ny = self.get_closest_point_on_path(nx, ny)
                     intersection_in_indexes.append(i) 
                     intersection_in_pos.append((nx, ny))
                     yaw = np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
@@ -441,6 +454,7 @@ class PathPlanning():
                 #and = workaround, ra exits and entrance must be outside the ra
                 if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2: # and len(roundabout_in_indexes) < 1: #and = workaround 
                     nx, ny = self.get_closest_stop_point(nx, ny)
+                    nx, ny = self.get_closest_point_on_path(nx, ny)
                     roundabout_in_indexes.append(i) 
                     roundabout_in_pos.append((nx, ny))
                     yaw = np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])
@@ -492,6 +506,7 @@ class PathPlanning():
                 nx, ny = self.get_coord(n)
                 if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
                     nx, ny = self.get_closest_stop_point(nx, ny)
+                    nx, ny = self.get_closest_point_on_path(nx, ny)
                     crosswalk_indexes.append(i) 
                     crosswalk_pos.append((nx, ny))
                     yaw = np.arctan2(ny-self.path[i+1,1], nx-self.path[i+1,0])

@@ -6,10 +6,13 @@ import os
 from helper_functions import *
 from time import sleep, time
 
-POINT_AHEAD_CM = 35 #distance of the point ahead in cm
+POINT_AHEAD_CM = 60#35 #distance of the point ahead in cm
 SEQ_POINTS_INTERVAL = 20 #interval between points in the sequence in cm 
 NUM_POINTS = 5 #number of points in the sequence
 L = 0.4  #length of the car, matched with lane_detection
+
+NOISE_RESET_MEAN = 4 #avg frames after which the noise is reset
+NOISE_RESET_STD = 2 #frames max "deviation"
 
 class Controller():
     def __init__(self, k1=1.0,k2=1.0,k3=1.0, k3D=0.08, ff=1.0, cm_ahead=35, folder='training_imgs',
@@ -41,6 +44,7 @@ class Controller():
             self.noise = 0.0
             self.data_cnt = 0   
             self.noise_std = noise_std
+            self.noise_reset = NOISE_RESET_MEAN
             self.seq_points_ahead = []
             self.seq_yaws_ahead = []
             #clear and create file 
@@ -61,22 +65,22 @@ class Controller():
         self.e3 = e3 #yaw error [rad]
         alpha = e3
 
-        # if not self.training:
-        #     curv = curv*30
-        if curv == 0.0: r = 10000.0
-        else: r = 1.0 / ( curv*6.28 ) #radius of curvature
+        # # if not self.training:
+        # #     curv = curv*30
+        # if curv == 0.0: r = 10000.0
+        # else: r = 1.0 / ( curv*6.28 ) #radius of curvature
 
-        #adaptive controller
-        curv100 = 100 * curv
-        if 0.7 < np.abs(curv100) < 2.0: #big curvature, pure pursuit is too aggressive
-            # print(f'HIGH CURVATURE: {curv100}')
-            # k2 = 5.0
-            # k3 = 5.0
-            k2 = self.k2
-            k3 = self.k3
-        else:
-            k2 = self.k2
-            k3 = self.k3
+        # #adaptive controller
+        # curv100 = 100 * curv
+        # if 0.7 < np.abs(curv100) < 2.0: #big curvature, pure pursuit is too aggressive
+        #     # print(f'HIGH CURVATURE: {curv100}')
+        #     # k2 = 5.0
+        #     # k3 = 5.0
+        #     k2 = self.k2
+        #     k3 = self.k3
+        # else:
+        k2 = self.k2
+        k3 = self.k3
 
         if gains is not None:
             k1, k2, k3, k3D = gains
@@ -98,9 +102,10 @@ class Controller():
         # print(f'derivative term: {np.rad2deg(derivative_term):.2f}')
 
         #feedforward term
-        k3FF = 0. #0.2 #higher for high speeds
-        ff_term = k3FF * np.arctan(L/r) #from ackerman geometry
-        # print(f'Feedforward term: {np.rad2deg(ff_term):2f}')
+        k3FF = self.ff #0.2 #higher for high speeds
+        # ff_term = k3FF * np.arctan(L/r) #from ackerman geometry
+        ff_term = -k3FF * curv
+        print(f'Feedforward term: {np.rad2deg(ff_term):2f}')
     
         output_angle = ff_term - proportional_term - k2 * e2 - derivative_term
         output_speed = desired_speed - self.k1 * self.e1
@@ -123,7 +128,7 @@ class Controller():
         self.seq_points_ahead = [path_ahead[(i)*SEQ_POINTS_INTERVAL,:] for i in range(NUM_POINTS+1)]
         self.seq_points_ahead = [to_car_frame(p, car, return_size=2) for p in self.seq_points_ahead]
         #yaws should be changed: they should be calculated wrt the car's not wrt to each other
-        self.seq_yaws_ahead = [np.arctan2(self.seq_points_ahead[i+1][1]-self.seq_points_ahead[i][1], self.seq_points_ahead[i+1][0]-self.seq_points_ahead[i][0]) for i in range(NUM_POINTS)]
+        self.seq_yaws_ahead = [np.arctan2(self.seq_points_ahead[i][1], self.seq_points_ahead[i][0]) for i in range(NUM_POINTS)]
 
         alpha = np.arctan2(point_ahead[1], point_ahead[0]+L/2) 
         output_speed, output_angle = self.get_control(e2, alpha, curvature_ahead, vd)
@@ -133,7 +138,7 @@ class Controller():
     
     def pack_input_data(self):
         data = [0,0,0,0]
-        xd,yd,yawd,curv,path_ahead,(state,next,action,dist,_,_,_) = self.curr_data
+        xd,yd,yawd,curv,path_ahead,angle_to_stopline,(state,next,action,dist,_,_,_) = self.curr_data
         if action == "straight":
             data[0] = 1
         elif action == "left":
@@ -150,12 +155,11 @@ class Controller():
             f.write(str(data[-1])+"\n")
 
     def pack_regression_labels(self, bb_const=1000.0):
-        xd,yd,yawd,curv,path_ahead,(state,next,action,dist,_,_,_) = self.curr_data
+        xd,yd,yawd,curv,path_ahead,angle_to_stopline,(state,next,action,dist,_,_,_) = self.curr_data
         if dist is None:
             dist = 10
-        # print(f'bounding box: {bounding_box}')
         #add errors 
-        reg_label = [self.e2, self.e3, dist, curv]
+        reg_label = [self.e2, self.e3, curv, dist, angle_to_stopline]
         #add sequ of points ahead
         for i in range(NUM_POINTS):
             reg_label.append(self.seq_yaws_ahead[i])
@@ -166,10 +170,8 @@ class Controller():
                 f.write(str(reg_label[i])+",")
             f.write(str(reg_label[-1])+"\n")
 
-    
-
     def pack_classification_labels(self):
-        xd,yd,yawd,curv,path_ahead,(state,next,action,dist,_,_,_) = self.curr_data
+        xd,yd,yawd,curv,path_ahead,angle_to_stopline,(state,next,action,dist,_,_,_) = self.curr_data
         #4 states, 4 next states, 7 signs
         class_data = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         if state == 'road':
@@ -207,10 +209,11 @@ class Controller():
             action_vec[3] = 1
         return np.array(action_vec).reshape(1,4)
 
-    def get_random_noise(self, std=np.deg2rad(20), reset=20):
-        if self.cnt == reset:
+    def get_random_noise(self, std=np.deg2rad(20)):
+        if self.cnt == self.noise_reset:
             self.cnt = 0
             self.noise = np.random.normal(0, std)
+            self.noise_reset = np.random.randint(NOISE_RESET_MEAN - NOISE_RESET_STD, NOISE_RESET_MEAN + NOISE_RESET_STD)
             # print(f"noise: {self.noise}")
         self.cnt += 1
         return self.noise

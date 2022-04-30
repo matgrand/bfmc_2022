@@ -226,7 +226,7 @@ def my_softmax(x):
 
 def project_curvature(frame, car, curv):
     color = (0,255,0) 
-    start_from = 0.0
+    start_from = 0.13
     d_ahead = 0.4 # [m]
     num_points = 20
     #multiply by constant, to be tuned

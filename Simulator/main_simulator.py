@@ -21,14 +21,21 @@ from detection import Detection
 
 map = cv.imread('src/models_pkg/track/materials/textures/2021_VerySmall.png')
 class_list = []
-with open("models/classes.txt", "r") as f:
+with open("data/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
 # MAIN CONTROLS
-training = True
+training = False
 generate_path = True if training else False
 # folder = 'training_imgs' 
 folder = 'test_imgs'
+
+if training and folder == 'training_imgs':
+    print('WARNING, WE ARE ABOUT TO OVERWRITE THE TRAINING DATA! ARE U SURE TO CONTINUE?')
+    sleep(5)
+    print('Starting in 1 sec...')
+    sleep(0.5)
+    sleep(0.1)
 
 # os.system('rosservice call /gazebo/reset_simulation')
 
@@ -36,18 +43,20 @@ LOOP_DELAY = 0.00
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 
+FPS_TARGET = 30.0
+
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 1.# [m/s]
+DESIRED_SPEED = 1.1# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
 k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
-k3 = 0.99 #1.0 yaw error gain .8 with ff 
+k3 = 0.9 #1.0 yaw error gain .8 with ff 
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
-noise_std = np.deg2rad(0.0) # [rad] noise in the steering angle
+noise_std = np.deg2rad(27.0) # [rad] noise in the steering angle
 
 
 if __name__ == '__main__':
@@ -106,8 +115,12 @@ if __name__ == '__main__':
             if generate_path:
                 reference = path.get_reference(car, DESIRED_SPEED, frame=frame, training=training)
                 xd, yd, yawd, curv, finished, path_ahead, info = reference
+                dist = info[3] #distance from stopline
+                if dist is not None:
+                    angle_to_stopline = diff_angle(car.yaw, get_yaw_closest_axis(car.yaw))
+                else: angle_to_stopline = 0.0
                 #controller training data generation        
-                controller.curr_data = [xd,yd,yawd,curv,path_ahead,info]
+                controller.curr_data = [xd,yd,yawd,curv,path_ahead,angle_to_stopline,info]
                 if finished:
                     print("Reached end of trajectory")
                     car.stop()
@@ -128,8 +141,10 @@ if __name__ == '__main__':
                 #     speed_ref = 0.1 * speed_ref
             else:
                 #Neural network control
-                lane_info = detect.detect_lane(frame)
-                e2, e3, point_ahead = lane_info
+                # lane_info = detect.detect_lane(frame)
+                # e2, e3, point_ahead = lane_info
+                lane_info = e3, point_ahead = detect.detect_lane_ahead(frame)
+                e2 = 0.0
                 curv = 0.0001
                 speed_ref, angle_ref = controller.get_control(e2, e3, curv, DESIRED_SPEED)
 
@@ -137,21 +152,21 @@ if __name__ == '__main__':
 
                 points_local_path, _ = detect.estimate_local_path(frame)
 
-                # #stopping logic
-                if 0.0 < dist < 0.4:
-                    print('Slowing down')
-                    speed_ref = DESIRED_SPEED * 0.2
-                    if 0.0 < dist < 0.1:
-                        speed_ref = DESIRED_SPEED * 0.05
-                        # print('Stopping')
-                        # car.stop()
-                        # sleep(0.4)
-                        # speed_ref = DESIRED_SPEED
-                        # car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
-                        # sleep(0.2)
+                # # #stopping logic
+                # if 0.0 < dist < 0.4:
+                #     print('Slowing down')
+                #     speed_ref = DESIRED_SPEED * 0.2
+                #     if 0.0 < dist < 0.1:
+                #         speed_ref = DESIRED_SPEED * 0.05
+                #         # print('Stopping')
+                #         # car.stop()
+                #         # sleep(0.4)
+                #         # speed_ref = DESIRED_SPEED
+                #         # car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
+                #         # sleep(0.2)
 
                 #Traffic signs
-                sign = detect.detect_sign(frame, show_ROI=True)
+                # sign = detect.detect_sign(frame, show_ROI=True)
 
             ## ACTUATION
             sleep(ACTUATION_DELAY)
@@ -175,6 +190,7 @@ if __name__ == '__main__':
             if training:
                 frame, proj = project_onto_frame(frame, car, np.array(controller.seq_points_ahead), False, color=(100, 200, 100))
                 _ = project_curvature(frame, car, curv)
+                pass
             else: 
                 frame, proj = project_onto_frame(frame, car, points_local_path, False, color=(100, 200, 100))
             
@@ -189,7 +205,8 @@ if __name__ == '__main__':
 
             ## DEBUG INFO
             os.system('cls' if os.name=='nt' else 'clear')
-            print(f'Stop line distance: {dist:.2f}') if not training else None
+            if dist is None: dist=10
+            # print(f'Stop line distance: {dist:.2f}, Angle: {np.rad2deg(angle_to_stopline):.2f}') #if not training else None
             print(f'Curvature: {curv:.2f}')
             print(f"x : {car.x_true:.3f} [m], y : {car.y_true:.3f} [m], yaw : {np.rad2deg(car.yaw):.3f} [deg]") 
             print(f"xd: {xd:.3f} [m], yd: {yd:.3f} [m], yawd: {np.rad2deg(yawd):.3f} [deg], curv: {curv:.3f}") if generate_path else None
@@ -202,7 +219,7 @@ if __name__ == '__main__':
             print(f'Net out:\n {lane_info}') if not training else None
             print(f'e_yaw: {e3:.2f} [rad] \ncurv: {100*curv}') if not training else None
             # print(f'Curvature radius = {radius:.2f}')
-            print(f'FPS = {1/(time()-loop_start_time):.1f}')
+            print(f'FPS = {1/(time()-loop_start_time):.0f}, capped at: {FPS_TARGET:.0f}')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
             print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
 
@@ -217,7 +234,12 @@ if __name__ == '__main__':
                 cv.destroyAllWindows()
                 break
 
-            sleep(LOOP_DELAY)
+            # sleep(LOOP_DELAY)
+            curr_time = time()
+            loop_time = curr_time - loop_start_time
+            if loop_time < 1/FPS_TARGET:
+                sleep(1/FPS_TARGET - loop_time)
+
 
     except KeyboardInterrupt:
         print("Shutting down")
