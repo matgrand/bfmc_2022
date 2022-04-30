@@ -249,6 +249,17 @@ def project_curvature(frame, car, curv):
         cv.polylines(frame, [proj_points], False, color, 2)
     return r
 
+def project_stopline(frame, car, dist, angle, color=(0,200,0)):
+    points = np.zeros((50,2), dtype=np.float32)
+    points[:,1] = np.linspace(-0.2, .2, 50)
+
+    rot_matrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+    points = points @ rot_matrix
+    points[:,0] += dist + 0.3
+    frame, proj_points = project_onto_frame(frame=frame, car=car, points=points, align_to_car=False, color=color)
+    return frame, proj_points
+
+
 def project_stop_line():
     pass
 

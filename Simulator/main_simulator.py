@@ -47,7 +47,7 @@ FPS_TARGET = 30.0
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 1.1# [m/s]
+DESIRED_SPEED = 0.55# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -56,7 +56,7 @@ k3 = 0.9 #1.0 yaw error gain .8 with ff
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
-noise_std = np.deg2rad(27.0) # [rad] noise in the steering angle
+noise_std = np.deg2rad(23.0) # [rad] noise in the steering angle
 
 
 if __name__ == '__main__':
@@ -118,6 +118,7 @@ if __name__ == '__main__':
                 dist = info[3] #distance from stopline
                 if dist is not None:
                     angle_to_stopline = diff_angle(car.yaw, get_yaw_closest_axis(car.yaw))
+                    frame, _ = project_stopline(frame, car, dist, angle_to_stopline, color=(0,200,0))
                 else: angle_to_stopline = 0.0
                 #controller training data generation        
                 controller.curr_data = [xd,yd,yawd,curv,path_ahead,angle_to_stopline,info]
@@ -137,8 +138,8 @@ if __name__ == '__main__':
                 speed_ref, angle_ref, point_ahead = controller.get_training_control(car, path_ahead, DESIRED_SPEED, curv)
                 controller.save_data(frame, folder)
                 dist = info[3]
-                # if dist is not None and 0.0 < dist < 0.4:
-                #     speed_ref = 0.1 * speed_ref
+                if dist is not None and 0.1 < dist < 0.4:
+                    speed_ref = 0.4 * speed_ref
             else:
                 #Neural network control
                 # lane_info = detect.detect_lane(frame)
@@ -152,18 +153,20 @@ if __name__ == '__main__':
 
                 points_local_path, _ = detect.estimate_local_path(frame)
 
-                # # #stopping logic
-                # if 0.0 < dist < 0.4:
-                #     print('Slowing down')
-                #     speed_ref = DESIRED_SPEED * 0.2
-                #     if 0.0 < dist < 0.1:
-                #         speed_ref = DESIRED_SPEED * 0.05
-                #         # print('Stopping')
-                #         # car.stop()
-                #         # sleep(0.4)
-                #         # speed_ref = DESIRED_SPEED
-                #         # car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
-                #         # sleep(0.2)
+                # #stopping logic
+                if 0.0 < dist < 0.4:
+                    print('Slowing down')
+                    angle_to_stopline = diff_angle(car.yaw, get_yaw_closest_axis(car.yaw))
+                    frame, _ = project_stopline(frame, car, dist, angle_to_stopline, color=(0,200,0))
+                    speed_ref = DESIRED_SPEED * 0.4
+                    if 0.0 < dist < 0.1:
+                        speed_ref = DESIRED_SPEED * 0.2
+                        # print('Stopping')
+                        # car.stop()
+                        # sleep(0.4)
+                        # speed_ref = DESIRED_SPEED
+                        # car.drive(speed=speed_ref, angle=np.rad2deg(angle_ref))
+                        # sleep(0.2)
 
                 #Traffic signs
                 # sign = detect.detect_sign(frame, show_ROI=True)

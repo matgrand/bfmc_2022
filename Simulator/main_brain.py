@@ -142,7 +142,12 @@ if __name__ == '__main__':
             print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
 
             if SHOW_IMGS:
-                cv.imshow('frame', car.frame)
+                frame = car.frame.copy()
+                if brain.stop_line_distance_median is not None:
+                    dist = brain.stop_line_distance_median - car.encoder_distance + 0.1
+                    angle_to_stopline = diff_angle(car.yaw, get_yaw_closest_axis(car.yaw))
+                    frame, _ = project_stopline(frame, car, dist, angle_to_stopline, color=(0,200,0))
+                cv.imshow('frame', frame)
                 if cv.waitKey(1) == 27:
                     cv.destroyAllWindows()
                     break
