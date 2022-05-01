@@ -6,7 +6,7 @@ import os
 from helper_functions import *
 from time import sleep, time
 
-POINT_AHEAD_CM = 60#35 #distance of the point ahead in cm
+POINT_AHEAD_CM = 40#60#35 #distance of the point ahead in cm
 SEQ_POINTS_INTERVAL = 20 #interval between points in the sequence in cm 
 NUM_POINTS = 5 #number of points in the sequence
 L = 0.4  #length of the car, matched with lane_detection
@@ -138,7 +138,7 @@ class Controller():
     
     def pack_input_data(self):
         data = [0,0,0,0]
-        xd,yd,yawd,curv,path_ahead,angle_to_stopline,(state,next,action,dist,_,_,_) = self.curr_data
+        xd,yd,yawd,curv,path_ahead,stopline_x,stopline_y,stopline_yaw,(state,next,action,dist,_,_,_) = self.curr_data
         if action == "straight":
             data[0] = 1
         elif action == "left":
@@ -155,11 +155,11 @@ class Controller():
             f.write(str(data[-1])+"\n")
 
     def pack_regression_labels(self, bb_const=1000.0):
-        xd,yd,yawd,curv,path_ahead,angle_to_stopline,(state,next,action,dist,_,_,_) = self.curr_data
+        xd,yd,yawd,curv,path_ahead,stopline_x,stopline_y,stopline_yaw,(state,next,action,dist,_,_,_) = self.curr_data
         if dist is None:
             dist = 10
         #add errors 
-        reg_label = [self.e2, self.e3, curv, dist, angle_to_stopline]
+        reg_label = [self.e2, self.e3, curv, dist, stopline_x,stopline_y,stopline_yaw]
         #add sequ of points ahead
         for i in range(NUM_POINTS):
             reg_label.append(self.seq_yaws_ahead[i])
@@ -171,7 +171,7 @@ class Controller():
             f.write(str(reg_label[-1])+"\n")
 
     def pack_classification_labels(self):
-        xd,yd,yawd,curv,path_ahead,angle_to_stopline,(state,next,action,dist,_,_,_) = self.curr_data
+        xd,yd,yawd,curv,path_ahead,stopline_x,stopline_y,stopline_yaw,(state,next,action,dist,_,_,_) = self.curr_data
         #4 states, 4 next states, 7 signs
         class_data = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         if state == 'road':

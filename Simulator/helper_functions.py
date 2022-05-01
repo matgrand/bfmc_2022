@@ -13,13 +13,6 @@ const_verysmall = 3541/15.0
 M_R2L = np.array([[ 1.0, 0.0], [ 0.0, -1.0]])
 T_R2L = np.array([0, 15.0])
 
-#meters to pixel (left frame)
-# def m2pix(m):
-#     return np.int32(m*const_verysmall)
-
-# def pix2m(pix): # pixel to meter (left frame)
-#     return pix/const_verysmall
-
 def mL2pix(ml): #meters to pixel (left frame)
     return np.int32(ml*const_verysmall)
 
@@ -63,7 +56,7 @@ def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
         cv.polylines(map, [mR2pix(corners)], True, color, 3, cv.LINE_AA) 
     return map
 
-def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255)):
+def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255), thickness=2):
     #check if its a single point
     single_dim = False
     if points.ndim == 1:
@@ -99,7 +92,7 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
         return frame, None
 
     #add diffrence com to back wheels
-    rel_pos_points = rel_pos_points - np.array([0.13, 0.0, 0.0])
+    rel_pos_points = rel_pos_points - np.array([0.18, 0.0, 0.0])
 
     #rotate the points around the relative y axis, pitch
     beta = -car.CAM_PITCH
@@ -115,8 +108,20 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255))
     # proj_points = 490*proj_points + np.array([320, 240]) #640x480
     proj_points = 240*proj_points + np.array([320//2, 240//2]) #320x240
     # draw the points
-    for p in proj_points:
-        cv.circle(frame, (int(p[0]), int(p[1])), 2, color, -1)
+    for i in range(proj_points.shape[0]):
+        p = proj_points[i]
+        assert p.shape == (2,), f"projection point has wrong shape: {p.shape}"
+        # print(f'p = {p}')
+        p1 = (int(round(p[0])), int(round(p[1])))
+        # print(f'p = {p}')
+        #check if the point is in the frame
+        if p1[0] >= 0 and p1[0] < 320 and p1[1] >= 0 and p1[1] < 240:
+            try:
+                cv.circle(frame, p1, thickness, color, -1)
+            except Exception as e:
+                print(f'Error drawing point {p}')
+                print(p1)
+                print(e)
 
     if single_dim:
         return frame, proj_points[0]
@@ -249,19 +254,19 @@ def project_curvature(frame, car, curv):
         cv.polylines(frame, [proj_points], False, color, 2)
     return r
 
-def project_stopline(frame, car, dist, angle, color=(0,200,0)):
+def project_stopline(frame, car, stopline_x, stopline_y, car_angle_to_stopline, color=(0,200,0)):
     points = np.zeros((50,2), dtype=np.float32)
-    points[:,1] = np.linspace(-0.2, .2, 50)
+    points[:,1] = np.linspace(-0.19, 0.19, 50)
 
-    rot_matrix = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
-    points = points @ rot_matrix
-    points[:,0] += dist + 0.3
+    slp_cf = np.array([stopline_x, stopline_y])
+
+    rot_matrix = np.array([[np.cos(car_angle_to_stopline), -np.sin(car_angle_to_stopline)], [np.sin(car_angle_to_stopline), np.cos(car_angle_to_stopline)]])
+    points = points + slp_cf #translation
+    points = points @ rot_matrix #rotation
+
     frame, proj_points = project_onto_frame(frame=frame, car=car, points=points, align_to_car=False, color=color)
+    # frame = cv.polylines(frame, [proj_points], False, color, 2)
     return frame, proj_points
-
-
-def project_stop_line():
-    pass
 
 def get_yaw_closest_axis(angle):
     """

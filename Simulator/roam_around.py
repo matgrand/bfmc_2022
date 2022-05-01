@@ -17,7 +17,7 @@ class_list = []
 with open("data/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
-LOOP_DELAY = 0.02
+LOOP_DELAY = 0.005
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 
@@ -61,10 +61,15 @@ if __name__ == '__main__':
             os.system('cls' if os.name=='nt' else 'clear')
 
             loop_start_time = time()
+            frame = car.frame.copy()
 
             ################################################################
             # TEST DETECTION HERE
-            sign = detect.detect_sign(car.frame, show_ROI=True)
+            # sign = detect.detect_sign(car.frame, show_ROI=True)
+
+            stopline_x, stopline_y, stopline_angle = detect.detect_stop_line(car.frame, show_ROI=True)
+
+            frame, _ = project_stopline(frame, car, stopline_x, stopline_y, stopline_angle, color=(0,200,0))
 
             # #test drive distance
             # print('driving 0.5')
@@ -98,7 +103,7 @@ if __name__ == '__main__':
             print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
             print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
 
-            cv.imshow('frame', car.frame)
+            cv.imshow('frame', frame)
             if cv.waitKey(1) == 27:
                 cv.destroyAllWindows()
                 break

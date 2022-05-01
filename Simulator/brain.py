@@ -131,6 +131,7 @@ CAN_OVERTAKE = 'can_overtake'
 HIGHWAY = 'highway'
 TRUST_GPS = 'trust_gps'
 CAR_ON_PATH = 'car_on_path'
+REROUTING = 'rerouting'
 CONDITIONS = {
     IN_RIGHT_LANE:            False,  # if true, the car can switch to the right lane, for obstacle avoidance
     IN_LEFT_LANE:             False,  # if true, the car can switch to the left lane, for overtaking or obstacle avoidance
@@ -140,6 +141,7 @@ CONDITIONS = {
     TRUST_GPS:                True,   # if true the car will trust the gps, for example in expecting a sign or traffic light
                                         # can be set as false if there is a lot of package loss or the car has not received signal in a while
     CAR_ON_PATH:              True,   # if true, the car is on the path, if the gps is trusted and the position is too far from the path it will be set to false
+    REROUTING:                True   # if true, the car is rerouting, for example at the beginning or after a roadblock
 }
 
 #======================== ACHIEVEMENTS ========================
@@ -167,6 +169,11 @@ USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
 ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
+#Rerouting
+GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE = 0.05 #distance between 2 consecutive measure of the gps for the kalmann filter to be considered converged
+GPS_SAMPLE_TIME = 0.25 #[s] time between 2 consecutive gps measurements
+GPS_CONVERGENCE_PATIANCE = 10 #iterations to consider the gps converged
+GPS_TIMEOUT = 5.0 #[s] time to wait to have gps signal
 
 #PARKING
 PARKING_DISTANCE_SLOW_DOWN_THRESHOLD = 1.0
@@ -328,42 +335,79 @@ class Brain:
 
     #=============== STATES ===============#
     def start_state(self):
-        #exception: states should not perform actions
-        self.car.drive_speed(0.0)
-        sleep(SLEEP_AFTER_STOPPING)
-        print('Generating route...')
-
+        if self.curr_state.just_switched:
+            self.conditions[REROUTING] = True
+            self.car.drive_speed(0.0) #stop
+            sleep(SLEEP_AFTER_STOPPING)
+            self.curr_state.var1 = (np.array([0.0,0.0]), 0) #(position, counter)
+            self.curr_state.var2 = time()
+            self.curr_state.just_switched = False
+        
         #localize the car and go to the first checkpoint
         #for now we will assume to be in the correct position
-        # TODO detetct first node and route fom that node
+        can_generate_route = False
+        curr_time = time()
+        if self.conditions[TRUST_GPS]:
+            self.curr_state.var2 = time() #reset timer
+            curr_pos = np.array([self.car.x_est, self.car.y_est])
+            prev_pos, cnt = self.curr_state.var1
+            if norm(curr_pos - prev_pos) < GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE:
+                cnt += 1
+                if cnt >= GPS_CONVERGENCE_PATIANCE:
+                    can_generate_route = True
+                    #get closest node
+                    closest_node, distance = self.path_planner.get_closest_node(curr_pos)
+                    print(f'GPS converged, starting from node: {closest_node}, distance: {distance:.2f}')
+                    sleep(3)
+                    if distance > 0.8:
+                        print('ERROR: REROUTING: GPS converged, but distance is too large, we are too far from the lane')
+                        sleep(3)
+                        exit()
 
-        #get start and end nodes from the chekpoint list
-        assert len(self.checkpoints) >= 2, 'List of checkpoints needs 2 ore more nodes'
-        start_node = self.checkpoints[self.checkpoint_idx]
-        end_node = self.checkpoints[self.checkpoint_idx+1] #already checked in end_state
-        #calculate path
-        self.path_planner.compute_shortest_path(start_node, end_node)
-        #initialize the list of events on the path
-        print('Augmenting path...')
-        events = self.path_planner.augment_path(draw=SHOW_IMGS)
-        print(f'Path augmented')
-        #add the events to the list of events, increasing it
-        self.events = self.create_sequence_of_events(events)
-        self.event_idx = 1
-        self.next_event = self.events[0]
-        self.prev_event.dist = 0.0
-        self.car.reset_rel_pose()
-        print(f'EVENTS: idx: {self.event_idx}')
-        for e in self.events:
-            print(e)
+                else: print(f'Waiting for GPS convergence... {cnt}/{GPS_CONVERGENCE_PATIANCE}')
+            else:
+                cnt = 0
+                print('GPS not converged yet')
+            self.curr_state.var1 = (curr_pos, cnt)
+            sleep(GPS_SAMPLE_TIME)
+        else:
+            start_time = self.curr_state.var2
+            print(f'Waiting for gps: {(curr_time-start_time):.1f}/{GPS_TIMEOUT}')
+            if curr_time - start_time > GPS_TIMEOUT:
+                print('WARNING: ROUTE_GENERATION: No gps signal or GPS not trusted, Starting from the first checkpoint')
+                sleep(3.0)
+                can_generate_route = True
         
-        #draw the path 
-        self.path_planner.draw_path()
-        print('Starting...')
-        # sleep(3)
-        # cv.waitKey(0)
-        self.switch_to_state(LANE_FOLLOWING)
-        self.car.drive_speed(self.desired_speed)
+        if can_generate_route:
+            print('Generating route...')
+            #get start and end nodes from the chekpoint list
+            assert len(self.checkpoints) >= 2, 'List of checkpoints needs 2 ore more nodes'
+            start_node = self.checkpoints[self.checkpoint_idx]
+            end_node = self.checkpoints[self.checkpoint_idx+1] #already checked in end_state
+            #calculate path
+            self.path_planner.compute_shortest_path(start_node, end_node)
+            #initialize the list of events on the path
+            print('Augmenting path...')
+            events = self.path_planner.augment_path(draw=SHOW_IMGS)
+            print(f'Path augmented')
+            #add the events to the list of events, increasing it
+            self.events = self.create_sequence_of_events(events)
+            self.event_idx = 1
+            self.next_event = self.events[0]
+            self.prev_event.dist = 0.0
+            self.car.reset_rel_pose()
+            print(f'EVENTS: idx: {self.event_idx}')
+            for e in self.events:
+                print(e)
+            
+            #draw the path 
+            self.path_planner.draw_path()
+            print('Starting...')
+            self.conditions[REROUTING] = False
+            # sleep(3)
+            # cv.waitKey(0)
+            self.switch_to_state(LANE_FOLLOWING)
+            self.car.drive_speed(self.desired_speed)
 
     def end_state(self):
         self.activate_routines([FOLLOW_LANE])
@@ -1447,7 +1491,7 @@ class Brain:
     def check_logic(self):
         print('check_logic')
         #check if car is in a lane
-        if self.conditions[TRUST_GPS]:
+        if self.conditions[TRUST_GPS] and not self.conditions[REROUTING]:
             path = self.path_planner.path
             car_pos = np.array([self.car.x_est, self.car.y_est])
             diff = norm(car_pos - path, axis=1)
@@ -1484,9 +1528,10 @@ class Brain:
         self.conditions[TRUST_GPS] = self.car.trust_gps and not ALWAYS_DISTRUST_GPS or ALWAYS_TRUST_GPS
 
         print('==========================================================================')
-        print(f'STATE: {self.curr_state}')
+        print(f'STATE:          {self.curr_state}')
         print(f'UPCOMING_EVENT: {self.next_event}')
-        print(f'ROUTINES: {self.active_routines_names}')
+        print(f'ROUTINES:       {self.active_routines_names}')
+        print(f'CONDITIONS:     {self.conditions}')
         self.run_current_state()
         print('==========================================================================')
         print()

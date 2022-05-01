@@ -45,6 +45,12 @@ class PathPlanning():
         self.route_list = []
         self.old_nearest_point_index = None # used in search target point
 
+        self.nodes_data = self.G.nodes.data()
+        self.edges_data = self.G.edges.data()
+
+        self.all_nodes = list(self.G.nodes)
+        self.all_nodes_coords = np.array([self.get_coord(node) for node in self.all_nodes])
+
         # define intersection central nodes
         #self.intersection_cen = ['347', '37', '39', '38', '11', '29', '30', '28', '371', '84', '9', '20', '20', '82', '75', '74', '83', '312', '315', '65', '468', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
         self.intersection_cen = ['37', '39', '38', '11', '29', '30', '28', '371', '84', '9','19', '20', '21', '82', '75', '74', '83', '312', '315', '65', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
@@ -88,8 +94,7 @@ class PathPlanning():
         self.list_of_nodes = list(self.G.nodes)
         self.list_of_edges = list(self.G.edges)
 
-        self.nodes_data = self.G.nodes.data()
-        self.edges_data = self.G.edges.data()
+
 
         # import map to plot trajectory and car
         self.map = map_img
@@ -521,3 +526,12 @@ class PathPlanning():
         if SHOW_IMGS:
             cv.imshow('Path', self.map)
             cv.waitKey(1)
+
+    def get_closest_node(self, p):
+        '''
+        Returns the closes node to the given point
+        '''
+        diff = self.all_nodes_coords - p
+        dist = np.linalg.norm(diff, axis=1)
+        index_closest = np.argmin(dist)
+        return self.all_nodes[index_closest], dist[index_closest]

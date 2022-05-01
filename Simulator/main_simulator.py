@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 SIMULATOR = True # True: run simulator, False: run real car
 
-import os
+import os, signal
 import cv2 as cv
 import rospy
 import numpy as np
@@ -25,10 +25,16 @@ with open("data/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
 # MAIN CONTROLS
-training = False
+training = True
 generate_path = True if training else False
-# folder = 'training_imgs' 
+folder = 'training_imgs' 
 folder = 'test_imgs'
+PATH_NODES = [86, 116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,
+                428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
+                97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355,
+                87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
+                97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
+PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,467,249] #,273,136,321,262]
 
 if training and folder == 'training_imgs':
     print('WARNING, WE ARE ABOUT TO OVERWRITE THE TRAINING DATA! ARE U SURE TO CONTINUE?')
@@ -47,7 +53,7 @@ FPS_TARGET = 30.0
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.55# [m/s]
+DESIRED_SPEED = 0.35# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -77,6 +83,17 @@ if __name__ == '__main__':
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
     car.stop()
 
+
+    #stop the car with ctrl+c
+    def handler(signum, frame):
+        print("Exiting ...")
+        car.stop()
+        os.system('rosservice call gazebo/pause_physics') if SIMULATOR else None 
+        cv.destroyAllWindows()
+        sleep(.99)
+        exit()
+    signal.signal(signal.SIGINT, handler)
+
     # init trajectory
     path = PathPlanning(map) 
 
@@ -92,16 +109,13 @@ if __name__ == '__main__':
         car.stop()
         #generate path
         if generate_path:
-            path_nodes = [86,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
-                            97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355,
-                            87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
-                            97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355
-                            ]
-            path_nodes = [86,110,428,467] #,273,136,321,262]
+            path_nodes = PATH_NODES
             path.generate_path_passing_through(path_nodes, path_step_length) #[86,110,310,254,463] ,[86,436, 273,136,321,262,105,350,451,265]
             # [86,436, 273,136,321,262,105,350,373,451,265,145,160,353]
             path.draw_path()
             path.print_path_info()
+
+        os.system('rosservice call gazebo/unpause_physics') if SIMULATOR else None 
 
         while not rospy.is_shutdown():
             loop_start_time = time()
@@ -116,15 +130,36 @@ if __name__ == '__main__':
                 reference = path.get_reference(car, DESIRED_SPEED, frame=frame, training=training)
                 xd, yd, yawd, curv, finished, path_ahead, info = reference
                 dist = info[3] #distance from stopline
-                if dist is not None:
-                    angle_to_stopline = diff_angle(car.yaw, get_yaw_closest_axis(car.yaw))
-                    frame, _ = project_stopline(frame, car, dist, angle_to_stopline, color=(0,200,0))
-                else: angle_to_stopline = 0.0
+                if dist is not None and dist > 0.2: #we are close to a stopline
+                    if int(dist*100)+5 < len(path_ahead):
+                        closest_stopline = path.path_stoplines[np.argmin(np.linalg.norm(path.path_stoplines - path_ahead[int(dist*100)], axis=1))]
+                        angle_stopline = get_yaw_closest_axis(np.arctan2(path_ahead[int(dist*100)+5][1]-path_ahead[int(dist*100)-5][1],
+                                                                                                path_ahead[int(dist*100)+5][0]-path_ahead[int(dist*100)-5][0]))
+                        tmp = cv.circle(tmp, mR2pix(closest_stopline), 50, (255,0,255), 3) #draw stopline on map
+                        tmp = cv.circle(tmp, mR2pix(path_ahead[0]), 10, (0,255,0), 2) #draw car center reference wrt to path (com)
+                        frame, proj = project_onto_frame(frame, car, closest_stopline, True, color=(250, 0, 250), thickness=10) #and on frame
+                        #generate training points for stopline localisation
+                        rot_matrix = np.array([[np.cos(angle_stopline), -np.sin(angle_stopline)], [np.sin(angle_stopline), np.cos(angle_stopline)]])
+                        cp_w = np.array([car.x_true, car.y_true]) #cp = car position, w = world frame
+                        cp_sl = cp_w - closest_stopline #translate to stop line frame
+                        cp_sl = cp_sl @ rot_matrix #rotate to stop line frame
+                        car_angle_to_stopline = diff_angle(car.yaw, angle_stopline)
+                        slp_cf = -cp_sl # stop line position in car frame
+                        stopline_x_train = slp_cf[0]
+                        stopline_y_train = slp_cf[1]
+                        stopline_yaw_train = car_angle_to_stopline
+                        print(f'Stopline -> x: {stopline_x_train}, y: {stopline_y_train}, yaw: {stopline_yaw_train}')
+                    
+                        #project onto frame
+                        frame, _ = project_stopline(frame, car, stopline_x_train, stopline_y_train, car_angle_to_stopline, color=(0,200,0))
+                else: stopline_x_train = stopline_y_train = stopline_yaw_train = 0.0
+
                 #controller training data generation        
-                controller.curr_data = [xd,yd,yawd,curv,path_ahead,angle_to_stopline,info]
+                controller.curr_data = [xd,yd,yawd,curv,path_ahead,stopline_x_train,stopline_y_train,stopline_yaw_train,info]
                 if finished:
                     print("Reached end of trajectory")
                     car.stop()
+                    os.system('rosservice call gazebo/pause_physics') if SIMULATOR else None 
                     sleep(1.8)
                     break
                 #draw refrence car
@@ -136,9 +171,9 @@ if __name__ == '__main__':
                 #car control, unrealistic: uses the true position
                 #training
                 speed_ref, angle_ref, point_ahead = controller.get_training_control(car, path_ahead, DESIRED_SPEED, curv)
-                controller.save_data(frame, folder)
+                controller.save_data(car.frame, folder)
                 dist = info[3]
-                if dist is not None and 0.1 < dist < 0.4:
+                if dist is not None and 0.3 < dist < 0.8:
                     speed_ref = 0.4 * speed_ref
             else:
                 #Neural network control
@@ -154,10 +189,9 @@ if __name__ == '__main__':
                 points_local_path, _ = detect.estimate_local_path(frame)
 
                 # #stopping logic
-                if 0.0 < dist < 0.4:
+                if 0.25 < dist < 0.65:
                     print('Slowing down')
-                    angle_to_stopline = diff_angle(car.yaw, get_yaw_closest_axis(car.yaw))
-                    frame, _ = project_stopline(frame, car, dist, angle_to_stopline, color=(0,200,0))
+                    # frame, _ = project_stopline(frame, car, dist, angle_stopline, color=(0,200,0))
                     speed_ref = DESIRED_SPEED * 0.4
                     if 0.0 < dist < 0.1:
                         speed_ref = DESIRED_SPEED * 0.2
