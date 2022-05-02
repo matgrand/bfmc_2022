@@ -22,7 +22,7 @@ from helper_functions import *
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [86,175,283,99,116,102, 136,116,90,125]#150,155,203, 205,185,190,193,203,190,203]
+CHECKPOINTS = [86,200,264,283,99,116,102, 136,116,90,125]#150,155,203, 205,185,190,193,203,190,203]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -172,8 +172,8 @@ assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWA
 #Rerouting
 GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE = 0.05 #distance between 2 consecutive measure of the gps for the kalmann filter to be considered converged
 GPS_SAMPLE_TIME = 0.25 #[s] time between 2 consecutive gps measurements
-GPS_CONVERGENCE_PATIANCE = 10 #iterations to consider the gps converged
-GPS_TIMEOUT = 5.0 #[s] time to wait to have gps signal
+GPS_CONVERGENCE_PATIANCE = 5 #iterations to consider the gps converged
+GPS_TIMEOUT = 3.0 #[s] time to wait to have gps signal
 
 #PARKING
 PARKING_DISTANCE_SLOW_DOWN_THRESHOLD = 1.0
@@ -203,11 +203,12 @@ DIST_2S = 0.38 #[m] distance to perform the 2nd part of s manouver
 DIST_4S = 0.05 #[m] distance to perform the 4th part of s manouver
 STEER_ACTUATION_DELAY_PARK = 0.5 #[s] delay to perform the steering manouver
 SLEEP_AFTER_STOPPING = 0.3 #[s] WARNING: this stops the state machine. So be careful increasing it
+STEER_ACTUATION_DELAY = 0.3 #[s] delay to perform the steering manouver
 
 # OBSTACLES
 OBSTACLE_IS_ALWAYS_PEDESTRIAN = False
-OBSTACLE_IS_ALWAYS_CAR = True
-OBSTACLE_IS_ALWAYS_ROADBLOCK = False
+OBSTACLE_IS_ALWAYS_CAR = False
+OBSTACLE_IS_ALWAYS_ROADBLOCK = True
 MIN_DIST_BETWEEN_OBSTACLES = 0.5 #dont detect obstacle for this distance after detecting one of them
 assert OBSTACLE_IS_ALWAYS_PEDESTRIAN ^ OBSTACLE_IS_ALWAYS_CAR ^ OBSTACLE_IS_ALWAYS_ROADBLOCK or not (OBSTACLE_IS_ALWAYS_PEDESTRIAN or OBSTACLE_IS_ALWAYS_CAR or OBSTACLE_IS_ALWAYS_ROADBLOCK)
 OBSTACLE_DISTANCE_THRESHOLD = 0.5 #[m] distance from the obstacle to consider it as an obstacle
@@ -222,6 +223,9 @@ OVERTAKE_STEER_ANGLE = 27.0 #[deg]
 OVERTAKE_STATIC_CAR_SPEED = 0.1  #[m/s]
 OT_STATIC_SWITCH = 0.35
 OT_STATIC_LANE_FOLLOW = 0.5
+AVOID_ROADBLOCK_ANGLE = 27.0 #[deg]
+AVOID_ROADBLOCK_SPEED = 0.2 #[m/s]
+AVOID_ROADBLOCK_DISTANCE = 0.6 #[m]
 
 #CHECKS
 MAX_DIST_AWAY_FROM_LANE = 0.8 #[m] max distance from the lane to trip the state checker
@@ -358,6 +362,7 @@ class Brain:
                     #get closest node
                     closest_node, distance = self.path_planner.get_closest_node(curr_pos)
                     print(f'GPS converged, starting from node: {closest_node}, distance: {distance:.2f}')
+                    self.checkpoints[self.checkpoint_idx] = closest_node
                     sleep(3)
                     if distance > 0.8:
                         print('ERROR: REROUTING: GPS converged, but distance is too large, we are too far from the lane')
@@ -384,6 +389,7 @@ class Brain:
             assert len(self.checkpoints) >= 2, 'List of checkpoints needs 2 ore more nodes'
             start_node = self.checkpoints[self.checkpoint_idx]
             end_node = self.checkpoints[self.checkpoint_idx+1] #already checked in end_state
+            print(f'Start node: {start_node}, End node: {end_node}')
             #calculate path
             self.path_planner.compute_shortest_path(start_node, end_node)
             #initialize the list of events on the path
@@ -491,8 +497,8 @@ class Brain:
         # #check if we are here by mistake
         if dist > STOP_LINE_APPROACH_DISTANCE:
             self.switch_to_state(LANE_FOLLOWING)
-            self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE])
-            self.car.drive_speed(self.desired_speed)
+            self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE]) #TODO should be removed
+            self.car.drive_speed(self.desired_speed) #TODO should be removed
 
         if self.stop_line_distance_median is not None: #we have a median, => we have an accurate position for the stopline
             print('Driving towards stop line... at distance: ', self.stop_line_distance_median)
@@ -903,9 +909,90 @@ class Brain:
                 if -0.05 < dist_to_drive < 0.05:
                     self.switch_to_state(OVERTAKING_STATIC_CAR)
 
-
     def avoiding_roadblock(self):
-        pass
+        self.activate_routines([])
+        AR_WATING_FOR_GPS = 1
+        AR_SWITCHING_LANE = 2
+        NODES_LEFT = ['16','138','137','136','135','134','7']
+        NODES_RIGHT = ['15','143','142','141','140','139','8']
+        if self.curr_state.just_switched:
+            self.car.drive_speed(0.0) #stop
+            sleep(SLEEP_AFTER_STOPPING)
+            self.curr_state.var1 = (np.array([0.0,0.0]), 0) #(position, counter)
+            self.curr_state.var2 = time()
+            self.curr_state.var3 = (AR_WATING_FOR_GPS, True)
+            self.curr_state.var4 = False #IN RIGHT LANE  
+            self.curr_state.just_switched = False
+        
+        substate, just_switched_substate = self.curr_state.var3
+        print(f'Substate: {substate}, just switched: {just_switched_substate}')
+        if substate == AR_WATING_FOR_GPS:
+            #localize the car and go to the first checkpoint
+            #for now we will assume to be in the correct position
+            curr_time = time()
+            if self.conditions[TRUST_GPS]:
+                self.curr_state.var2 = time() #reset timer
+                curr_pos = np.array([self.car.x_est, self.car.y_est])
+                prev_pos, cnt = self.curr_state.var1
+                if norm(curr_pos - prev_pos) < GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE:
+                    cnt += 1
+                    if cnt >= GPS_CONVERGENCE_PATIANCE:
+                        self.curr_state.var3 = (AR_SWITCHING_LANE, True)
+                        closest_node, distance = self.path_planner.get_closest_node(curr_pos)
+                        print(f'GPS converged, node: {closest_node}, distance: {distance:.2f}')
+                        if closest_node in NODES_LEFT:
+                            self.curr_state.var4 = True
+                        elif closest_node in NODES_RIGHT:
+                            self.curr_state.var4 = False
+                        else:
+                            print('ERROR: ROADBLOCK: GPS converged but we are not in a possible node for switching lane')
+                            self.car.stop()
+                            sleep(3)
+                            exit()
+                        if distance > 0.8:
+                            print('ERROR: REROUTING: GPS converged, but distance is too large, we are too far from the lane')
+                            sleep(3)
+                            exit()
+                    else: print(f'Waiting for GPS convergence... {cnt}/{GPS_CONVERGENCE_PATIANCE}')
+                else:
+                    cnt = 0
+                    print('GPS not converged yet')
+                self.curr_state.var1 = (curr_pos, cnt)
+                sleep(GPS_SAMPLE_TIME)
+            else:
+                start_time = self.curr_state.var2
+                print(f'Waiting for gps: {(curr_time-start_time):.1f}/{GPS_TIMEOUT}')
+                if curr_time - start_time > GPS_TIMEOUT:
+                    print('WARNING: ROUTE_GENERATION: No gps signal or GPS not trusted, Starting from the first checkpoint')
+                    sleep(3.0)
+        elif substate == AR_SWITCHING_LANE:
+            in_right_lane = self.curr_state.var4
+            if just_switched_substate:
+                if in_right_lane:
+                    print('Switching to left lane')
+                    self.car.drive_angle(-AVOID_ROADBLOCK_ANGLE)
+                else:
+                    print('Switching to right lane')
+                    self.car.drive_angle(AVOID_ROADBLOCK_ANGLE)
+                sleep(STEER_ACTUATION_DELAY)
+                self.car.drive_speed(AVOID_ROADBLOCK_SPEED)
+                self.curr_state.var1 = start_encoder_pos = self.car.encoder_distance
+                self.curr_state.var3 = (AR_SWITCHING_LANE, False) #just switched = false
+            else:
+                start_encoder_pos = self.curr_state.var1
+                curr_encoder_dist = self.car.encoder_distance
+                if curr_encoder_dist - start_encoder_pos > AVOID_ROADBLOCK_DISTANCE*0.6:
+                    self.car.drive_angle(+AVOID_ROADBLOCK_ANGLE) if in_right_lane else self.car.drive_angle(-AVOID_ROADBLOCK_ANGLE)
+                if curr_encoder_dist - start_encoder_pos > AVOID_ROADBLOCK_DISTANCE:
+                    print('Arrived, switching back to rerouting')
+                    self.car.drive_speed(0.0)
+                    self.switch_to_state(START_STATE)
+        else:
+            print('ERROR: AVOIDING_ROADBLOCK: Wrong substate')
+            self.car.stop()
+            sleep(3)
+            exit()
+    
 
     def parking(self):
         #Substates
@@ -1427,7 +1514,10 @@ class Brain:
 
     def detect_stop_line(self):
         #update the variable self.detect.est_dist_to_stop_line
+        # x_stop, y_stop, yaw_stop = self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
         dist = self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
+
+        # STOPLINE_OFFSET = 0.3
 
         past_detections = self.routines[DETECT_STOP_LINE].var2
         assert STOP_LINE_APPROACH_DISTANCE-0.1 > 0.1, 'STOP_LINE_APPROACH_DISTANCE too small, must be >0.2'
@@ -1444,7 +1534,7 @@ class Brain:
             
             assert past_detections is not None, 'past_detections is None, wrong initialization'
 
-            adapted_distance = dist + self.car.encoder_distance
+            adapted_distance = dist + self.car.encoder_distance #- 0.4 #we substract the car length = 0.4
 
             past_detections.append(adapted_distance)
             self.stop_line_distance_median = np.mean(past_detections) if len(past_detections) > SAMPLE_BEFORE_CONFIDENCE else None
@@ -1503,24 +1593,24 @@ class Brain:
                     if cv.waitKey(10) == 27:
                         break
                 exit()
-        
-        #check that x_est,y_est are roughly equal to x_true,y_true
-        if self.car.trust_gps and SIMULATOR_FLAG:
-            p_est = np.array([self.car.x_est, self.car.y_est])
-            p_true = np.array([self.car.x_true, self.car.y_true])
-            diff = np.linalg.norm(p_est - p_true)
-            if diff > 0.15:
-                print("CHECKS: AUTOMOBILE_DATA: difference between estimated and true position is too large: %f" % diff)
-                self.car.stop()
-                if SHOW_IMGS:
-                    color=(255,0,255) if self.car.trust_gps else (100,0,100)
-                    draw_car(self.path_planner.map, self.car.x_true, self.car.y_true, self.car.yaw, color=(0,180,0))
-                    draw_car(self.path_planner.map, self.car.x_est, self.car.y_est, self.car.yaw, color=color)
-                    cv.imshow('Path', self.path_planner.map)
-                    while True:
-                        if cv.waitKey(10) == 27:
-                            break
-                exit()
+        # #check that x_est,y_est are roughly equal to x_true,y_true
+        # if self.car.trust_gps and SIMULATOR_FLAG:
+        #     p_est = np.array([self.car.x_est, self.car.y_est])
+        #     p_true = np.array([self.car.x_true, self.car.y_true])
+        #     diff = np.linalg.norm(p_est - p_true)
+        #     if diff > 0.15:
+        #         print("CHECKS: AUTOMOBILE_DATA: difference between estimated and true position is too large: %f" % diff)
+        #         self.car.stop()
+        #         if SHOW_IMGS:
+        #             color=(255,0,255) if self.car.trust_gps else (100,0,100)
+        #             draw_car(self.path_planner.map, self.car.x_true, self.car.y_true, self.car.yaw, color=(0,180,0))
+        #             draw_car(self.path_planner.map, self.car.x_est, self.car.y_est, self.car.yaw, color=color)
+        #             cv.imshow('Path', self.path_planner.map)
+        #             while True:
+        #                 if cv.waitKey(10) == 27:
+        #                     break
+        #         exit()
+        pass
         
     #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
@@ -1550,6 +1640,7 @@ class Brain:
         routines_to_activate are a list of strings (routines)
         ex: ['follow_lane', 'control_for_signs']
         """
+        assert all([r in self.routines.keys() for r in routines_to_activate]), 'ERROR: activate_routines: routines_to_activate contains invalid routine'
         self.active_routines_names = []
         for k,r in self.routines.items():
             r.active = k in routines_to_activate

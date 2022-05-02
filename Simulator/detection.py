@@ -1,9 +1,8 @@
 #!/usr/bin/python3
 
-from turtle import width
 import numpy as np
 import cv2 as cv
-import os
+import pickle , collections
 from time import time, sleep
 
 from helper_functions import *
@@ -28,8 +27,22 @@ SIGN_CLASSIFIER_PATH = 'models/sign_classifier.onnx'
 SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
 # SIGN_NAMES = ['park', 'closed_road', 'highway_exit', 'highway_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'traffic_light', 'NO_sign']
 
-OBSTACLE_CLASSIFIER_PATH = 'models/pedestrian_classifier_small.onnx'
-OBSTACLE_NAMES = ['pedestrian', 'roadblock', 'NO_obstacle'] #add cars
+#Obstacle classifier
+NUM_CLUSTERS = 1200
+KERNEL_TYPE = 'linear'
+obstacles_dict = {
+    "0": "car",
+    "1": "pedestrian",
+    "2": "roadblock",
+    "3": "No obstacle"
+}
+
+distance_dict = {
+    '20': [(94, 60),(227, 160)],
+    '30': [(103, 45),(217, 131)],
+    '40': [(116, 43),(205, 110)],
+    '50': [(120, 40),(200, 100)]
+}
 
 class Detection:
 
@@ -69,11 +82,16 @@ class Detection:
         self.avg_sign_detection_time = 0.0
         self.sign_detection_count = 0.0
 
-        #test frontal obstacles classifications
-        self.obstacle_classifier = cv.dnn.readNetFromONNX(OBSTACLE_CLASSIFIER_PATH)
-        self.front_obstacle_names = OBSTACLE_NAMES
-        self.last_obstacle_detected = self.front_obstacle_names[-1]
-        self.last_obstacle_conf = 0.0
+        #obstacle classifier
+        self.no_clusters = NUM_CLUSTERS #use const
+        self.kernel_type = KERNEL_TYPE #const
+        self.svm_model = pickle.load(open('models/obstacle_models/svm_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
+        self.kmean_model = pickle.load(open('models/obstacle_models/kmeans_' + self.kernel_type + '_' +  str(self.no_clusters) + '.pkl', 'rb'))
+        self.scale_model = pickle.load(open('models/obstacle_models/scale_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
+        self.sift = cv.SIFT_create()
+        # self.obstacles_probs_buffer = collections.deque(maxlen=OBSTACLE_DETECTION_DEQUE_LENGTH) 
+        self.prediction = None
+        self.conf = 0        
 
     def detect_lane(self, frame, show_ROI=True, faster=True):
         """
@@ -214,6 +232,50 @@ class Detection:
         return e3, est_point_ahead
 
     def detect_stop_line(self, frame, show_ROI=True):
+        """
+        Estimates the distance to the next stop line
+        """
+        start_time = time()
+        IMG_SIZE = (32,32) #match with trainer
+        #convert to gray
+        frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        frame = frame[int(frame.shape[0]*(2/5)):,:]
+        #keep the bottom 2/3 of the image
+        #blur
+        # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
+        frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
+        frame = cv.Canny(frame, 100, 200)
+        frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
+        frame = cv.resize(frame, IMG_SIZE)
+
+        # # # add noise 1.5 ms 
+        # std = 50
+        # # std = np.random.randint(1, std)
+        # noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.subtract(frame, noisem)
+        # noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.add(frame, noisep)
+
+        blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
+        # assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
+        self.stop_line_estimator.setInput(blob)
+        output = self.stop_line_estimator.forward()
+        dist = output[0][0]
+
+        self.est_dist_to_stop_line = dist
+
+        # return e2, e3, inv_dist, curv, est_point_ahead
+        # print(f"lane_detection: {1000*(time()-start_time):.2f} ms")
+        stop_line_detection_time = 1000*(time()-start_time)
+        self.avg_stop_line_detection_time = (self.avg_stop_line_detection_time*self.lane_cnt + stop_line_detection_time)/(self.lane_cnt+1)
+        self.lane_cnt += 1
+        if show_ROI:
+            cv.imshow('stop_line_detection', frame)
+            cv.waitKey(1)
+        print(f"stop_line_detection dist: {dist:.2f}, in {stop_line_detection_time:.2f} ms")
+        return dist
+
+    def detect_stop_line2(self, frame, show_ROI=True):
         """
         Estimates the distance to the next stop line
         """

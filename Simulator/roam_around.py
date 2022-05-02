@@ -67,9 +67,9 @@ if __name__ == '__main__':
             # TEST DETECTION HERE
             # sign = detect.detect_sign(car.frame, show_ROI=True)
 
-            stopline_x, stopline_y, stopline_angle = detect.detect_stop_line(car.frame, show_ROI=True)
+            # stopline_x, stopline_y, stopline_angle = detect.detect_stop_line(car.frame, show_ROI=True)
 
-            frame, _ = project_stopline(frame, car, stopline_x, stopline_y, stopline_angle, color=(0,200,0))
+            # frame, _ = project_stopline(frame, car, stopline_x, stopline_y, stopline_angle, color=(0,200,0))
 
             # #test drive distance
             # print('driving 0.5')

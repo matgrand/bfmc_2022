@@ -29,6 +29,9 @@ namespace gazebo
 
             // The gps message
             utils::localisation            m_gps_pose;
+
+            //deque of past gps messages
+            std::deque<utils::localisation> m_gps_history;
             
             // last publish time
             double last_pub;
