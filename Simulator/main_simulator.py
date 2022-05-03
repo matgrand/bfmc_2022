@@ -29,9 +29,9 @@ training = True
 generate_path = True if training else False
 folder = 'training_imgs' 
 folder = 'test_imgs'
-PATH_NODES = [86, 116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,
+PATH_NODES = [86, 116,115,116,453,466,465,466,465,466,465,
                 428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
-                115,116,115,116,115,116,115,116,115,116,115,116,115,116,115,
+                115,116,298,236,274,225,349,298,244,115,116,428,116,428,
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355,
                 87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
@@ -54,7 +54,7 @@ FPS_TARGET = 30.0
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.15# [m/s]
+DESIRED_SPEED = 0.12# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -63,7 +63,7 @@ k3 = 0.9 #1.0 yaw error gain .8 with ff
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
-noise_std = np.deg2rad(23.0) # [rad] noise in the steering angle
+noise_std = np.deg2rad(27.0) # [rad] noise in the steering angle
 
 
 if __name__ == '__main__':
