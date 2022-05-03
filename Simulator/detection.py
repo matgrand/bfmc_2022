@@ -20,9 +20,6 @@ LOCAL_PATH_ESTIMATOR_PATH = "models/local_path_estimator.onnx"
 NUM_POINTS_AHEAD = 5
 DISTANCE_BETWEEN_POINTS = 0.2
 
-TRAFFICLIGHT_CLASSIFIER_PATH = 'models/trafficlight_classifier_small.onnx'
-TRAFFIC_LIGHT_NAMES = ['traffic_light', 'NO_traffic_light']
-
 # SIGN_CLASSIFIER_PATH = 'models/sign_classifier.onnx'
 SIGN_NAMES = ['park', 'closed_road', 'hw_exit', 'hw_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
 # SIGN_NAMES = ['park', 'closed_road', 'hw_exit', 'hw_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'traffic_light', 'NO_sign']
@@ -84,17 +81,12 @@ class Detection:
         self.local_path_estimator = cv.dnn.readNetFromONNX(LOCAL_PATH_ESTIMATOR_PATH)
         self.avg_local_path_detection_time = 0
 
-        #traffic light classifier #trafficlight is abbreviated in tl
-        self.tl_classifier =  cv.dnn.readNetFromONNX(TRAFFICLIGHT_CLASSIFIER_PATH)
-        self.tl_names = TRAFFIC_LIGHT_NAMES
-        self.prev_tl_conf = 0.0
-
         #sign classifier
         self.no_clusters = NUM_CLUSTERS_SIGNS 
         self.kernel_type = KERNEL_TYPE_SIGNS 
-        self.svm_model = pickle.load(open('models/svm_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
-        self.kmean_model = pickle.load(open('models/kmeans_' + self.kernel_type + '_' +  str(self.no_clusters) + '.pkl', 'rb'))
-        self.scale_model = pickle.load(open('models/scale_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
+        self.svm_model = pickle.load(open('models/traffic_signs_models/svm_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
+        self.kmean_model = pickle.load(open('models/traffic_signs_models/kmeans_' + self.kernel_type + '_' +  str(self.no_clusters) + '.pkl', 'rb'))
+        self.scale_model = pickle.load(open('models/traffic_signs_models/scale_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
         self.sift = cv.SIFT_create()
         self.obstacles_probs_buffer = collections.deque(maxlen=10) 
         self.prediction = NO_SIGN

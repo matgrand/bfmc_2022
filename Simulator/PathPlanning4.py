@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+from re import I
 from time import time, sleep
 import networkx as nx
 import numpy as np
@@ -48,12 +49,10 @@ class PathPlanning():
         self.nodes_data = self.G.nodes.data()
         self.edges_data = self.G.edges.data()
 
-        self.all_nodes = list(self.G.nodes)
-        self.all_nodes_coords = np.array([self.get_coord(node) for node in self.all_nodes])
 
         # define intersection central nodes
         #self.intersection_cen = ['347', '37', '39', '38', '11', '29', '30', '28', '371', '84', '9', '20', '20', '82', '75', '74', '83', '312', '315', '65', '468', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
-        self.intersection_cen = ['37', '39', '38', '11', '29', '30', '28', '371', '84', '9','19', '20', '21', '82', '75', '74', '83', '312', '315', '65', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
+        self.intersection_cen = ['468','12','37', '39', '38', '11', '29', '30', '28', '84', '9','19', '20', '21', '82', '75', '74', '83', '312', '315', '65', '10', '64', '57', '56','55', '66', '73', '48', '47', '46']
 
         # define intersecion entrance nodes
         self.intersection_in = [77,45,54,50,41,79,374,52,43,81,36,4,68,2,34,70,6,32,72,59,15,16,27,14,25,18,61,23,63]
@@ -83,6 +82,8 @@ class PathPlanning():
         self.junctions = [467,314]
         self.junctions = [str(i) for i in self.junctions]
 
+        self.forbidden_nodes = self.intersection_cen + self.intersection_in + self.intersection_out + self.crosswalk + self.ra + self.ra_enter + self.ra_exit + self.junctions
+
         #event points
         self.event_points = np.load('data/event_points.npy') #created in R coord
         self.event_types = np.load('data/event_types.npy')
@@ -94,8 +95,19 @@ class PathPlanning():
         self.list_of_nodes = list(self.G.nodes)
         self.list_of_edges = list(self.G.edges)
 
-
-
+        #spossible starting positions
+        all_start_nodes = list(self.G.nodes)
+        self.all_start_nodes = []
+        print(all_start_nodes)
+        print(self.forbidden_nodes)
+        for n in all_start_nodes:
+            p = self.get_coord(n)
+            min_dist = np.min(np.linalg.norm(p - self.event_points, axis=1))
+            if n in self.forbidden_nodes or min_dist < 0.2:
+                print(n)
+            else:
+                self.all_start_nodes.append(n)
+        self.all_nodes_coords = np.array([self.get_coord(node) for node in self.all_start_nodes])
         # import map to plot trajectory and car
         self.map = map_img
 
@@ -535,4 +547,4 @@ class PathPlanning():
         diff = self.all_nodes_coords - p
         dist = np.linalg.norm(diff, axis=1)
         index_closest = np.argmin(dist)
-        return self.all_nodes[index_closest], dist[index_closest]
+        return self.all_start_nodes[index_closest], dist[index_closest]

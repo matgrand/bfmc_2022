@@ -38,7 +38,7 @@ path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
 k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
-k3 = 0.8 #1.0 yaw error gain .8 with ff 
+k3 = 0.99 #1.0 yaw error gain .8 with ff 
 k3D = 0.08 #0.08 derivative gain of yaw error
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
@@ -138,7 +138,7 @@ if __name__ == '__main__':
             ## DEBUG INFO
             print(car)
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
-            print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
+            # print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
             print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
 
             if SHOW_IMGS:
