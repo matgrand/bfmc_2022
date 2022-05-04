@@ -6,6 +6,7 @@ import pickle , collections
 from time import time, sleep
 
 from helper_functions import *
+from stopline import StopLine, detect_angle
 
 LANE_KEEPER_PATH = "models/lane_keeper_small.onnx"
 DISTANCE_POINT_AHEAD = 0.35
@@ -652,4 +653,6 @@ class Detection:
             cv.imshow("Frame preview", image)
             cv.waitKey(1)
 
+    def detect_yaw_stopline(self, frame, show_ROI=False):
+        return detect_angle(original_frame=frame, plot=show_ROI)
 

@@ -26,7 +26,7 @@ class PathPlanning():
         self.prev_index = 0
 
         # read graph
-        self.G = nx.read_graphml('random_stuff/Competition_track.graphml')
+        self.G = nx.read_graphml('data/Competition_track.graphml')
         # initialize route subgraph and list for interpolation
         self.route_graph = nx.DiGraph()
         self.route_list = []
@@ -34,7 +34,7 @@ class PathPlanning():
 
         # define intersection central nodes
         #self.intersection_cen = ['347', '37', '39', '38', '11', '29', '30', '28', '371', '84', '9', '20', '20', '82', '75', '74', '83', '312', '315', '65', '468', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
-        self.intersection_cen = ['37', '39', '38', '11', '29', '30', '28', '371', '84', '9','19', '20', '21', '82', '75', '74', '83', '312', '315', '65', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
+        self.intersection_cen = ['468','12','37', '39', '38', '11', '29', '30', '28', '84', '9','19', '20', '21', '82', '75', '74', '83', '312', '315', '65', '10', '64', '57', '56','55', '66', '73', '48', '47', '46']
 
         # define intersecion entrance nodes
         self.intersection_in = [77,45,54,50,41,79,374,52,43,81,36,4,68,2,34,70,6,32,72,59,15,16,27,14,25,18,61,23,63]
@@ -251,6 +251,7 @@ class PathPlanning():
         ''' Generates the shortest path between source and target nodes using Clothoid interpolation '''
         src = str(source) if source is not None else self.source
         tgt = str(target) if target is not None else self.target
+        print(f'Source: {src}, Target: {tgt}')
         self.source = src
         self.target = tgt
         self.step_length = step_length

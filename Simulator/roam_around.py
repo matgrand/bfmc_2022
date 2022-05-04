@@ -17,7 +17,7 @@ class_list = []
 with open("data/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
-LOOP_DELAY = 0.005
+LOOP_DELAY = 0.05
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 
@@ -100,7 +100,6 @@ if __name__ == '__main__':
             ## DEBUG INFO
             print(car)
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
-            print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
             print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
 
             cv.imshow('frame', frame)

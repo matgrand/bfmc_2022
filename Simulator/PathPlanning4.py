@@ -108,6 +108,10 @@ class PathPlanning():
             else:
                 self.all_start_nodes.append(n)
         self.all_nodes_coords = np.array([self.get_coord(node) for node in self.all_start_nodes])
+
+        #highway nodes
+        self.highway_nodes = [str(i) for i in [*range(311,338), *range(375,398), *range(348,371), *range(400,424)]]
+
         # import map to plot trajectory and car
         self.map = map_img
 
@@ -189,7 +193,7 @@ class PathPlanning():
         self.navigator.append("exit intersection at " + curr_node)
         self.navigator.append("go straight")
         return prev_node, curr_node, next_node
-    
+
     def compute_route_list(self):
         ''' Augments the route stored in self.route_graph'''
         #print("source=",source)
@@ -542,9 +546,20 @@ class PathPlanning():
 
     def get_closest_node(self, p):
         '''
-        Returns the closes node to the given point
+        Returns the closes node to the given point np.array([x,y])
         '''
         diff = self.all_nodes_coords - p
         dist = np.linalg.norm(diff, axis=1)
         index_closest = np.argmin(dist)
         return self.all_start_nodes[index_closest], dist[index_closest]
+
+    def is_dotted(self, n):
+        """
+        Check if a node is close to a dotted line
+        """
+        #get edge of the node going out
+        edges = self.G.out_edges(n)
+        for e in edges:
+            if not self.G.get_edge_data(e[0],e[1])['dotted']:
+                return False
+        return True

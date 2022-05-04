@@ -457,8 +457,12 @@ def sobel(img_channel, orient='x', sobel_kernel=3):
  
 
 def detect_angle(original_frame=None, plot=False):
+  frame = original_frame.copy()
+  X_OFFSET = 50
+  frame = frame[:,X_OFFSET:-X_OFFSET,:]
+
   # Create a Lane object
-  lane_obj = StopLine(orig_frame=original_frame.copy())
+  lane_obj = StopLine(orig_frame=frame)
  
   # Perform thresholding to isolate lane lines
   lane_line_markings = lane_obj.get_line_markings()

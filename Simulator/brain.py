@@ -22,7 +22,7 @@ from helper_functions import *
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [86,200,264,283,99,116,102, 136,116,90,125]#150,155,203, 205,185,190,193,203,190,203]
+CHECKPOINTS = [86,311,243]#150,155,203, 205,185,190,193,203,190,203]
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -133,15 +133,12 @@ TRUST_GPS = 'trust_gps'
 CAR_ON_PATH = 'car_on_path'
 REROUTING = 'rerouting'
 CONDITIONS = {
-    IN_RIGHT_LANE:            False,  # if true, the car can switch to the right lane, for obstacle avoidance
-    IN_LEFT_LANE:             False,  # if true, the car can switch to the left lane, for overtaking or obstacle avoidance
-    IS_DOTTED_LINE:           False,  # if true, the car is on a dotted line, for obstacle avoidance
-    CAN_OVERTAKE:             True,
-    HIGHWAY:                  False,  # if true, the car is in a highway, the speed should be higher on highway, 
-    TRUST_GPS:                True,   # if true the car will trust the gps, for example in expecting a sign or traffic light
+    CAN_OVERTAKE:             True,     #if true, the car is in presence of a dotted line and is allowed to overtake it
+    HIGHWAY:                  False,    # if true, the car is in a highway, the speed should be higher on highway, 
+    TRUST_GPS:                True,     # if true the car will trust the gps, for example in expecting a sign or traffic light
                                         # can be set as false if there is a lot of package loss or the car has not received signal in a while
-    CAR_ON_PATH:              True,   # if true, the car is on the path, if the gps is trusted and the position is too far from the path it will be set to false
-    REROUTING:                True   # if true, the car is rerouting, for example at the beginning or after a roadblock
+    CAR_ON_PATH:              True,     # if true, the car is on the path, if the gps is trusted and the position is too far from the path it will be set to false
+    REROUTING:                True      # if true, the car is rerouting, for example at the beginning or after a roadblock
 }
 
 #======================== ACHIEVEMENTS ========================
@@ -208,13 +205,13 @@ STEER_ACTUATION_DELAY = 0.3 #[s] delay to perform the steering manouver
 # OBSTACLES
 OBSTACLE_IS_ALWAYS_PEDESTRIAN = False
 OBSTACLE_IS_ALWAYS_CAR = False
-OBSTACLE_IS_ALWAYS_ROADBLOCK = True
+OBSTACLE_IS_ALWAYS_ROADBLOCK = False
 MIN_DIST_BETWEEN_OBSTACLES = 0.5 #dont detect obstacle for this distance after detecting one of them
 assert OBSTACLE_IS_ALWAYS_PEDESTRIAN ^ OBSTACLE_IS_ALWAYS_CAR ^ OBSTACLE_IS_ALWAYS_ROADBLOCK or not (OBSTACLE_IS_ALWAYS_PEDESTRIAN or OBSTACLE_IS_ALWAYS_CAR or OBSTACLE_IS_ALWAYS_ROADBLOCK)
 OBSTACLE_DISTANCE_THRESHOLD = 0.5 #[m] distance from the obstacle to consider it as an obstacle
-OBSTACLE_CONTROL_DISTANCE = 0.2 #distance to where to stop wrt the obstacle
-OBSTACLE_IMGS_CAPTURE_START_DISTANCE = 0.4 #dist from where we capture imgs 
-OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE = 0.25 #dist up to we capture imgs
+OBSTACLE_CONTROL_DISTANCE = 0.25 #distance to where to stop wrt the obstacle
+OBSTACLE_IMGS_CAPTURE_START_DISTANCE = 0.45 #dist from where we capture imgs 
+OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE = 0.28 #dist up to we capture imgs
 assert OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE > OBSTACLE_CONTROL_DISTANCE
 PEDESTRIAN_CONTROL_DISTANCE = 0.35 #[m] distance to keep from the pedestrian
 PEDESTRIAN_TIMEOUT = 2.0 #[s] time to w8 after the pedestrian cleared the road
@@ -478,6 +475,7 @@ class Brain:
         #NOTE: TEMPORARY solution
         #check highway exit case
         if self.next_event.name == HIGHWAY_EXIT_EVENT:
+            self.prev_event.encoder_dist_event = self.car.encoder_distance
             self.go_to_next_event()
 
         # end of current route, go to end state
@@ -663,7 +661,7 @@ class Brain:
                 d = self.stop_line_distance_median - self.car.encoder_distance 
             sleep(.8)
             e2, _, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
-            # e2 = 0.0 # NOTE e2 is usually bad
+            e2 = 0.0 # NOTE e2 is usually bad
             # retrieve global position of the car, can be done usiing the stop_line
             # or using the gps, but for now we will use the stop_line
             # NOTE: in the real car we need to have a GLOBAL YAW OFFSET to match the simulator with the real track
@@ -674,9 +672,13 @@ class Brain:
             local_path_slf_rot = self.next_event.path_ahead #local path in the stop line frame
 
             # get orientation of the car in the stop line frame
+            alpha = self.detect.detect_yaw_stopline(self.car.frame, SHOW_IMGS)
+            print(f'alpha est: {alpha}')
             yaw_car = self.car.yaw
             yaw_mult_90 = get_yaw_closest_axis(yaw_car)
             alpha = diff_angle(yaw_car, yaw_mult_90) #get the difference from the closest multiple of 90deg
+            print(f'alpha true: {alpha}')
+            sleep(5)
             assert abs(alpha) < np.pi/6, f'Car orientation wrt stopline is too big, it needs to be better aligned, alpha = {alpha}'
             rot_matrix = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
             
@@ -1443,7 +1445,7 @@ class Brain:
     
     def classifying_obstacle(self):
         self.activate_routines([FOLLOW_LANE])
-        IMGS_DEQUE_MAX_LEN = 15
+        IMGS_DEQUE_MAX_LEN = 20
         dist = self.car.filtered_sonar_distance
         if self.curr_state.just_switched:
             #drive to fixed dist from the obstacle
@@ -1453,6 +1455,7 @@ class Brain:
             self.curr_state.var1 = deque(maxlen=IMGS_DEQUE_MAX_LEN) #stored in var1
             dist_save_imgs = dist_to_drive 
             self.curr_state.var2 = (0, np.linspace(OBSTACLE_IMGS_CAPTURE_START_DISTANCE, OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE, IMGS_DEQUE_MAX_LEN)) #var2 holds a touple: (index, position where to take the image)
+            self.curr_state.var3 = []
             self.curr_state.just_switched=False
 
         if dist >= OBSTACLE_DISTANCE_THRESHOLD: #
@@ -1463,6 +1466,7 @@ class Brain:
         #more readable variables
         imgs_deque = self.curr_state.var1
         idx, img_distances = self.curr_state.var2
+        distances = self.curr_state.var3
 
         if dist > OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE: #we are approaching the obstacle
             print('Capturing imgs')
@@ -1470,11 +1474,16 @@ class Brain:
                 print(f'Saving img {idx}, at distance: {img_distances[idx]}, sonar_dist: {dist} ')
                 frame_to_save = self.car.frame.copy()
                 imgs_deque.append(frame_to_save)
+                distances.append(dist)
                 idx += 1
         else:
             if len(imgs_deque) > 0:
                 ## DO SOMETHING WITH THE IMAGES
-                # obstacle = self.detect.classify_frontal_obstacle(self.car.frame)    #TODO SAMIRA
+                frames = [img for img in imgs_deque]
+                print(f'Captured {len(frames)} imgs, running classification...')
+                obstacle, conf = self.detect.classify_frontal_obstacle(frames, distances, show_ROI=SHOW_IMGS)    
+                print(f'Obstacle: {obstacle}')
+                sleep(10)
                 # for i,img in enumerate(imgs_deque):
                 #     cv.imshow(f'img {i}', img)
                 # SWITCH STATE
@@ -1499,6 +1508,7 @@ class Brain:
         #reassing the variables
         self.curr_state.var1 = imgs_deque
         self.curr_state.var2 = (idx, img_distances)
+        self.curr_state.var3 = distances
 
     #=============== ROUTINES ===============#
     def follow_lane(self):
@@ -1579,44 +1589,54 @@ class Brain:
 
     # STATE CHECKS
     def check_logic(self):
-        print('check_logic')
-        #check if car is in a lane
-        if self.conditions[TRUST_GPS] and not self.conditions[REROUTING]:
-            path = self.path_planner.path
-            car_pos = np.array([self.car.x_est, self.car.y_est])
-            diff = norm(car_pos - path, axis=1)
-            min_diff = np.min(diff)
-            if min_diff > MAX_DIST_AWAY_FROM_LANE: #TODO #IMPLEMENT THIS CASE
-                print(f'ERROR: CHECKS: Car is not on path, distance = {min_diff:.2f}')
-                self.car.stop()
-                while True and SHOW_IMGS:
-                    if cv.waitKey(10) == 27:
-                        break
-                exit()
-        # #check that x_est,y_est are roughly equal to x_true,y_true
-        # if self.car.trust_gps and SIMULATOR_FLAG:
-        #     p_est = np.array([self.car.x_est, self.car.y_est])
-        #     p_true = np.array([self.car.x_true, self.car.y_true])
-        #     diff = np.linalg.norm(p_est - p_true)
-        #     if diff > 0.15:
-        #         print("CHECKS: AUTOMOBILE_DATA: difference between estimated and true position is too large: %f" % diff)
-        #         self.car.stop()
-        #         if SHOW_IMGS:
-        #             color=(255,0,255) if self.car.trust_gps else (100,0,100)
-        #             draw_car(self.path_planner.map, self.car.x_true, self.car.y_true, self.car.yaw, color=(0,180,0))
-        #             draw_car(self.path_planner.map, self.car.x_est, self.car.y_est, self.car.yaw, color=color)
-        #             cv.imshow('Path', self.path_planner.map)
-        #             while True:
-        #                 if cv.waitKey(10) == 27:
-        #                     break
-        #         exit()
-        pass
+        if not self.conditions[CAR_ON_PATH]:
+            print(f'ERROR: CHECKS: Car is not on path')
+            self.car.stop()
+            while True and SHOW_IMGS:
+                if cv.waitKey(10) == 27:
+                    break
+            exit()
+
+    # UPDATE CONDITIONS
+    def update_conditions(self):
+        """"
+        This will update the conditions at every iteration, it is called at the end of a self.run
+        """
+        #mirror trust gps from automobile_data
+        self.conditions[TRUST_GPS] = self.car.trust_gps and not ALWAYS_DISTRUST_GPS or ALWAYS_TRUST_GPS
         
+        if self.conditions[TRUST_GPS]:
+
+            est_pos = np.array([self.car.x_est, self.car.y_est])
+            closest_node, distance = self.path_planner.get_closest_node(est_pos)
+
+            #HIGHWAY
+            self.conditions[HIGHWAY] = closest_node in self.path_planner.highway_nodes
+
+            #OVERTAKE/DOTTED_LINE
+            self.conditions[CAN_OVERTAKE] = self.path_planner.is_dotted(closest_node) 
+
+            #REROUTING updated in start state
+
+            #CAR_ON_PATH
+            if not self.conditions[REROUTING]:
+                path = self.path_planner.path
+                diff = norm(est_pos - path, axis=1)
+                min_diff = np.min(diff)
+                if min_diff > MAX_DIST_AWAY_FROM_LANE: #TODO #IMPLEMENT THIS CASE
+                    self.conditions[CAR_ON_PATH] = False
+                else:
+                    self.conditions[CAR_ON_PATH] = True
+
+            
+
+
+
+
+
     #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
-        #update trust_gps
-        self.conditions[TRUST_GPS] = self.car.trust_gps and not ALWAYS_DISTRUST_GPS or ALWAYS_TRUST_GPS
-
+        
         print('==========================================================================')
         print(f'STATE:          {self.curr_state}')
         print(f'UPCOMING_EVENT: {self.next_event}')
@@ -1626,6 +1646,7 @@ class Brain:
         print('==========================================================================')
         print()
         self.run_routines()
+        self.update_conditions()
         self.check_logic()
 
     def run_current_state(self):

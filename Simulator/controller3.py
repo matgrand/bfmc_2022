@@ -6,7 +6,7 @@ import os
 from helper_functions import *
 from time import sleep, time
 
-POINT_AHEAD_CM = 60#60#35 #distance of the point ahead in cm
+POINT_AHEAD_CM = 35#60#35 #distance of the point ahead in cm
 SEQ_POINTS_INTERVAL = 20 #interval between points in the sequence in cm 
 NUM_POINTS = 5 #number of points in the sequence
 L = 0.4  #length of the car, matched with lane_detection
