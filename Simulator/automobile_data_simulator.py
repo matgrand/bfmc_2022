@@ -10,14 +10,14 @@ import numpy as np
 from time import time,sleep
 from helper_functions import *
 
-REALISTIC = False
+REALISTIC = True
 
 ENCODER_TIMER = 0.01 #frequency of encoder reading
 STEER_UPDATE_FREQ = 50.0 if REALISTIC else 150.0 #50#[Hz]
 SERVO_DEAD_TIME_DELAY = 0.15 if REALISTIC else 0.0 #0.15 #[s]
 MAX_SERVO_ANGULAR_VELOCITY = 2.8 if REALISTIC else 15.0 #3. #[rad/s]
 DELTA_ANGLE = np.rad2deg(MAX_SERVO_ANGULAR_VELOCITY) / STEER_UPDATE_FREQ
-MAX_STEER_COMMAND_FREQ = 50.0 # [Hz], If steer commands are sent at an hihger freq they will be discarded
+MAX_STEER_COMMAND_FREQ = 50.0 # [Hz], If steer commands are sent at an higher freq they will be discarded
 MAX_STEER_SAMPLES = max(int((2*SERVO_DEAD_TIME_DELAY) * MAX_STEER_COMMAND_FREQ), 10)
 
 class AutomobileDataSimulator(Automobile_Data):

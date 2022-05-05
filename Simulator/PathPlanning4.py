@@ -59,7 +59,7 @@ class PathPlanning():
         self.intersection_in = [str(i) for i in self.intersection_in]
 
         # define intersecion exit nodes
-        self.intersection_out = [76,78,80,40,42,44,49,51,53,67,69,71,1,3,5,7,8,31,33,35,22,24,26,13,17,58,60,62]
+        self.intersection_out = [76,78,80,40,42,44,49,104,53,67,69,71,1,3,5,7,8,31,33,35,22,24,26,13,17,58,60,62]
         self.intersection_out = [str(i) for i in self.intersection_out]
 
         # define left turns tuples
@@ -310,6 +310,14 @@ class PathPlanning():
         # expand route node and update navigation instructions
         self.compute_route_list()
         
+        #remove duplicates
+        prev_x, prev_y, prev_yaw = 0,0,0
+        for i, (x,y,yaw) in enumerate(self.route_list):
+            if np.linalg.norm(np.array([x,y]) - np.array([prev_x,prev_y])) < 0.001:
+                #remove element from list
+                self.route_list.pop(i)
+            prev_x, prev_y, prev_yaw = x,y,yaw
+            
         # interpolate the route of nodes
         self.path = PathPlanning.interpolate_route(self.route_list, step_length)
 

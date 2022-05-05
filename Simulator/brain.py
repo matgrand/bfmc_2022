@@ -22,7 +22,8 @@ from helper_functions import *
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [86,311,465,243,285]#150,155,203, 205,185,190,193,203,190,203]
+CHECKPOINTS = [86,465,274,298,91,311,465,243,90,285,260]#150,155,203, 205,185,190,193,203,190,203]
+SPEED_CHALLENGE = False
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -154,17 +155,17 @@ ACHIEVEMENTS = {
 #==============================================================
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
 STOP_LINE_APPROACH_DISTANCE = 0.4
-STOP_LINE_STOP_DISTANCE = 0.05 #0.05
+STOP_LINE_STOP_DISTANCE = 0.05 if not SPEED_CHALLENGE else 0.2 #0.05
+DIST_TO_STOP_BEFORE_STOP_LINE = 0.05 #distance from the stop line to stop the car
 assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
-STOP_WAIT_TIME = 0.2 #3.0
+STOP_WAIT_TIME = 0.5 if not SPEED_CHALLENGE else 0.0 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which is possible to start detecting a stop line again
-DIST_TO_STOP_BEFORE_STOP_LINE = 0.05 #distance from the stop line to stop the car
 POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
 USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
 ACCELERATION_CONST = 1.5 #multiplier for desired speed, used to regulate highway speed
-SLOW_DOWN_CONST = 0.3 #multiplier, used when approaching lines
+SLOW_DOWN_CONST = 0.3 if not SPEED_CHALLENGE else 1.0#0.3 #multiplier, used when approaching lines
 STRAIGHT_DIST_TO_EXIT_HIGHWAY = 0.8 #[m] go straight for this distance in orther to exit the hihgway
 
 ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
@@ -203,7 +204,7 @@ DIST_3T = 0.1 #[m] distance to perform the 3rd part of t manouver
 DIST_2S = 0.38 #[m] distance to perform the 2nd part of s manouver
 DIST_4S = 0.05 #[m] distance to perform the 4th part of s manouver
 STEER_ACTUATION_DELAY_PARK = 0.5 #[s] delay to perform the steering manouver
-SLEEP_AFTER_STOPPING = 0.3 #[s] WARNING: this stops the state machine. So be careful increasing it
+SLEEP_AFTER_STOPPING = 0.2 #[s] WARNING: this stops the state machine. So be careful increasing it
 STEER_ACTUATION_DELAY = 0.3 #[s] delay to perform the steering manouver
 
 # OBSTACLES
@@ -417,41 +418,12 @@ class Brain:
             self.car.drive_speed(self.desired_speed)
 
     def end_state(self):
-        self.activate_routines([FOLLOW_LANE])
-        if self.curr_state.just_switched: # first call
-            prev_event_dist = self.prev_event.dist
-            end_dist = len(self.path_planner.path)*0.01
-            dist_to_end = end_dist - prev_event_dist
-            assert dist_to_end > 0.3, f'Distance to end is too small, {dist_to_end:.2f}, choose better checkpoints'
-            self.curr_state.var1 = dist_to_end
-            self.car.drive_speed(self.desired_speed)
-            self.curr_state.just_switched = False
-        #end condition on the distance, can be done with GPS instead, or both TODO
-        dist_to_end = self.curr_state.var1
-        print(f'Distance to end: {dist_to_end:.2f}')
-        print(f'Prev event : {self.prev_event}')
-        print(f'Next event : {self.next_event}')
-        print(f'ENC DIST = {self.car.encoder_distance}')
-        print(f'prev_event.encoder_dist_event = {self.prev_event.encoder_dist_event}')
-        print(f'next_event.encoder_dist_event = {self.next_event.encoder_dist_event}')
-        
-        # self.car.stop()
-        # sleep(5)
-        # self.car.drive_speed(self.desired_speed)
-
-        dist_from_prev_event = self.car.encoder_distance - self.prev_event.encoder_dist_event #NOTE this assume that after a ie a parking the encoder dist is ~0
-        
-        assert dist_from_prev_event > -0.3, f'Distance from prev event is too small, {dist_from_prev_event:.2f}'
-        stopping_in = dist_to_end - dist_from_prev_event
-        print(f'Stoppig in {stopping_in-0.1} [m]')
-        if stopping_in < 0.1:
-            self.car.drive_speed(0.0) #TODO control in position
-            sleep(SLEEP_AFTER_STOPPING)
-            self.go_to_next_event()
-            self.prev_event.encoder_dist_event = self.car.encoder_distance + stopping_in #set the encoder distance of the last event
-            #start routing for next checkpoint
-            self.next_checkpoint()
-            self.switch_to_state(START_STATE)
+        self.activate_routines([])
+        self.car.drive_speed(0.0) #TODO control in position
+        self.go_to_next_event()
+        #start routing for next checkpoint
+        self.next_checkpoint()
+        self.switch_to_state(START_STATE)
 
     def doing_nothing(self):
         self.activate_routines([])
@@ -498,15 +470,22 @@ class Brain:
 
         # end of current route, go to end state
         if self.next_event.name == END_EVENT:
-            #TODO: drive toward end state before switching
-            # if self.conditions[TRUST_GPS]:
-            #     dist_to_end = len(self.path_planner.path)*0.01 - self.car_dist_on_path
-            #     if dist_to_end > :
-            #         print(f'Driving toward end: exiting in {dist_to_end:.2f} [m]')
-            self.switch_to_state(END_STATE)
+            self.activate_routines([FOLLOW_LANE, CONTROL_FOR_OBSTACLES])
+            if self.conditions[TRUST_GPS]: #NOTE End is implemented only with gps now, much more robust, but cannot do it without it
+                dist_to_end = len(self.path_planner.path)*0.01 - self.car_dist_on_path
+                if dist_to_end > 0.2:
+                    print(f'Driving toward end: exiting in {dist_to_end:.2f} [m]')
+                elif -0.2 < dist_to_end <= 0.2:
+                    print(f'Arrived at end, switching to end state')
+                    self.switch_to_state(END_STATE)
+                else:
+                    print('ERROR: LANE FOLLOWING: Missed end')
+                    self.car.stop()
+                    sleep(3)
+                    exit()
             
         #check if we are approaching a stop_line, but only if we are far enough from the previous stop_line
-        far_enough_from_prev_stop_line = (self.prev_event.name is None) or (self.car.dist_loc > STOP_LINE_DISTANCE_THRESHOLD)
+        far_enough_from_prev_stop_line = (self.event_idx == 1) or (self.car.dist_loc > STOP_LINE_DISTANCE_THRESHOLD)
         print(f'stop enough: {self.car.dist_loc}') if self.prev_event.name is not None else None
         if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE and far_enough_from_prev_stop_line and self.routines[DETECT_STOP_LINE].active:
             self.switch_to_state(APPROACHING_STOP_LINE)
@@ -679,8 +658,8 @@ class Brain:
         print('State: tracking_local_path') #var1=initial distance from stop_line, #var2=path to follow
         self.activate_routines([])
         if self.curr_state.just_switched:
-            self.car.drive_speed(0.0)
-            sleep(SLEEP_AFTER_STOPPING)
+            # self.car.drive_speed(0.0)
+            # sleep(SLEEP_AFTER_STOPPING)
             #get distance from the line and lateral error e2
             self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
             if self.stop_line_distance_median is None:
@@ -750,8 +729,8 @@ class Brain:
                 cv.imshow('Path', self.path_planner.map)
                 cv.waitKey(1)
                 #debug
-                self.car.drive_speed(0.0)
-                sleep(SLEEP_AFTER_STOPPING)
+                # self.car.drive_speed(0.0)
+                # sleep(SLEEP_AFTER_STOPPING)
                 # sleep(1.0)
                 cv.namedWindow('local_path', cv.WINDOW_NORMAL)
                 local_map_img = np.zeros_like(self.path_planner.map)
@@ -873,9 +852,12 @@ class Brain:
 
     def waiting_at_stopline(self):
         self.activate_routines([]) #no routines
-        self.car.drive_speed(0.0)
-        sleep(SLEEP_AFTER_STOPPING)
-        if (time() - self.curr_state.start_time) > STOP_WAIT_TIME:
+        if STOP_WAIT_TIME > 0.0:
+            self.car.drive_speed(0.0)
+            sleep(SLEEP_AFTER_STOPPING)
+            if (time() - self.curr_state.start_time) > STOP_WAIT_TIME:
+                self.switch_to_state(INTERSECTION_NAVIGATION)
+        else:
             self.switch_to_state(INTERSECTION_NAVIGATION)
 
     def waiting_for_rerouting(self):
@@ -1799,10 +1781,7 @@ class Brain:
                 yaw_stopline = None
                 len_path_ahead = None
 
-            if name == HIGHWAY_EXIT_EVENT: 
-                print(f'curv = {curv:.2f}')
-                sleep(3)
-            if name == HIGHWAY_EXIT_EVENT and curv > 0.10 : #going straight is 0.15
+            if name == HIGHWAY_EXIT_EVENT and curv > 0.05 : #going straight is ~0.15, right is ~ -0.15
                 pass #skip this case
             else:
                 event = Event(name, dist, point, yaw_stopline, path_to_ret, len_path_ahead, curv)
