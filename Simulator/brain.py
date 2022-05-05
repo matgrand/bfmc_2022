@@ -120,7 +120,6 @@ class Event:
         self.path_ahead = path_ahead    # sequence of points after the event, only for intersections or roundabouts
         self.length_path_ahead = length_path_ahead   # length of the path after the event, only for intersections or roundabouts
         self.curvature = curvature      # curvature of the path ahead of the event
-        self.encoder_dist_event = None  # encoder distance of the event, gets updated at stopline approach or park(for park) or in highway exit(for highway exit)
     def __str__(self):
         return self.name.upper() if self.name is not None else 'None'
 
@@ -156,6 +155,8 @@ ACHIEVEMENTS = {
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
 STOP_LINE_APPROACH_DISTANCE = 0.4
 STOP_LINE_STOP_DISTANCE = 0.05 if not SPEED_CHALLENGE else 0.2 #0.05
+GPS_STOPLINE_APPROACH_DISTANCE = 0.60
+GPS_STOPLINE_STOP_DISTANCE = 0.5
 DIST_TO_STOP_BEFORE_STOP_LINE = 0.05 #distance from the stop line to stop the car
 assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
 STOP_WAIT_TIME = 0.5 if not SPEED_CHALLENGE else 0.0 #3.0
@@ -449,14 +450,13 @@ class Brain:
                 self.switch_to_state(PARKING)
 
         #check highway exit case
-        if self.next_event.name == HIGHWAY_EXIT_EVENT:
+        elif self.next_event.name == HIGHWAY_EXIT_EVENT:
             if self.conditions[TRUST_GPS]:
                 diff = self.next_event.dist - self.car_dist_on_path 
                 if 0.0 < diff:
                     print(f'Driving toward highway exit: exiting in {diff:.2f} [m]')
                 elif -0.05 < diff <= 0.0:
                     print(f'Arrived at highway exit, switching to going straight for exiting')
-                    self.next_event.encoder_dist_event = self.car.encoder_distance
                     self.switch_to_state(GOING_STRAIGHT)
                 else:
                     print('ERROR: LANE FOLLOWING: Missed Highway exit')
@@ -466,10 +466,8 @@ class Brain:
             else:
                 raise NotImplementedError #TODO implement this case with signs
 
-
-
         # end of current route, go to end state
-        if self.next_event.name == END_EVENT:
+        elif self.next_event.name == END_EVENT:
             self.activate_routines([FOLLOW_LANE, CONTROL_FOR_OBSTACLES])
             if self.conditions[TRUST_GPS]: #NOTE End is implemented only with gps now, much more robust, but cannot do it without it
                 dist_to_end = len(self.path_planner.path)*0.01 - self.car_dist_on_path
@@ -485,10 +483,21 @@ class Brain:
                     exit()
             
         #check if we are approaching a stop_line, but only if we are far enough from the previous stop_line
-        far_enough_from_prev_stop_line = (self.event_idx == 1) or (self.car.dist_loc > STOP_LINE_DISTANCE_THRESHOLD)
-        print(f'stop enough: {self.car.dist_loc}') if self.prev_event.name is not None else None
-        if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE and far_enough_from_prev_stop_line and self.routines[DETECT_STOP_LINE].active:
-            self.switch_to_state(APPROACHING_STOP_LINE)
+        else:
+            if self.conditions[TRUST_GPS]:
+                dist_to_stopline = self.next_event.dist - self.car_dist_on_path
+                if GPS_STOPLINE_APPROACH_DISTANCE <= dist_to_stopline: 
+                    print(f'Stopline is far: {dist_to_stopline-GPS_STOPLINE_APPROACH_DISTANCE:.2f} [m]')
+                if 0.0 < dist_to_stopline < GPS_STOPLINE_APPROACH_DISTANCE:
+                    print(f'Switching to approaching stopline')
+                    self.switch_to_state(APPROACHING_STOP_LINE)
+                else:
+                    print(f'It seems we passed the stopline, but its probably because the path self intersected, IGNORING ERROR')
+            else:
+                far_enough_from_prev_stop_line = (self.event_idx == 1) or (self.car.dist_loc > STOP_LINE_DISTANCE_THRESHOLD)
+                print(f'stop enough: {self.car.dist_loc}') if self.prev_event.name is not None else None
+                if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE and far_enough_from_prev_stop_line and self.routines[DETECT_STOP_LINE].active:
+                    self.switch_to_state(APPROACHING_STOP_LINE)
 
 
         if self.conditions[HIGHWAY]:
@@ -497,34 +506,55 @@ class Brain:
 
     def approaching_stop_line(self):
         self.activate_routines([SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES]) #FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES
-        dist = self.detect.est_dist_to_stop_line
-        # #check if we are here by mistake
-        if dist > STOP_LINE_APPROACH_DISTANCE:
-            self.switch_to_state(LANE_FOLLOWING)
-            return
-            # self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE]) #TODO should be removed
-            # self.car.drive_speed(self.desired_speed) #TODO should be removed
 
-        if self.stop_line_distance_median is not None: #we have a median, => we have an accurate position for the stopline
-            print('Driving towards stop line... at distance: ', self.stop_line_distance_median)
-            self.activate_routines([SLOW_DOWN]) #FOLLOW_LANE, SLOW_DOWN#deactivate detect stop line
-            dist_to_drive = self.stop_line_distance_median - self.car.encoder_distance - STOP_LINE_STOP_DISTANCE
-            self.car.drive_distance(dist_to_drive)
-            if dist_to_drive < DIST_TO_STOP_BEFORE_STOP_LINE: 
-                # self.car.drive_speed(0.0)
-                print(f'Arrievd at stop line. Using median distance: {self.stop_line_distance_median}')
-                print(f'                           encoder distance: { self.car.encoder_distance:.2f}')
-                # sleep(1.0)
+        if self.conditions[TRUST_GPS]:
+            dist_to_stopline = self.next_event.dist - self.car_dist_on_path
+            if GPS_STOPLINE_APPROACH_DISTANCE <= dist_to_stopline:
+                print(f'Switching to lane following')
+                self.switch_to_state(LANE_FOLLOWING)
+                return
+            elif GPS_STOPLINE_STOP_DISTANCE <= dist_to_stopline < GPS_STOPLINE_APPROACH_DISTANCE:
+                print(f'Approaching stop line: {dist_to_stopline-GPS_STOPLINE_STOP_DISTANCE:.2f} [m]')
+                decide_next_state = False
+            elif 0.0 <= dist_to_stopline < GPS_STOPLINE_STOP_DISTANCE:
+                print(f'Arrived at stop line')
                 decide_next_state = True
-            else: decide_next_state = False
-        else: #alternative, if we don't have a median, we just use the (possibly inaccurate) network estimaiton
-            print('WARNING: APPROACHING_STOP_LINE: stop distance may be imprecise')
-            if dist < STOP_LINE_STOP_DISTANCE:
-                # self.car.drive_speed(0.0)
-                print('Stopped at stop line. Using network distance: ', self.detect.est_dist_to_stop_line) 
-                decide_next_state = True
-                assert self.stop_line_distance_median is None, 'stop_line_distance_median is not None'
-            else: decide_next_state = False
+            else:
+                print('ERROR: APPROACHING STOP LINE: Missed stop line')
+                self.car.stop()
+                sleep(3)
+                exit()
+        else:
+            dist = self.detect.est_dist_to_stop_line
+            # #check if we are here by mistake
+            if dist > STOP_LINE_APPROACH_DISTANCE:
+                self.switch_to_state(LANE_FOLLOWING)
+                return
+            if self.stop_line_distance_median is not None: #we have a median, => we have an accurate position for the stopline
+                print('Driving towards stop line... at distance: ', self.stop_line_distance_median)
+                self.activate_routines([SLOW_DOWN]) #FOLLOW_LANE, SLOW_DOWN#deactivate detect stop line
+                dist_to_drive = self.stop_line_distance_median - self.car.encoder_distance - STOP_LINE_STOP_DISTANCE
+                self.car.drive_distance(dist_to_drive)
+                if dist_to_drive < DIST_TO_STOP_BEFORE_STOP_LINE: 
+                    # self.car.drive_speed(0.0)
+                    print(f'Arrievd at stop line. Using median distance: {self.stop_line_distance_median}')
+                    print(f'                           encoder distance: { self.car.encoder_distance:.2f}')
+                    # sleep(1.0)
+                    decide_next_state = True
+                else: decide_next_state = False
+            else: #alternative, if we don't have a median, we just use the (possibly inaccurate) network estimaiton
+                print('WARNING: APPROACHING_STOP_LINE: stop distance may be imprecise')
+                if dist < STOP_LINE_STOP_DISTANCE:
+                    # self.car.drive_speed(0.0)
+                    print('Stopped at stop line. Using network distance: ', self.detect.est_dist_to_stop_line) 
+                    decide_next_state = True
+                    assert self.stop_line_distance_median is None, 'stop_line_distance_median is not None'
+                    dist_from_line = dist if self.stop_line_distance_median is None else self.stop_line_distance_median - self.car.encoder_distance
+                    assert dist_from_line < 0.5, f'dist_from_line is too large, {dist_from_line:.2f}'
+                else: decide_next_state = False
+
+
+        
         if decide_next_state:
             print('Deciding next state, based on next event...')
             next_event_name = self.next_event.name
@@ -558,10 +588,7 @@ class Brain:
                 sleep(3)
                 exit()
             #Every time we stop for a stopline, we reset the local frame of reference
-            dist_from_line = dist if self.stop_line_distance_median is None else self.stop_line_distance_median - self.car.encoder_distance
-            assert dist_from_line < 0.5, f'dist_from_line is too large, {dist_from_line:.2f}'
             self.car.reset_rel_pose() 
-            self.next_event.encoder_dist_event = self.car.encoder_distance + dist_from_line
             self.activate_routines([]) #deactivate all routines
 
     def intersection_navigation(self):
@@ -658,26 +685,44 @@ class Brain:
         print('State: tracking_local_path') #var1=initial distance from stop_line, #var2=path to follow
         self.activate_routines([])
         if self.curr_state.just_switched:
-            # self.car.drive_speed(0.0)
-            # sleep(SLEEP_AFTER_STOPPING)
-            #get distance from the line and lateral error e2
-            self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
-            if self.stop_line_distance_median is None:
-                print('We DONT have the median, using simple net estimation')
-                print(len(self.routines[DETECT_STOP_LINE].var2))
-                if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE:
-                    d = self.detect.est_dist_to_stop_line
-                else: d = 0.0
-            else: #we have an accurate position for the stopline
-                print('We HAVE the median, using median estimation')
-                print(len(self.routines[DETECT_STOP_LINE].var2))
-                d = self.stop_line_distance_median - self.car.encoder_distance 
-            # sleep(.8)
-            e2, _, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
-            e2 = 0.0 # NOTE e2 is usually bad
+            if self.conditions[TRUST_GPS]:
+                point_car_est = np.array([self.car.x_est, self.car.y_est])
+                point_car_path = self.path_planner.path[int(round(self.car_dist_on_path*100))]
+                point_ahead = self.path_planner.path[int(round(self.car_dist_on_path*100+10))]
+                point_behind = self.path_planner.path[int(round(self.car_dist_on_path*100-10))]
+                yaw_path = np.arctan2(point_ahead[1]-point_behind[1], point_ahead[0]-point_behind[0])
+                yaw_error_path = np.arctan2(point_car_est[1]-point_car_path[1], point_car_est[0]-point_car_path[0])
+                sign = np.sign(diff_angle(yaw_path, yaw_error_path))
+                
+                x_dist = self.next_event.dist - self.car_dist_on_path 
+                y_dist = sign*norm(point_car_est-point_car_path)
+                print(f'x_dist: {x_dist}, y_dist: {y_dist}')
+                car_position_slf = -np.array([x_dist, y_dist])
+
+            else:
+                # self.car.drive_speed(0.0)
+                # sleep(SLEEP_AFTER_STOPPING)
+                #get distance from the line and lateral error e2
+                self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
+                if self.stop_line_distance_median is None:
+                    print('We DONT have the median, using simple net estimation')
+                    print(len(self.routines[DETECT_STOP_LINE].var2))
+                    if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE:
+                        d = self.detect.est_dist_to_stop_line
+                    else: d = 0.0
+                else: #we have an accurate position for the stopline
+                    print('We HAVE the median, using median estimation')
+                    print(len(self.routines[DETECT_STOP_LINE].var2))
+                    d = self.stop_line_distance_median - self.car.encoder_distance 
+                # sleep(.8)
+                e2, _, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
+                e2 = 0.0 # NOTE e2 is usually bad
+                car_position_slf = -np.array([+d+0.3+0.15, +e2])#np.array([+d+0.2, -e2])
+
             # retrieve global position of the car, can be done usiing the stop_line
             # or using the gps, but for now we will use the stop_line
             # NOTE: in the real car we need to have a GLOBAL YAW OFFSET to match the simulator with the real track
+
 
             # local_path_wf = self.next_event.path_ahead # wf = world frame
             stop_line_position = self.next_event.point
@@ -690,7 +735,7 @@ class Brain:
             alpha = diff_angle(yaw_car, yaw_mult_90) #get the difference from the closest multiple of 90deg
             alpha_true = alpha
             print(f'alpha true: {np.rad2deg(alpha):.1f}')
-            alpha = self.detect.detect_yaw_stopline(self.car.frame, SHOW_IMGS and False) * 0.6
+            alpha = self.detect.detect_yaw_stopline(self.car.frame, SHOW_IMGS and False) * 0.8
             print(f'alpha est: {np.rad2deg(alpha):.1f}')
             assert np.abs(alpha - alpha_true) < np.deg2rad(5.0), f'Estimated alpha is too different from true alpha'
             assert abs(alpha) < np.pi/6, f'Car orientation wrt stopline is too big, it needs to be better aligned, alpha = {alpha}'
@@ -698,7 +743,6 @@ class Brain:
             
             # ## get position of the car in the stop line frame
             # # car_position_slf = self.car.position - stop_line_position #with good gps estimate
-            car_position_slf = -np.array([+d+0.3+0.15, +e2])#np.array([+d+0.2, -e2])
             local_path_cf = local_path_slf_rot 
             local_path_cf = local_path_cf @ rot_matrix
             local_path_cf = local_path_cf - car_position_slf #cf = car frame
@@ -1147,7 +1191,6 @@ class Brain:
             if just_changed:
                 self.activate_routines([FOLLOW_LANE])
                 assert self.next_event.name == PARKING_EVENT
-                self.next_event.encoder_dist_event = self.car.encoder_distance + 0.1
                 self.car.reset_rel_pose()
                 self.curr_state.var2 = (False, False, False, False) #(car in spot1, car in spot2, looked for car in spot1, looked for car in spot2)
                 self.car.drive_speed(PARK_MANOUVER_SPEED)

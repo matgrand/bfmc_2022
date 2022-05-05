@@ -46,11 +46,11 @@ class StopLine:
     # Four corners of the trapezoid-shaped region of interest
     # You need to find these corners manually.
     # <++>
-    self.roi_points = np.float32([
-      (self.width//12, 2*self.height//3), # Top-left corner
+    self.roi_points = np.float32([ 
+      (self.width//12, 3*self.height//5), # Top-left corner self.width//12, 2*self.height//3), # Top-left corner
       (self.width//12, self.height - self.height//24), # Bottom-left corner            
       (self.width - self.width//12, self.height - self.height//24), # Bottom-right corner
-      (self.width - self.width//12, 2*self.height//3) # Top-right corner
+      (self.width - self.width//12, 3*self.height//5) # Top-right corner (self.width - self.width//12, 2*self.height//3) # Top-right corner
     ])
     #self.roi_points = np.float32([
     #  (0, 2*self.height//3), # Top-left corner
@@ -110,7 +110,7 @@ class StopLine:
     # Generate the histogram
     self.histogram = np.sum(frame[:,frame.shape[1]//3:2*frame.shape[1]//3], axis=1)
  
-    if plot == True:
+    if plot:
          
       # Draw both the image and the histogram
       figure, (ax1, ax2) = plt.subplots(2,1) # 2 row, 1 columns
@@ -338,14 +338,12 @@ class StopLine:
                     self.desired_roi_points]), True, (147,20,255), 3)
  
       # Display the image
-      while(1):
-        cv2.imshow('Warped Image', warped_plot)
+      cv2.imshow('Warped Image', warped_plot)
              
-        # Press any key to stop
-        if cv2.waitKey(0):
-          break
+      # Press any key to stop
+      cv2.waitKey(0)
  
-      cv2.destroyAllWindows()   
+      # cv2.destroyAllWindows()   
              
     return self.warped_frame        
      
@@ -458,8 +456,9 @@ def sobel(img_channel, orient='x', sobel_kernel=3):
 
 def detect_angle(original_frame=None, plot=False):
   frame = original_frame.copy()
-  X_OFFSET = 50
-  frame = frame[:,X_OFFSET:-X_OFFSET,:]
+  XL_OFFSET = 50
+  XR_OFFSET = 50
+  frame = frame[:,XL_OFFSET:-XR_OFFSET,:]
 
   # Create a Lane object
   lane_obj = StopLine(orig_frame=frame)
@@ -473,18 +472,45 @@ def detect_angle(original_frame=None, plot=False):
   # Perform the perspective transform to generate a bird's eye view
   # If Plot == True, show image with new region of interest
   warped_frame = lane_obj.perspective_transform(plot=False)
- 
-  # Generate the image histogram to serve as a starting point
-  # for finding lane line pixels
-  histogram = lane_obj.calculate_histogram(plot=False)  
-     
-  # Find lane line pixels using the sliding window method 
-  line_fit = lane_obj.get_lane_line_indices_sliding_windows(plot=plot)
 
-  # Calculate the angle from the line fit
-  # line_fit[0] <- 1st deg coeff; line_fit[1] <- indy coeff
-  angle = np.arctan2(line_fit[0], 1)
-  return angle
+  #extract lines
+  img = warped_frame
+  # # img = cv2.resize(img, (100,100))
+  # print(img.shape)
+  # cv2.namedWindow('lines', cv2.WINDOW_NORMAL)
+  # cv2.imshow('lines',img)
+  # cv2.waitKey(0) 
+  lines = cv2.HoughLinesP(img, rho=1, theta=np.pi/180, threshold=50, minLineLength=50, maxLineGap=5)
+  angles = []
+  for line in lines:
+    for x1,y1,x2,y2 in line:
+      angle = np.arctan2(y2-y1,x2-x1)
+      angles.append(angle)
+      # color = np.random.randint(0,255,(3)).tolist()
+      # cv2.line(img,(x1,y1),(x2,y2),color,1)
+  angles = np.array(angles)
+  angle_median = np.median(angles)
+  # print(np.rad2deg(angle_median))
+  # cv2.imshow('lines',img)
+  # cv2.waitKey(0)
+ 
+  # # Generate the image histogram to serve as a starting point
+  # # for finding lane line pixels
+  # histogram = lane_obj.calculate_histogram(plot=True)  
+     
+  # # Find lane line pixels using the sliding window method 
+  # line_fit = lane_obj.get_lane_line_indices_sliding_windows(plot=plot)
+
+  # # Calculate the angle from the line fit
+  # # line_fit[0] <- 1st deg coeff; line_fit[1] <- indy coeff
+  # angle = np.arctan2(line_fit[0], 1)
+  if np.abs(angle_median) > np.pi/4:
+    return 0.0
+  elif angle_median > np.deg2rad(31.0):
+    return np.deg2rad(31.0)
+  elif angle_median < np.deg2rad(-31.0):
+    return np.deg2rad(-31.0)
+  return angle_median
 
 
 def main():
