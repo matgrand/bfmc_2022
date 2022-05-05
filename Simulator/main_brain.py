@@ -33,12 +33,12 @@ VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.3# [m/s]
+DESIRED_SPEED = 0.4# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
 k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
-k3 = 0.99 #1.0 yaw error gain .8 with ff 
+k3 = 0.7 #1.0 yaw error gain .8 with ff 
 k3D = 0.08 #0.08 derivative gain of yaw error
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, handler)
     
     # init trajectory
-    path = PathPlanning(map) 
+    path_planner = PathPlanning(map) 
 
     # init controller
     controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, ff=ff_curvature)
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     detect = Detection()
 
     #initiliaze the brain
-    brain = Brain(car=car, controller=controller, detection=detect, path_planner=path, desired_speed=DESIRED_SPEED)
+    brain = Brain(car=car, controller=controller, detection=detect, path_planner=path_planner, desired_speed=DESIRED_SPEED)
 
     if SHOW_IMGS:
         map1 = map.copy()
@@ -121,6 +121,10 @@ if __name__ == '__main__':
                 color=(255,0,255) if car.trust_gps else (100,0,100)
                 draw_car(map1, car.x_true, car.y_true, car.yaw, color=(0,180,0))
                 draw_car(map1, car.x_est, car.y_est, car.yaw, color=color)
+                if len(brain.path_planner.path) > 0: 
+                    cv.circle(map1, mR2pix(brain.path_planner.path[int(brain.car_dist_on_path*100)]), 10, (150,50,255), 3) 
+                # else:
+                #     print('No path')
                 cv.imshow('Map', map1)
                 cv.waitKey(1)
 

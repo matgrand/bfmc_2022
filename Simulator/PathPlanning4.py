@@ -393,7 +393,14 @@ class PathPlanning():
                 if draw:
                     for p in path_ahead:
                         cv.circle(self.map, mR2pix(p), 10, (200,150,0), 5)
-
+            elif t.startswith('junction') or t.startswith('highway'):
+                assert len(self.path) > 0
+                path_ahead = self.path[self.path_event_points_idx[i]:min(self.path_event_points_idx[i]+150, len(self.path))]
+                path_event_path_ahead.append(path_ahead)
+                if draw:
+                    for p in path_ahead:
+                        cv.circle(self.map, mR2pix(p), 10, (200,150,0), 5)
+        
             else:
                 path_event_path_ahead.append(None)
 
