@@ -2,6 +2,7 @@
 SIMULATOR_FLAG = True
 SHOW_IMGS = True
 
+from turtle import distance
 import numpy as np
 import cv2 as cv
 import os
@@ -16,13 +17,13 @@ else:
 from helper_functions import *
 from PathPlanning4 import PathPlanning
 from controller3 import Controller
-from detection import Detection
+from detection import NO_SIGN, Detection
 
 from helper_functions import *
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [86,465,274,298,91,311,465,243,90,285,260]#150,155,203, 205,185,190,193,203,190,203]
+CHECKPOINTS = [86,206,465,274,298,91,311,465,243,90,285,260]#150,155,203, 205,185,190,193,203,190,203]
 SPEED_CHALLENGE = False
 
 #========================= STATES ==========================
@@ -80,6 +81,9 @@ CONTROL_FOR_PEDESTRIANS = 'control_for_pedestrians'
 CONTROL_FOR_VEHICLES = 'control_for_vehicles'
 CONTROL_FOR_ROADBLOCKS = 'control_for_roadblocks'
 CONTROL_FOR_OBSTACLES = 'control_for_obstacles'
+UPDATE_STATE = 'update_state'
+
+ALWAYS_ON_ROUTINES = [UPDATE_STATE,CONTROL_FOR_SIGNS]
 
 class Routine():
     def __init__(self, name, method, activated=False):
@@ -149,9 +153,14 @@ ACHIEVEMENTS = {
     PARK_ACHIEVED: False
 }
 
+
+
+
 #==============================================================
 #========================= PARAMTERS ==========================
 #==============================================================
+SIGN_NAMES = ['park', 'closed_road', 'hw_exit', 'hw_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
+SIGN_DIST_THRESHOLD = 0.5
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
 STOP_LINE_APPROACH_DISTANCE = 0.4
 STOP_LINE_STOP_DISTANCE = 0.05 if not SPEED_CHALLENGE else 0.2 #0.05
@@ -170,7 +179,7 @@ SLOW_DOWN_CONST = 0.3 if not SPEED_CHALLENGE else 1.0#0.3 #multiplier, used when
 STRAIGHT_DIST_TO_EXIT_HIGHWAY = 0.8 #[m] go straight for this distance in orther to exit the hihgway
 
 ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
-ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
+ALWAYS_DISTRUST_GPS = True #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
 #Rerouting
 GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE = 0.05 #distance between 2 consecutive measure of the gps for the kalmann filter to be considered converged
@@ -333,8 +342,17 @@ class Brain:
             CONTROL_FOR_VEHICLES:     Routine(CONTROL_FOR_VEHICLES,  self.control_for_roadblocks),   
             CONTROL_FOR_ROADBLOCKS:   Routine(CONTROL_FOR_ROADBLOCKS,  self.control_for_roadblocks),
             CONTROL_FOR_OBSTACLES:    Routine(CONTROL_FOR_OBSTACLES,  self.control_for_obstacles),
+            UPDATE_STATE:             Routine(UPDATE_STATE, self.update_state)  
         }
         self.active_routines_names = []
+
+        self.sign_points = np.load('data/sign_points.npy')
+        self.sign_types = np.load('data/sign_types.npy').astype(int)
+        assert len(self.sign_points) == len(self.sign_types)
+        self.sign_seen = np.zeros(len(self.sign_types))
+        self.curr_sign = NO_SIGN
+
+
 
         self.last_run_call = time()
         print('Brain initialized')
@@ -1621,7 +1639,28 @@ class Brain:
             self.car.drive_speed(ACCELERATION_CONST*self.desired_speed)
 
     def control_for_signs(self):
-        pass
+        if not self.conditions[REROUTING]:
+            if self.conditions[TRUST_GPS]:
+                car_pos_on_path = self.path_planner.path[int(round(self.car_dist_on_path*100))]
+                distances = norm(self.sign_points-car_pos_on_path, axis=1)
+                
+                print(f'MIN DISTANCE = {np.min(distances)}')
+                idx_close_signs = np.where(distances < SIGN_DIST_THRESHOLD)[0]
+                if len(idx_close_signs) > 0:
+                    for i in idx_close_signs:
+                        if self.sign_seen[i] == 0:
+                            self.sign_seen[i] = 1
+                            print(f'SEEN SIGN {SIGN_NAMES[self.sign_types[i]]}, at pos {self.sign_points[i]}')
+                            self.curr_sign = SIGN_NAMES[self.sign_types[i]]
+                            #PUB SIGN TODO
+                else:
+                    self.curr_sign = NO_SIGN
+
+
+            else: #Use signs
+                sign, _ = self.detect.detect_sign(self.car.frame, show_ROI=SHOW_IMGS, show_kp=SHOW_IMGS)
+                if sign != NO_SIGN and sign !=self.curr_sign:
+                    self.curr_sign = sign
 
     def control_for_semaphore(self):
         pass
@@ -1660,7 +1699,7 @@ class Brain:
             exit()
 
     # UPDATE CONDITIONS
-    def update_conditions(self):
+    def update_state(self):
         """"
         This will update the conditions at every iteration, it is called at the end of a self.run
         """
@@ -1706,17 +1745,19 @@ class Brain:
 
     #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
-        
+        print(f'CURR_SIGN: {self.curr_sign}')
         print('==========================================================================')
         print(f'STATE:          {self.curr_state}')
         print(f'UPCOMING_EVENT: {self.next_event}')
-        print(f'ROUTINES:       {self.active_routines_names}')
+        print(f'ROUTINES:       {self.active_routines_names+ALWAYS_ON_ROUTINES}')
         print(f'CONDITIONS:     {self.conditions}')
+        print('==========================================================================')
         self.run_current_state()
         print('==========================================================================')
         print()
         self.run_routines()
-        self.update_conditions()
+        print('==========================================================================')
+        print()
         self.check_logic()
 
     def run_current_state(self):
@@ -1725,6 +1766,9 @@ class Brain:
     def run_routines(self):
         for k, r in self.routines.items():
             if r.active: r.run()
+        
+        for k in ALWAYS_ON_ROUTINES:
+            self.routines[k].run()
 
     def activate_routines(self, routines_to_activate):
         """

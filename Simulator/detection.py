@@ -39,6 +39,7 @@ signs_dict = {
 "7": "priority", 
 "8": "roundabout",
 "9": NO_SIGN}
+MAP_DICT_NAMES = [4,1,0,7,8,3,2,6,5,9]
 
 
 #Obstacle classifier
@@ -83,15 +84,15 @@ class Detection:
         self.avg_local_path_detection_time = 0
 
         #sign classifier
-        self.no_clusters = NUM_CLUSTERS_SIGNS 
-        self.kernel_type = KERNEL_TYPE_SIGNS 
-        self.svm_model = pickle.load(open('models/traffic_signs_models/svm_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
-        self.kmean_model = pickle.load(open('models/traffic_signs_models/kmeans_' + self.kernel_type + '_' +  str(self.no_clusters) + '.pkl', 'rb'))
-        self.scale_model = pickle.load(open('models/traffic_signs_models/scale_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
-        self.sift = cv.SIFT_create()
-        self.obstacles_probs_buffer = collections.deque(maxlen=10) 
-        self.prediction = NO_SIGN
-        self.conf = 1
+        self.sign_no_clusters = NUM_CLUSTERS_SIGNS 
+        self.sign_kernel_type = KERNEL_TYPE_SIGNS 
+        self.sign_svm_model = pickle.load(open('models/traffic_signs_models/svm_'+ self.sign_kernel_type + '_' + str(self.sign_no_clusters) + '.pkl', 'rb'))
+        self.sign_kmean_model = pickle.load(open('models/traffic_signs_models/kmeans_' + self.sign_kernel_type + '_' +  str(self.sign_no_clusters) + '.pkl', 'rb'))
+        self.sign_scale_model = pickle.load(open('models/traffic_signs_models/scale_'+ self.sign_kernel_type + '_' + str(self.sign_no_clusters) + '.pkl', 'rb'))
+        self.sign_sift = cv.SIFT_create()
+        self.sign_probs_buffer = collections.deque(maxlen=10) 
+        self.sign_prediction = NO_SIGN
+        self.sign_conf = 1
 
         #obstacle classifier
         self.no_clusters = NUM_CLUSTERS_OBS #use const
@@ -440,7 +441,7 @@ class Detection:
         #img = cv.resize(img,(40,30))
         ratio = 1
         img = cv.resize(img, None, fx = ratio, fy = ratio, interpolation = cv.INTER_AREA)
-        kp, des = self.sift.detectAndCompute(img, None)
+        kp, des = self.sign_sift.detectAndCompute(img, None)
         if(des is not None):
             if show_kp:
                 cop = img.copy()
@@ -455,13 +456,14 @@ class Detection:
                 # probability no obstacle = 1
                 probs_array[-1] = 1
             else:
-                im_hist = Detection.ImageHistogram(self.kmean_model, des, self.no_clusters)
+                im_hist = Detection.ImageHistogram(self.sign_kmean_model, des, self.sign_no_clusters)
                 im_hist = im_hist.reshape(1,-1)
-                im_hist = self.scale_model.transform(im_hist)
-                probs_array = self.svm_model.predict_proba(im_hist)
+                im_hist = self.sign_scale_model.transform(im_hist)
+                probs_array = self.sign_svm_model.predict_proba(im_hist)
                 probs_array = probs_array.reshape(-1)
                 # inserting the No sing probability
                 probs_array = np.concatenate([probs_array, [0]])
+                print(f'single prediction: {SIGN_NAMES[MAP_DICT_NAMES[np.argmax(probs_array)]]}')
         else:
             print('No descriptors')
             # cv.destroyWindow('keypoints')
@@ -471,29 +473,29 @@ class Detection:
             probs_array[-1] = 1
 
         # buffer of classification probabilities
-        self.obstacles_probs_buffer.append(probs_array)        
+        self.sign_probs_buffer.append(probs_array)        
 
         # mean of the predicion probabilities in the buffer
-        buffer_mean = list(self.obstacles_probs_buffer)
+        buffer_mean = list(self.sign_probs_buffer)
         buffer_mean = np.asarray(buffer_mean)
         buffer_mean = np.mean(buffer_mean, axis = 0)
         buffer_mean = buffer_mean.reshape(-1)
         pred_idx = np.argmax(buffer_mean)
-        # most likely prediction
-        new_prediction = signs_dict[str(pred_idx)]
+        # most likely sign_prediction
+        new_prediction = SIGN_NAMES[MAP_DICT_NAMES[pred_idx]]#signs_dict[str(pred_idx)]
         new_conf = buffer_mean[pred_idx]
         print('Prediction proposal:',new_prediction, int(100*new_conf))
         # Comparison of the first two maxima of the buffer_mean
         buffer_mean = np.delete(buffer_mean, pred_idx)
         conf_2 = buffer_mean[int(np.argmax(buffer_mean))]
-        # To have a good enought prediction the rest of the probabilities have to be spread
+        # To have a good enought sign_prediction the rest of the probabilities have to be spread
         if (new_conf - conf_2) > 0.30:
-            self.prediction = new_prediction
-            self.conf = new_conf
-        print('New prediction', self.prediction, int(100*self.conf))
+            self.sign_prediction = new_prediction
+            self.sign_conf = new_conf
+        print('New sign_prediction', self.sign_prediction, int(100*self.sign_conf))
         if show_ROI:
-            Detection.draw_ROI(frame, TL, BR, show_rect = True, prediction = self.prediction, conf= int(100*self.conf), show_prediction = True)      
-        return self.prediction, self.conf      
+            Detection.draw_ROI(frame, TL, BR, show_rect = True, prediction = self.sign_prediction, conf= int(100*self.sign_conf), show_prediction = True)      
+        return self.sign_prediction, self.sign_conf      
 
     def classify_frontal_obstacle(self, frames, distances, show_ROI=True, show_kp=True):
         """
