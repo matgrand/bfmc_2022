@@ -258,11 +258,11 @@ def project_stopline(frame, car, stopline_x, stopline_y, car_angle_to_stopline, 
     points = np.zeros((50,2), dtype=np.float32)
     points[:,1] = np.linspace(-0.19, 0.19, 50)
 
-    slp_cf = np.array([stopline_x, stopline_y])
+    slp_cf = np.array([stopline_x+0.35, stopline_y])
 
     rot_matrix = np.array([[np.cos(car_angle_to_stopline), -np.sin(car_angle_to_stopline)], [np.sin(car_angle_to_stopline), np.cos(car_angle_to_stopline)]])
-    points = points + slp_cf #translation
     points = points @ rot_matrix #rotation
+    points = points + slp_cf #translation
 
     frame, proj_points = project_onto_frame(frame=frame, car=car, points=points, align_to_car=False, color=color)
     # frame = cv.polylines(frame, [proj_points], False, color, 2)

@@ -66,6 +66,7 @@ class PathPlanning():
 
         #stop points
         self.stop_points = np.load('data/stop_line_points.npy')
+        self.stop_points_on_path = []
 
         # import nodes and edges
         self.list_of_nodes = list(self.G.nodes)
@@ -422,6 +423,7 @@ class PathPlanning():
                 if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
                     nx, ny = self.get_closest_stop_point(nx, ny)
                     nx, ny = self.get_closest_point_on_path(nx, ny)
+                    self.stop_points_on_path.append(np.array([nx, ny]))
                     self.path_stoplines.append(np.array([nx, ny]))
                     intersection_in_indexes.append(i) 
                     intersection_in_pos.append((nx, ny))
@@ -458,6 +460,7 @@ class PathPlanning():
                 if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2: # and len(roundabout_in_indexes) < 1: #and = workaround 
                     nx, ny = self.get_closest_stop_point(nx, ny)
                     nx, ny = self.get_closest_point_on_path(nx, ny)
+                    self.stop_points_on_path.append(np.array([nx, ny]))
                     self.path_stoplines.append(np.array([nx, ny]))
                     roundabout_in_indexes.append(i) 
                     roundabout_in_pos.append((nx, ny))
@@ -496,6 +499,7 @@ class PathPlanning():
                     if n == '467':
                         nx, ny = self.get_closest_stop_point(nx, ny)
                         nx, ny = self.get_closest_point_on_path(nx, ny)
+                        self.stop_points_on_path.append(np.array([nx, ny]))
                         self.path_stoplines.append(np.array([nx, ny]))
                     junction_indexes.append(i) 
                     junction_pos.append((nx, ny))
@@ -515,6 +519,7 @@ class PathPlanning():
                 if (nx-curr_x)**2 + (ny-curr_y)**2 <= tol**2:
                     nx, ny = self.get_closest_stop_point(nx, ny)
                     nx, ny = self.get_closest_point_on_path(nx, ny)
+                    self.stop_points_on_path.append(np.array([nx, ny]))
                     self.path_stoplines.append(np.array([nx, ny]))
                     crosswalk_indexes.append(i) 
                     crosswalk_pos.append((nx, ny))
@@ -526,17 +531,17 @@ class PathPlanning():
         self.path_data = [None for i in range(len(self.path))]
         # self.path_data[0] = ['start', None, None, self.path[0,0], self.path[0,1], 0.0]
         for i, (x,y), yaw in zip(intersection_in_indexes, intersection_in_pos, intersection_in_yaw):
-            self.path_data[i] = ('int_in', None, None, x, y, yaw, None, None)
+            self.path_data[i] = ['int_in', None, None, x, y, yaw, None, None]
         for i, (x,y), yaw in zip(intersection_out_indexes, intersection_out_pos, intersection_out_yaw):
-            self.path_data[i] = ('int_out', None, None, x, y, yaw, None, None)
+            self.path_data[i] = ['int_out', None, None, x, y, yaw, None, None]
         for i, (x,y), yaw in zip(roundabout_in_indexes, roundabout_in_pos, roundabout_in_yaw):
-            self.path_data[i] = ('rou_in', None, None, x, y, yaw, None, None)
+            self.path_data[i] = ['rou_in', None, None, x, y, yaw, None, None]
         for i, (x,y), yaw in zip(roundabout_out_indexes, roundabout_out_pos, roundabout_out_yaw):
-            self.path_data[i] = ('rou_out', None, None, x, y, yaw, None, None)
+            self.path_data[i] = ['rou_out', None, None, x, y, yaw, None, None]
         for i, (x,y), yaw in zip(junction_indexes, junction_pos, junction_yaw):
-            self.path_data[i] = ('junction', None, None, x, y, yaw, None, None)
+            self.path_data[i] = ['junction', None, None, x, y, yaw, None, None]
         for i, (x,y), yaw in zip(crosswalk_indexes, crosswalk_pos, crosswalk_yaw):
-            self.path_data[i] = ('crosswalk', None, None, x, y, yaw, None, None)
+            self.path_data[i] = ['crosswalk', None, None, x, y, yaw, None, None]
         
         # print("path_data: ", self.path_data)
         
@@ -560,22 +565,22 @@ class PathPlanning():
             # state=following/intersection/roundabout, next_action=left/right/straight, path_params_ahead)
             #1. no event ahead
             if next_event is None:
-                self.path_data[curr_index] = ('road', 'road',  'continue', None, None, None, None)
+                self.path_data[curr_index] = ['road', 'road',  'continue', None, None, None, None]
                 #continue previous event
                 while curr_index < len(self.path):
                     if self.path_data[curr_index] is None:
                         if prev_event == 'int_in':
                             print('ERROR: Path cannot end inside an intersection')
                         elif prev_event == 'int_out':
-                            self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
+                            self.path_data[curr_index] = ['road', 'road', 'continue', None, None, None, None]
                         elif prev_event == 'rou_in':
                             print('ERROR: Path cannot end inside a roundabout')
                         elif prev_event == 'rou_out':
-                            self.path_data[curr_index] = ('road', 'road',  'continue', None, None, None, None)
+                            self.path_data[curr_index] = ['road', 'road',  'continue', None, None, None, None]
                         elif prev_event == 'junction':
-                            self.path_data[curr_index] = ('road', 'road',  'continue', None, None, None, None)
+                            self.path_data[curr_index] = ['road', 'road',  'continue', None, None, None, None]
                         elif prev_event == 'crosswalk':
-                            self.path_data[curr_index] = ('road', 'road',  'continue', None, None, None, None)
+                            self.path_data[curr_index] = ['road', 'road',  'continue', None, None, None, None]
                         else:
                             print('ERROR: Path cannot end at start')
                             cv.waitKey(0)
@@ -590,7 +595,7 @@ class PathPlanning():
                 angle = diff_angle(self.path_data[curr_index][5], self.path_data[next_index][5])
                 action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
                 while curr_index < next_index:
-                    self.path_data[curr_index] = ('intersection', 'road', action, None, None, None, None)
+                    self.path_data[curr_index] = ['intersection', 'road', action, None, None, None, None]
                     curr_index += 1
             #3. inside roundabout
             elif prev_event == 'rou_in' and next_event == 'rou_out':
@@ -599,7 +604,7 @@ class PathPlanning():
                 angle = diff_angle(self.path_data[curr_index][5], self.path_data[next_index][5])
                 action = 'right' if angle > np.pi/4 else 'left' if angle < -np.pi/4 else 'straight'
                 while curr_index < next_index:
-                    self.path_data[curr_index] = ('roundabout', 'road', action, None, None, None, None)
+                    self.path_data[curr_index] = ['roundabout', 'road', action, None, None, None, None]
                     curr_index += 1
             #4. intersection ahead
             elif next_event == 'int_in':
@@ -619,9 +624,9 @@ class PathPlanning():
                     if next_index-curr_index < default_distance:
                         # euclidean_distance = DIST_OFFSET + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
                         euclidean_distance = (next_index - curr_index)*self.step_length
-                        self.path_data[curr_index] = ('road', 'intersection', action, euclidean_distance, None, None, None)
+                        self.path_data[curr_index] = ['road', 'intersection', action, euclidean_distance, None, None, None]
                     else:
-                        self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
+                        self.path_data[curr_index] = ['road', 'road', 'continue', None, None, None, None]
                     curr_index += 1
                 # print(f'curr_index: {curr_index}, next_index: {next_index}')
             #5. roundabout ahead
@@ -641,9 +646,9 @@ class PathPlanning():
                     if next_index-curr_index < default_distance:
                         # euclidean_distance = DIST_OFFSET + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
                         euclidean_distance = (next_index - curr_index)*self.step_length
-                        self.path_data[curr_index] = ('road', 'roundabout', action, euclidean_distance, None, None, None)
+                        self.path_data[curr_index] = ['road', 'roundabout', action, euclidean_distance, None, None, None]
                     else:
-                        self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
+                        self.path_data[curr_index] = ['road', 'road', 'continue', None, None, None, None]
                     curr_index += 1
             #6. junction ahead
             elif next_event == 'junction':
@@ -667,13 +672,13 @@ class PathPlanning():
                         euclidean_distance = (next_index - curr_index)*self.step_length
                         if np.linalg.norm(self.path[next_index] - self.get_coord('314')) < 1.0:
                             euclidean_distance = None #we dont consider the distance to the junction entrance
-                        self.path_data[curr_index] = ('road', 'junction', action, euclidean_distance, None, None, None)
+                        self.path_data[curr_index] = ['road', 'junction', action, euclidean_distance, None, None, None]
                     else:
-                        self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
+                        self.path_data[curr_index] = ['road', 'road', 'continue', None, None, None, None]
                     curr_index += 1
                 #continue junction for a while
                 while curr_index < next_index+60: # with path_step_length = 0.01 [m]
-                    self.path_data[curr_index] = ('road', 'junction', action, None, None, None, None)
+                    self.path_data[curr_index] = ['road', 'junction', action, None, None, None, None]
                     curr_index += 1
                 next_index = curr_index
                 # print(f'curr_index: {curr_index}, next_index: {next_index}')
@@ -697,9 +702,9 @@ class PathPlanning():
                     if next_index-curr_index < default_distance:
                         # euclidean_distance = DIST_OFFSET + np.sqrt((xi-self.path[curr_index,0])**2 + (yi-self.path[curr_index,1])**2)
                         euclidean_distance = (next_index - curr_index)*self.step_length
-                        self.path_data[curr_index] = ('road', 'crosswalk', action, euclidean_distance, None, None, None)
+                        self.path_data[curr_index] = ['road', 'crosswalk', action, euclidean_distance, None, None, None]
                     else:
-                        self.path_data[curr_index] = ('road', 'road', 'continue', None, None, None, None)
+                        self.path_data[curr_index] = ['road', 'road', 'continue', None, None, None, None]
                     curr_index += 1
                 # #continue junction for a while
                 # while curr_index < next_index+60: # with path_step_length = 0.01 [m]
@@ -724,6 +729,21 @@ class PathPlanning():
             next_index += 1
             # print(f'STATUS: curr_index: {curr_index}, next_index: {next_index}\nPrev_event: {prev_event},  Next_event: {next_event}')
             prev_event = next_event
+        #END OF WHILE
+        print('END OF WHILE')
+        print(f'len of path_data: {len(self.path_data)}')
+        print(f'len of path: {len(self.path)}')
+        curr_stop_idx = None
+        for i in reversed(range(len(self.path_data))):
+            p = self.path[i]
+            diff = np.linalg.norm(p-self.stop_points_on_path, axis=1)
+            if np.min(diff) < 1e-5:
+                curr_stop_idx = i
+            dist = (curr_stop_idx - i)*0.01 if curr_stop_idx is not None else 1.0
+            self.path_data[i][3] = dist
+
+        
+        
 
     def print_path_info(self):
         prev_state = None

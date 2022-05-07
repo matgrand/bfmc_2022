@@ -31,7 +31,7 @@ VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.6# [m/s]
+DESIRED_SPEED = 0.5# [m/s]
 CURVE_SPEED = 0.6# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER

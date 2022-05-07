@@ -4,6 +4,7 @@ import numpy as np
 import cv2 as cv
 import pickle , collections
 from time import time, sleep
+from name_and_constants import *
 
 from helper_functions import *
 from stopline import StopLine, detect_angle
@@ -17,13 +18,13 @@ DISTANCE_POINT_AHEAD_AHEAD = 0.6
 
 STOP_LINE_ESTIMATOR_PATH = "models/stop_line_estimator.onnx"
 
+STOP_LINE_ESTIMATOR_ADV_PATH = "models/stop_line_estimator_advanced.onnx"
+
 LOCAL_PATH_ESTIMATOR_PATH = "models/local_path_estimator.onnx"
 NUM_POINTS_AHEAD = 5
 DISTANCE_BETWEEN_POINTS = 0.2
 
 # SIGN_CLASSIFIER_PATH = 'models/sign_classifier.onnx'
-SIGN_NAMES = ['park', 'closed_road', 'hw_exit', 'hw_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
-# SIGN_NAMES = ['park', 'closed_road', 'hw_exit', 'hw_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'traffic_light', 'NO_sign']
 
 KERNEL_TYPE_SIGNS = 'linear'
 NUM_CLUSTERS_SIGNS = 100
@@ -79,6 +80,12 @@ class Detection:
         self.avg_stop_line_detection_time = 0
         self.stop_line_cnt = 0
 
+        #stop line detection advanced
+        self.stop_line_estimator_adv = cv.dnn.readNetFromONNX(STOP_LINE_ESTIMATOR_ADV_PATH)
+        self.est_dist_to_stop_line_adv = 1.0
+        self.avg_stop_line_detection_adv_time = 0
+        self.stop_line_adv_cnt = 0
+
         #local path estimation
         self.local_path_estimator = cv.dnn.readNetFromONNX(LOCAL_PATH_ESTIMATOR_PATH)
         self.avg_local_path_detection_time = 0
@@ -105,7 +112,7 @@ class Detection:
         self.prediction = None
         self.conf = 0        
 
-    def detect_lane(self, frame, show_ROI=True, faster=True):
+    def detect_lane(self, frame, show_ROI=True, faster=False):
         """
         Estimates:
         - the lateral error wrt the center of the lane (e2), 
@@ -175,7 +182,7 @@ class Detection:
             cv.waitKey(1)
         return e2, e3, est_point_ahead
 
-    def detect_lane_ahead(self, frame, show_ROI=True, faster=True):
+    def detect_lane_ahead(self, frame, show_ROI=True, faster=False):
         """
         Estimates:
         - the lateral error wrt the center of the lane (e2), 
@@ -298,7 +305,7 @@ class Detection:
         frame = frame[int(frame.shape[0]*(2/5)):,:]
         #keep the bottom 2/3 of the image
         #blur
-        # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
+        frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11 #with 15,15 is 1ms
         frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
         frame = cv.Canny(frame, 100, 200)
         frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
@@ -314,8 +321,8 @@ class Detection:
 
         blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
         # assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
-        self.stop_line_estimator.setInput(blob)
-        output = self.stop_line_estimator.forward()
+        self.stop_line_estimator_adv.setInput(blob)
+        output = self.stop_line_estimator_adv.forward()
         stopline_x = dist = output[0][0]
         stopline_y = output[0][1]
         stopline_angle = output[0][2]

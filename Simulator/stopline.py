@@ -464,7 +464,7 @@ def detect_angle(original_frame=None, plot=False):
   lane_obj = StopLine(orig_frame=frame)
  
   # Perform thresholding to isolate lane lines
-  lane_line_markings = lane_obj.get_line_markings()
+  _ = lane_obj.get_line_markings()
  
   # Plot the region of interest on the image
   lane_obj.plot_roi(plot=False)
@@ -480,37 +480,26 @@ def detect_angle(original_frame=None, plot=False):
   # cv2.namedWindow('lines', cv2.WINDOW_NORMAL)
   # cv2.imshow('lines',img)
   # cv2.waitKey(0) 
-  lines = cv2.HoughLinesP(img, rho=1, theta=np.pi/180, threshold=50, minLineLength=50, maxLineGap=5)
+  lines = cv2.HoughLinesP(img, rho=1, theta=np.pi/180, threshold=80, minLineLength=80, maxLineGap=5)
   angles = []
   for line in lines:
     for x1,y1,x2,y2 in line:
       angle = np.arctan2(y2-y1,x2-x1)
       angles.append(angle)
-      # color = np.random.randint(0,255,(3)).tolist()
-      # cv2.line(img,(x1,y1),(x2,y2),color,1)
+    
   angles = np.array(angles)
   angle_median = np.median(angles)
-  # print(np.rad2deg(angle_median))
-  # cv2.imshow('lines',img)
-  # cv2.waitKey(0)
- 
-  # # Generate the image histogram to serve as a starting point
-  # # for finding lane line pixels
-  # histogram = lane_obj.calculate_histogram(plot=True)  
-     
-  # # Find lane line pixels using the sliding window method 
-  # line_fit = lane_obj.get_lane_line_indices_sliding_windows(plot=plot)
+  #keep only valid angles
+  angles = angles[np.abs(angles-angle_median)<np.deg2rad(5.0)]
+  final_angle = np.mean(angles)
 
-  # # Calculate the angle from the line fit
-  # # line_fit[0] <- 1st deg coeff; line_fit[1] <- indy coeff
-  # angle = np.arctan2(line_fit[0], 1)
-  if np.abs(angle_median) > np.pi/4:
+  if np.abs(final_angle) > np.pi/4:
     return 0.0
-  elif angle_median > np.deg2rad(31.0):
+  elif final_angle > np.deg2rad(31.0):
     return np.deg2rad(31.0)
-  elif angle_median < np.deg2rad(-31.0):
+  elif final_angle < np.deg2rad(-31.0):
     return np.deg2rad(-31.0)
-  return angle_median
+  return final_angle
 
 
 def main():
