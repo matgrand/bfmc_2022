@@ -9,26 +9,19 @@ import math
 from scipy.signal import butter, lfilter, lfilter_zi
 import collections
 from casadi import *
-from pyclothoids import Clothoid
+# from pyclothoids import Clothoid
+from scipy.interpolate import CubicSpline
+import matplotlib.pyplot as plt
 
-POINT_AHEAD_CM = 35 #distance of the point ahead in cm
-SEQ_POINTS_INTERVAL = 20 #interval between points in the sequence in cm 
-NUM_POINTS = 5 #number of points in the sequence
-L = 0.4  #length of the car, matched with lane_detection
-WB = 0.26
+POINT_AHEAD_CM_SHORT = 35   # [points,cm] distance of the short point ahead
+POINT_AHEAD_CM_LONG = 60+80    # [points,cm] distance of the long point ahead
+MIN_ALPHA_RATE = np.deg2rad(20)        # [rad/s]
+WB = 0.26   # [m]: wheelbase length
 
-# def high_pass(x_new, x_old, dt, y_old, cutoff=0.1):
-#     alpha = dt / (dt + 1 / (2 * np.pi * cutoff))
-#     y_new = alpha * (y_old + x_new - x_old)
-#     return y_new
-
-# def low_pass(x_new, y_old, Ts, cutoff=1000):
-#     alpha = math.exp(-2*np.pi*cutoff * Ts)
-#     y_new = alpha * y_old + x_new * ( 1 - alpha )
-#     return y_new 
-filter_ic = None
 class Filter():
-    def __init__(self, type, normal_cutoff, order=5) -> None:
+    def __init__(self, type='low', normal_cutoff=0.01, order=2) -> None:
+        """ Discrete butterworth filter """ 
+
         self.normal_cutoff = normal_cutoff
         self.order = order
         self.ic = None
@@ -58,58 +51,85 @@ class Filter():
             pass
         self.update_filter_coefficients()
 
-class Controller():
-    def __init__(self):
-        self.a = WB/2                                   # [m]: distance of camera from front axis   
-        self.L_ad = POINT_AHEAD_CM/100.0 - self.a      # [m]: lookahead distance
-
-        # self.Kp = 0.3
-        # self.Ki = 0.2
-        # self.Kpp = 0.6
-        self.Kp = 0.0
-        self.Ki = 0.0
-        self.Kpp = 0.7
-        self.prev_steering_angle = 0.0
+class ControllerSpeed():
+    def __init__(self, desired_speed=0.5, curve_speed=0.2):
+        self.L_short = POINT_AHEAD_CM_SHORT/100.0
+        self.L_long = POINT_AHEAD_CM_LONG/100.0
+        self.l_f = WB/2                 # [m]: distance of camera/CM from front axis   
         self.curvature_ahead = 0.0
         self.path_ahead = None
-
-        self.Kstanley_e = 1.0
-        self.Kstanley_v = 0.05
-        self.Kstanley_ks = 1.0
-
-        self.Kp_vel = 1/np.deg2rad(20)
-        self.Kd_vel = 0.5
         self.prev_time = None
 
-        self.alpha = 0.0        # x[i]
-        self.alpha_filt = 0.0   # y[i] and y[i-1]
-        self.alpha_filter = Filter(type='high', normal_cutoff=0.05, order=5)
+        # ----- PURE PURSUIT -----
+        # self.Ki = 0.0
 
-        self.e = 0.0
-        self.e_filt = 0.0
-        self.e_filter = Filter(type='high', normal_cutoff=0.2, order=3)
+        self.Kpp_straight = 2.0
+        self.Kpp_curve = 3.0
 
-        self.e_int = 0.0
+        self.Kd = 0.2
 
-        # SMITH PREDICTOR
-        self.delta_state = MX.sym('d_r',1)
-        self.delta_input = MX.sym('d(t-tau_d)',1)
+        # ----- LONGITUDINAL -----
+        self.desired_speed = desired_speed
+        self.curve_speed = curve_speed
 
-        tau = 0.3       # [s]
-        tau_d = 0.15    # [s]
+        self.alpha_straight = np.deg2rad(1)
+        self.alpha_curve = np.deg2rad(11)
 
-        # ODE integration
-        self.rhs = -1/tau * self.delta_state + 1/tau * self.delta_input 
-        self.model = {}                         # ODE declaration
-        self.model['x']   = self.delta_state    # states
-        self.model['p']   = self.delta_input    # inputs (as parameters)
-        self.model['ode'] = self.rhs            # right-hand side
-
-        # state
-        self.delta = 0.0
+        self.alpha_rate_straight = np.deg2rad(1.0)
+        self.alpha_rate_curve = np.deg2rad(20)
 
 
-    def get_control(self, e2, e3, vel, point_ahead, desired_speed):
+        self.speed_profile_s2c = CubicSpline([self.alpha_straight, self.alpha_curve],
+                                             [self.desired_speed, self.curve_speed], 
+                                             bc_type=((1, 0.0), (1, 0.0))
+                                            )
+        # self.speed_profile_rate_s2c = CubicSpline([self.alpha_rate_straight, self.alpha_rate_curve],
+        #                                      [self.desired_speed, self.curve_speed], 
+        #                                      bc_type=((1, 0.0), (1, 0.0))
+        #                                     )
+        self.gain_profile_s2c = CubicSpline([self.alpha_straight, self.alpha_curve],
+                                             [self.Kpp_straight, self.Kpp_curve], 
+                                             bc_type=((1, 0.0), (1, 0.0))
+                                            )
+        # self.gain_profile_rate_s2c = CubicSpline([self.alpha_rate_straight, self.alpha_rate_curve],
+        #                                          [self.Kpp_straight, self.Kpp_curve], 
+        #                                          bc_type=((1, 0.0), (1, 0.0))
+        #                                          )
+        
+                                        
+
+        # x_new = np.linspace(self.alpha_straight, self.alpha_curve,100)
+        # y_new = self.speed_profile_s2c(x_new)
+        # x_neww = np.linspace(self.alpha_straight, self.alpha_curve,100)
+        # y_neww = self.gain_profile_s2c(x_neww)
+        # plt.figure(figsize = (10,8))
+        # plt.plot(x_new, y_new, 'b')
+        # plt.plot(x_neww, y_neww, 'b')
+        # plt.title('Cubic Spline Interpolation')
+        # plt.xlabel('x')
+        # plt.ylabel('y')
+        # plt.show()
+
+
+        self.ey             = 0.0
+        self.ey_int         = 0.0
+
+        self.alpha_short    = 0.0
+        self.alpha_long     = 0.0
+
+        self.alpha_long_prev = 0.0
+        self.alpha_long_rate = 0.0
+
+
+        # self.alpha_filt = 0.0   # y[i] and y[i-1]
+        # self.alpha_filter = Filter(type='low', normal_cutoff=0.1, order=2)
+
+        # self.e_filt = 0.0
+        # self.e_filter = Filter(type='high', normal_cutoff=0.2, order=3)
+
+
+
+    def get_control_speed(self, long_e3):
         curr_time = time.time()
         if self.prev_time is None:
             self.prev_time = curr_time
@@ -117,79 +137,65 @@ class Controller():
         else:
             DT = curr_time - self.prev_time
 
-            # INPUT DATA
-            self.e = e2      # lateral error
-            self.alpha = -e3  # heading error
+            # ----- MEASUREMENTS -----
+            self.alpha_long = -long_e3      # heading error - long
+            self.alpha_long_rate = (self.alpha_long - self.alpha_long_prev)/DT
+            # ----- FILTER MEASUREMENTS -----
+            # self.alpha_filt = self.alpha_filter.filter([self.alpha_long])
+            # self.e_filt = self.e_filter.filter([self.e])
 
-            # FILTER INPUT DATA
-            self.alpha_filt = self.alpha_filter.filter([self.alpha])
-            self.e_filt = self.e_filter.filter([self.e])
+            # ----- LONGITUDINAL -----
+            # output_speed = 0.1 + np.exp(-abs(self.alpha_long)/np.deg2rad(17)) * (desired_speed-0.1)
+            # output_speed = desired_speed            
+            # ----- LATERAL -----
+            # # ----- Integral -----
+            # self.ey_int += self.ey
+            # delta_i = self.Ki * self.ey_int
+            # ----- Pure Pursuit -----
+            # delta_pp = self.Kpp_long * np.arctan( (WB*np.sin(self.alpha_long)) / (self.L_long/2 + 0.5*WB*np.cos(self.alpha_long)) )            # SIMPLE - LONG - MIT
+            # delta_pp = self.Kpp_long * np.arctan((2*WB*np.sin(self.alpha_long))/(self.L_long))                                # SIMPLE - LONG
+            
+            # ----- VARIABLE GAIN and SPEED PROFILES -----
+            if abs(self.alpha_long) < self.alpha_straight:
+                output_speed = self.desired_speed
+                gain = self.Kpp_straight
+            elif self.alpha_straight <= abs(self.alpha_long) < self.alpha_curve:
+                output_speed = self.speed_profile_s2c(abs(self.alpha_long))
+                gain = self.gain_profile_s2c(abs(self.alpha_long))
+            else:
+                output_speed = self.curve_speed
+                gain = self.Kpp_curve
+            
+            # if abs(self.alpha_long_rate) < self.alpha_rate_straight:
+            #     # gain=0.8*self.Kpp_long
+            #     output_speed = self.desired_speed
+            #     grain = self.Kpp_straight 
+            # elif self.alpha_rate_straight <= abs(self.alpha_long_rate) < self.alpha_rate_curve:
+            #     output_speed = self.speed_profile_rate_s2c(abs(self.alpha_long_rate))
+            #     gain = self.gain_profile_rate_s2c(abs(self.alpha_long_rate))
+            # else:
+            #     output_speed = self.curve_speed
+            #     gain = self.Kpp_curve
 
-            # PREDICT CURVATURE
-            self.path_ahead = Clothoid.Forward(0,0,0, 2*sin(self.alpha)/(POINT_AHEAD_CM/100.0), point_ahead[0], -point_ahead[1])
-            self.curvature_ahead = self.path_ahead.KappaEnd
+            delta_pp = gain * np.arctan((2*WB*np.sin(self.alpha_long))/(self.L_long)) + self.Kd*self.alpha_long_rate
 
-            # LONGITUDINAL CONTROLLER
-            alpha_abs = abs(self.alpha)
-            output_speed = ( 1 - self.Kp_vel*alpha_abs ) * desired_speed
+            # ===== OUTPUT ANGLE =====
+            output_angle = delta_pp # + delta_i
 
-            # LATERAL CONTROLLER                     
-            # Proportional
-            e_la = self.e + (self.a+self.L_ad)*np.sin(self.alpha)
-            delta_p = self.Kp * e_la
-            # Integral
-            self.e_int += self.alpha_filt#self.e_filt
-            delta_i = self.Ki * self.e_int
-            # Pure Pursuit
-            # delta_pp = np.arctan((2*WB*np.sin(self.alpha))/(self.L_ad))
-            delta_pp = np.arctan((2*WB*np.sin(self.alpha))/(0.6*vel))
-            # ================================================================
-            # OUTPUT ANGLE
-            output_angle = self.Kpp * delta_pp + delta_p + delta_i - 0.0*self.curvature_ahead
+            if output_angle > np.deg2rad(28):
+                output_angle = np.deg2rad(28)
+            if output_angle < np.deg2rad(-28):
+                output_angle = np.deg2rad(-28)
 
-            # PREDICT DELTA
-            self.delta = self.predict_delta(u=output_angle, dt=0.15)
-            # output_angle = self.delta
-
+            self.prev_time = curr_time
+            self.alpha_long_prev = self.alpha_long
 
             os.system('cls' if os.name=='nt' else 'clear')
-            print('alpha_abs:  ',np.rad2deg(alpha_abs))
-            print(f'alpha: {self.alpha}')
-            print(f'steering angle: {np.rad2deg(output_angle)}')
-            print(f'sampling time is: {DT}')
-            print(f'curvature ahead: {self.curvature_ahead}')
-
-            self.prev_steering_angle = output_angle
-            self.prev_time = curr_time
+            print(f'DT is: {DT}')
+            print(f'output_speed is: {output_speed}')
+            print(f'output angle is: {np.rad2deg(output_angle)}')
+            print(f'alpha_long is {np.rad2deg(self.alpha_long)}')
+            print(f'alpha_long_rate is {np.rad2deg(self.alpha_long_rate)}')
+            # print(f'alpha rate is : {np.rad2deg(alpha_rate)} rad/s')
 
         return output_speed, output_angle
-    
-    def get_control_stanley(self, e2, e3, vel, desired_speed):
-
-        #e2: lateral error
-        #e3: heading error
-        e = e2
-        alpha = -e3
-
-        output_speed = ( 1-abs(alpha/np.deg2rad(60)) ) * output_speed
-
-        e_front = e - WB/2*np.sin(alpha)                    
-        delta = np.rad2deg(np.arctan( -self.Kstanley_e*e_front / (self.Kstanley_ks + self.Kstanley_v*output_speed) ) - alpha)
-
-        output_angle = delta
-
-        os.system('cls' if os.name=='nt' else 'clear')
-        print(f'steering angle: {np.rad2deg(output_angle)} deg')
-        print(f'lateral error: {e} m')
-        print(f'front lateral error: {e_front} m')
-        print(f'heading error: {np.rad2deg(alpha)} deg')
-        print(f'output speed: {output_speed} m/s')
-
-        return output_speed, output_angle
-    
-    def predict_delta(self, u, dt):
-        # Integrator over dt
-        ode_int = integrator('F','rk',self.model,{'tf':dt})
-        # Integrate, starting from current state
-        res = ode_int(x0=self.delta, p=u)
-        return np.array(res['xf'])[0]

@@ -17,14 +17,15 @@ else:
 from helper_functions import *
 from PathPlanning4 import PathPlanning
 from controller3 import Controller
+from controllerSP import ControllerSpeed
 from detection import NO_SIGN, Detection
 
 from helper_functions import *
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [86,206,465,274,298,91,311,465,243,90,285,260]#150,155,203, 205,185,190,193,203,190,203]
-SPEED_CHALLENGE = False
+CHECKPOINTS = [86,463,174]#150,155,203, 205,185,190,193,203,190,203]
+SPEED_CHALLENGE = True
 
 #========================= STATES ==========================
 START_STATE = 'start_state'
@@ -165,7 +166,7 @@ YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track a
 STOP_LINE_APPROACH_DISTANCE = 0.4
 STOP_LINE_STOP_DISTANCE = 0.05 if not SPEED_CHALLENGE else 0.2 #0.05
 GPS_STOPLINE_APPROACH_DISTANCE = 0.60
-GPS_STOPLINE_STOP_DISTANCE = 0.5
+GPS_STOPLINE_STOP_DISTANCE = 0.5 if not SPEED_CHALLENGE else 0.6 #0.55
 DIST_TO_STOP_BEFORE_STOP_LINE = 0.05 #distance from the stop line to stop the car
 assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
 STOP_WAIT_TIME = 0.5 if not SPEED_CHALLENGE else 0.0 #3.0
@@ -247,13 +248,15 @@ MAX_ERROR_ON_LOCAL_DIST = 0.05 #[m] max error on the local distance
 #=========================== BRAIN ============================
 #==============================================================
 class Brain:
-    def __init__(self, car, controller, detection, path_planner, checkpoints=None, desired_speed=0.3, debug=True):
+    def __init__(self, car, controller, controller_sp, detection, path_planner, checkpoints=None, desired_speed=0.3, debug=True):
         print("Initialize brain")
         self.car = Automobile_Data() #not needed, just to import he methods in visual studio
         self.car = car
         assert isinstance(self.car, Automobile_Data)
         self.controller = Controller() #again, not needed
         self.controller = controller
+        self.controller_sp = ControllerSpeed() #again, not needed
+        self.controller_sp = controller_sp
         assert isinstance(self.controller, Controller)
         self.detect = Detection() #again, not needed
         self.detect = detection
@@ -870,7 +873,7 @@ class Brain:
                 img, _ = project_onto_frame(img, self.car, point_ahead, align_to_car=False, color=(0,0,255))
                 cv.imshow('brain_debug', img)
                 cv.waitKey(1)
-            gains = [0.0, .0, 1.5, 0.08] #k1,k2,k3,k3D
+            gains = [0.0, .0, 1.0, 0.08] #k1,k2,k3,k3D
             e2 = local_path_cf[idx_car_on_path][1] 
             yaw_error = np.arctan2(point_ahead[1], point_ahead[0]) 
             out_speed, out_angle = self.controller.get_control(e2, yaw_error, 0.0, self.desired_speed, gains=gains)
@@ -1590,22 +1593,26 @@ class Brain:
 
     #=============== ROUTINES ===============#
     def follow_lane(self):
-        e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
-        #NOTE 
-        e3 = -e3 if not SIMULATOR_FLAG else e3 
-        _, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
-        angle_ref = np.rad2deg(angle_ref)
-        if self.car.speed < 0.1: #inverse driving in reverse
-            angle_ref = -angle_ref
-        print(f'angle_ref: {angle_ref}')
-        self.car.drive_angle(angle_ref)
+        if not SPEED_CHALLENGE:
+            e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
+            #NOTE 
+            e3 = -e3 if not SIMULATOR_FLAG else e3 
+            _, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
+            angle_ref = np.rad2deg(angle_ref)
+            if self.car.speed < 0.1: #inverse driving in reverse
+                angle_ref = -angle_ref
+            print(f'angle_ref: {angle_ref}')
+            self.car.drive_angle(angle_ref)
+        else:
+            e3, _ = self.detect.detect_lane_ahead(self.car.frame)
+            output_speed, output_angle = self.controller_sp.get_control_speed(e3)
+            print(f'output_speed: {output_speed:.2f}, output_angle: {np.rad2deg(output_angle):.2f}')
+            self.car.drive(speed=output_speed, angle=np.rad2deg(output_angle))
 
     def detect_stop_line(self):
         #update the variable self.detect.est_dist_to_stop_line
         # x_stop, y_stop, yaw_stop = self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
         dist = self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
-
-        # STOPLINE_OFFSET = 0.3
 
         past_detections = self.routines[DETECT_STOP_LINE].var2
         assert STOP_LINE_APPROACH_DISTANCE-0.1 > 0.1, 'STOP_LINE_APPROACH_DISTANCE too small, must be >0.2'
@@ -1631,7 +1638,7 @@ class Brain:
             self.stop_line_distance_median = None 
 
     def slow_down(self):
-        if self.car.filtered_encoder_velocity > SLOW_DOWN_CONST*self.desired_speed:
+        if np.abs(self.car.filtered_encoder_velocity - SLOW_DOWN_CONST*self.desired_speed) > 0.1:
             self.car.drive_speed(self.desired_speed*SLOW_DOWN_CONST)
 
     def accelerate(self):

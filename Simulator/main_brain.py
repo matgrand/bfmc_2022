@@ -19,13 +19,11 @@ else: #PI
 
 from PathPlanning4 import PathPlanning
 from controller3 import Controller
+from controllerSP import ControllerSpeed
 from detection import Detection
 from brain import Brain
 
 map = cv.imread('data/2021_VerySmall.png')
-class_list = []
-with open("data/classes.txt", "r") as f:
-    class_list = [cname.strip() for cname in f.readlines()] 
 
 LOOP_DELAY = 0.01
 ACTUATION_DELAY = 0.0#0.15
@@ -33,7 +31,8 @@ VISION_DELAY = 0.0#0.08
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.15# [m/s]
+DESIRED_SPEED = 0.6# [m/s]
+CURVE_SPEED = 0.6# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -92,12 +91,13 @@ if __name__ == '__main__':
 
     # init controller
     controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, ff=ff_curvature)
+    controller_sp = ControllerSpeed(desired_speed=DESIRED_SPEED, curve_speed=CURVE_SPEED)
 
     #initiliaze all the neural networks for detection and lane following
     detect = Detection()
 
     #initiliaze the brain
-    brain = Brain(car=car, controller=controller, detection=detect, path_planner=path_planner, desired_speed=DESIRED_SPEED)
+    brain = Brain(car=car, controller=controller, controller_sp=controller_sp, detection=detect, path_planner=path_planner, desired_speed=DESIRED_SPEED)
 
     if SHOW_IMGS:
         map1 = map.copy()
