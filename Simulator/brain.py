@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = True
-SHOW_IMGS = True
+SIMULATOR_FLAG = False
+SHOW_IMGS = False
 
 from turtle import distance
 import numpy as np
@@ -24,7 +24,7 @@ from helper_functions import *
 
 START_NODE = 86
 END_NODE = 285#285#236#169#116          #203 T-park #190 S-park 
-CHECKPOINTS = [86,463,174]#150,155,203, 205,185,190,193,203,190,203]
+CHECKPOINTS = [86,99,116]#150,155,203, 205,185,190,193,203,190,203]
 SPEED_CHALLENGE = True
 
 #========================= STATES ==========================
@@ -164,10 +164,10 @@ SIGN_NAMES = ['park', 'closed_road', 'hw_exit', 'hw_enter', 'stop', 'roundabout'
 SIGN_DIST_THRESHOLD = 0.5
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
 STOP_LINE_APPROACH_DISTANCE = 0.4
-STOP_LINE_STOP_DISTANCE = 0.05 if not SPEED_CHALLENGE else 0.2 #0.05
+STOP_LINE_STOP_DISTANCE = 0.1 if not SPEED_CHALLENGE else 0.3 #0.05
 GPS_STOPLINE_APPROACH_DISTANCE = 0.60
-GPS_STOPLINE_STOP_DISTANCE = 0.5 if not SPEED_CHALLENGE else 0.6 #0.55
-DIST_TO_STOP_BEFORE_STOP_LINE = 0.05 #distance from the stop line to stop the car
+GPS_STOPLINE_STOP_DISTANCE = 0.20 if not SPEED_CHALLENGE else 0.6 #0.55
+DIST_TO_STOP_BEFORE_STOP_LINE = 0.35 #distance from the stop line to stop the car
 assert STOP_LINE_STOP_DISTANCE < STOP_LINE_APPROACH_DISTANCE
 STOP_WAIT_TIME = 0.5 if not SPEED_CHALLENGE else 0.0 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
@@ -233,9 +233,10 @@ PEDESTRIAN_CONTROL_DISTANCE = 0.35 #[m] distance to keep from the pedestrian
 PEDESTRIAN_TIMEOUT = 2.0 #[s] time to w8 after the pedestrian cleared the road
 TAILING_DISTANCE = 0.3 #[m] distance to keep from the vehicle while tailing
 OVERTAKE_STEER_ANGLE = 27.0 #[deg]
-OVERTAKE_STATIC_CAR_SPEED = 0.1  #[m/s]
-OT_STATIC_SWITCH = 0.35
-OT_STATIC_LANE_FOLLOW = 0.5
+OVERTAKE_STATIC_CAR_SPEED = 0.2  #[m/s]
+OT_STATIC_SWITCH_1 = 0.3
+OT_STATIC_SWITCH_2 = 0.4
+OT_STATIC_LANE_FOLLOW = 0.45
 AVOID_ROADBLOCK_ANGLE = 27.0 #[deg]
 AVOID_ROADBLOCK_SPEED = 0.2 #[m/s]
 AVOID_ROADBLOCK_DISTANCE = 0.6 #[m]
@@ -301,6 +302,7 @@ class Brain:
         self.achievements = ACHIEVEMENTS
 
         # INITIALIZE STATES
+
         self.states = { 
             START_STATE:              State(START_STATE, self.start_state),
             END_STATE:                State(END_STATE, self.end_state),
@@ -355,6 +357,8 @@ class Brain:
         self.sign_seen = np.zeros(len(self.sign_types))
         self.curr_sign = NO_SIGN
 
+        self.frame_for_stopline_angle = None
+
 
 
         self.last_run_call = time()
@@ -404,7 +408,6 @@ class Brain:
             print(f'Waiting for gps: {(curr_time-start_time):.1f}/{GPS_TIMEOUT}')
             if curr_time - start_time > GPS_TIMEOUT:
                 print('WARNING: ROUTE_GENERATION: No gps signal or GPS not trusted, Starting from the first checkpoint')
-                sleep(3.0)
                 can_generate_route = True
         
         if can_generate_route:
@@ -554,10 +557,9 @@ class Brain:
             if self.stop_line_distance_median is not None: #we have a median, => we have an accurate position for the stopline
                 print('Driving towards stop line... at distance: ', self.stop_line_distance_median)
                 self.activate_routines([SLOW_DOWN]) #FOLLOW_LANE, SLOW_DOWN#deactivate detect stop line
-                dist_to_drive = self.stop_line_distance_median - self.car.encoder_distance - STOP_LINE_STOP_DISTANCE
+                dist_to_drive = self.stop_line_distance_median - self.car.encoder_distance
                 self.car.drive_distance(dist_to_drive)
                 if dist_to_drive < DIST_TO_STOP_BEFORE_STOP_LINE: 
-                    # self.car.drive_speed(0.0)
                     print(f'Arrievd at stop line. Using median distance: {self.stop_line_distance_median}')
                     print(f'                           encoder distance: { self.car.encoder_distance:.2f}')
                     # sleep(1.0)
@@ -566,7 +568,7 @@ class Brain:
             else: #alternative, if we don't have a median, we just use the (possibly inaccurate) network estimaiton
                 print('WARNING: APPROACHING_STOP_LINE: stop distance may be imprecise')
                 if dist < STOP_LINE_STOP_DISTANCE:
-                    # self.car.drive_speed(0.0)
+                    self.car.drive_speed(0.0) #TODO REMOVE IT
                     print('Stopped at stop line. Using network distance: ', self.detect.est_dist_to_stop_line) 
                     decide_next_state = True
                     assert self.stop_line_distance_median is None, 'stop_line_distance_median is not None'
@@ -738,7 +740,7 @@ class Brain:
                 # sleep(.8)
                 e2, _, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
                 e2 = 0.0 # NOTE e2 is usually bad
-                car_position_slf = -np.array([+d+0.3+0.15, +e2])#np.array([+d+0.2, -e2])
+                car_position_slf = -np.array([+d+0.3+0.05, +e2])#-np.array([+d+0.3+0.15, +e2])#np.array([+d+0.2, -e2])
 
             # retrieve global position of the car, can be done usiing the stop_line
             # or using the gps, but for now we will use the stop_line
@@ -758,7 +760,7 @@ class Brain:
             print(f'alpha true: {np.rad2deg(alpha):.1f}')
             alpha = self.detect.detect_yaw_stopline(self.car.frame, SHOW_IMGS and False) * 0.8
             print(f'alpha est: {np.rad2deg(alpha):.1f}')
-            assert np.abs(alpha - alpha_true) < np.deg2rad(5.0), f'Estimated alpha is too different from true alpha'
+            # assert np.abs(alpha - alpha_true) < np.deg2rad(5.0), f'Estimated alpha is too different from true alpha'
             assert abs(alpha) < np.pi/6, f'Car orientation wrt stopline is too big, it needs to be better aligned, alpha = {alpha}'
             rot_matrix = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
             
@@ -949,14 +951,14 @@ class Brain:
                 just_sub_switched = False
             dist = self.car.encoder_distance - dist_prev_manouver 
             assert dist > -0.05
-            print(f'Switching lane: {dist:.2f}/{OT_STATIC_SWITCH:.2f}')
-            if dist > OT_STATIC_SWITCH:
+            print(f'Switching lane: {dist:.2f}/{OT_STATIC_SWITCH_1:.2f}')
+            if dist > OT_STATIC_SWITCH_1:
                 sub_state, just_sub_switched = OT_LANE_FOLLOWING, True
                 dist_prev_manouver = self.car.encoder_distance
         elif sub_state == OT_LANE_FOLLOWING:
             self.activate_routines([FOLLOW_LANE])
             dist = self.car.encoder_distance - dist_prev_manouver
-            print(f'Following lane: {dist:.2f}/{OT_STATIC_SWITCH:.2f}')
+            print(f'Following lane: {dist:.2f}/{OT_STATIC_LANE_FOLLOW:.2f}')
             if dist > OT_STATIC_LANE_FOLLOW:
                 sub_state, just_sub_switched = OT_SWITCHING_BACK, True
                 dist_prev_manouver = self.car.encoder_distance 
@@ -967,8 +969,8 @@ class Brain:
                 just_sub_switched = False
             dist = self.car.encoder_distance - dist_prev_manouver 
             assert dist > -0.05
-            print(f'Switching back: {dist:.2f}/{OT_STATIC_SWITCH:.2f}')
-            if dist > OT_STATIC_SWITCH:
+            print(f'Switching back: {dist:.2f}/{OT_STATIC_SWITCH_2:.2f}')
+            if dist > OT_STATIC_SWITCH_2:
                 self.switch_to_state(LANE_FOLLOWING)
         else:
             print('ERROR: OVERTAKE: Wrong substate')
@@ -1541,8 +1543,8 @@ class Brain:
 
         if dist >= OBSTACLE_DISTANCE_THRESHOLD: #
             print('Sonar got confused: switch back to previous state')
-            sleep(0.5)
             self.switch_to_prev_state()
+            return
 
         #more readable variables
         imgs_deque = self.curr_state.var1
@@ -1564,7 +1566,7 @@ class Brain:
                 print(f'Captured {len(frames)} imgs, running classification...')
                 obstacle, conf = self.detect.classify_frontal_obstacle(frames, distances, show_ROI=SHOW_IMGS)    
                 print(f'Obstacle: {obstacle}')
-                sleep(10)
+                sleep(1)
                 # for i,img in enumerate(imgs_deque):
                 #     cv.imshow(f'img {i}', img)
                 # SWITCH STATE
@@ -1629,7 +1631,7 @@ class Brain:
             
             assert past_detections is not None, 'past_detections is None, wrong initialization'
 
-            adapted_distance = dist + self.car.encoder_distance #- 0.4 #we substract the car length = 0.4
+            adapted_distance = dist + self.car.encoder_distance - 0.4 #we substract the car length = 0.4
 
             past_detections.append(adapted_distance)
             self.stop_line_distance_median = np.mean(past_detections) if len(past_detections) > SAMPLE_BEFORE_CONFIDENCE else None
@@ -1646,6 +1648,8 @@ class Brain:
             self.car.drive_speed(ACCELERATION_CONST*self.desired_speed)
 
     def control_for_signs(self):
+        return
+        if SPEED_CHALLENGE: return
         if not self.conditions[REROUTING]:
             if self.conditions[TRUST_GPS]:
                 car_pos_on_path = self.path_planner.path[int(round(self.car_dist_on_path*100))]
@@ -1683,15 +1687,16 @@ class Brain:
 
     def control_for_obstacles(self):
         #check for obstacles
-        last_obstacle_dist = self.routines[CONTROL_FOR_OBSTACLES].var1 if self.routines[CONTROL_FOR_OBSTACLES].var1 is not None else self.car.encoder_distance - 1.0
-        curr_dist = self.car.encoder_distance
-        if curr_dist - last_obstacle_dist > MIN_DIST_BETWEEN_OBSTACLES:
-            dist = self.car.filtered_sonar_distance
-            if dist < OBSTACLE_DISTANCE_THRESHOLD + 0.1:
-                self.car.drive_speed(self.desired_speed*0.2)
-            if dist < OBSTACLE_DISTANCE_THRESHOLD:
-                self.switch_to_state(CLASSIFYING_OBSTACLE)
-                self.routines[CONTROL_FOR_OBSTACLES].var1 = curr_dist
+        if not SPEED_CHALLENGE:
+            last_obstacle_dist = self.routines[CONTROL_FOR_OBSTACLES].var1 if self.routines[CONTROL_FOR_OBSTACLES].var1 is not None else self.car.encoder_distance - 1.0
+            curr_dist = self.car.encoder_distance
+            if curr_dist - last_obstacle_dist > MIN_DIST_BETWEEN_OBSTACLES:
+                dist = self.car.filtered_sonar_distance
+                if dist < OBSTACLE_DISTANCE_THRESHOLD + 0.1:
+                    self.car.drive_speed(self.desired_speed*0.2)
+                if dist < OBSTACLE_DISTANCE_THRESHOLD:
+                    self.switch_to_state(CLASSIFYING_OBSTACLE)
+                    self.routines[CONTROL_FOR_OBSTACLES].var1 = curr_dist
 
 
 
