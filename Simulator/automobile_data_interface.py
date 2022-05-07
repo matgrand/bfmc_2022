@@ -316,7 +316,7 @@ class Automobile_Data():
             #distances
             ekf_gps_diff =  np.linalg.norm(p_ekf - p_gps)
             #checks
-            if ekf_gps_diff > 0.4:
+            if ekf_gps_diff > 0.5:
                 #-> use gps
                 self.ekf.x[0,0] = p_gps[0]
                 self.ekf.x[1,0] = p_gps[1]

@@ -20,10 +20,6 @@ STOP_LINE_ESTIMATOR_PATH = "models/stop_line_estimator.onnx"
 
 STOP_LINE_ESTIMATOR_ADV_PATH = "models/stop_line_estimator_advanced.onnx"
 
-LOCAL_PATH_ESTIMATOR_PATH = "models/local_path_estimator.onnx"
-NUM_POINTS_AHEAD = 5
-DISTANCE_BETWEEN_POINTS = 0.2
-
 # SIGN_CLASSIFIER_PATH = 'models/sign_classifier.onnx'
 
 KERNEL_TYPE_SIGNS = 'linear'
@@ -85,10 +81,6 @@ class Detection:
         self.est_dist_to_stop_line_adv = 1.0
         self.avg_stop_line_detection_adv_time = 0
         self.stop_line_adv_cnt = 0
-
-        #local path estimation
-        self.local_path_estimator = cv.dnn.readNetFromONNX(LOCAL_PATH_ESTIMATOR_PATH)
-        self.avg_local_path_detection_time = 0
 
         #sign classifier
         self.sign_no_clusters = NUM_CLUSTERS_SIGNS 
@@ -339,48 +331,6 @@ class Detection:
         print(f"stop_line_detection dist: {dist:.2f}, in {stop_line_detection_time:.2f} ms")
         return stopline_x, stopline_y, stopline_angle
 
-    def estimate_local_path(self, frame):
-        """
-        Estimates the local path, in particular it estimtes a sequence of points at a fixed
-        distance between each other of DISTANCE_BETWEEN_POINTS [m]
-        """
-        start_time = time()
-        IMG_SIZE = (32,32)
-        #convert to gray
-        frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        #keep the bottom 2/3 of the image
-        frame = frame[int(frame.shape[0]/4):,:] #/3
-        #blur
-        # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
-        # frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
-        # frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
-        frame = cv.resize(frame, IMG_SIZE)
-        frame = cv.blur(frame, (2,2), 0)  #7,7 both is best
-
-        # add noise 1.5 ms 
-        std = 50
-        # std = np.random.randint(1, std)
-        noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
-        frame = cv.subtract(frame, noisem)
-        noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
-        frame = cv.add(frame, noisep)
-
-        blob = cv.dnn.blobFromImage(frame, 1.0, IMG_SIZE, 0, swapRB=True, crop=False)
-        # assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
-        self.local_path_estimator.setInput(blob)
-        output = self.local_path_estimator.forward()[0]
-
-        #get the yaws from the network
-        yaws = [output[i] for i in range(NUM_POINTS_AHEAD)]
-        #calculate the vectors
-        points = np.array([np.array([DISTANCE_BETWEEN_POINTS*np.cos(yaw), DISTANCE_BETWEEN_POINTS*np.sin(yaw)]) for yaw in yaws])
-        #create the sequence
-        for i in range(NUM_POINTS_AHEAD-1):
-            points[i+1] = points[i] + points[i+1]
-        
-        yaws = np.array(yaws)
-        return points, yaws
-            
     ## SIGN DETECTION
     def tile_image(self, image, x,y,w,h, rows, cols, tile_widths, return_size=(32,32), channels=3):
         assert image.shape[0] >= y + h, f'Image height is {image.shape[0]} but y is {y} and h is {h}'
