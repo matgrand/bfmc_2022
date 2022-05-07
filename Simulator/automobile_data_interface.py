@@ -3,6 +3,7 @@
 SIMULATOR = True
 
 # Functional libraries
+from cv2 import mean
 import rospy
 import numpy as np
 if SIMULATOR:
@@ -13,13 +14,13 @@ else:
     from control.helper_functions import *
 import time
 from collections import deque
-# from estimation import EKFCar
 
 START_X = 0.2
 START_Y = 14.8
 
 GPS_DELAY = 0.45 # [s] delay for gps message to arrive
 ENCODER_POS_FREQ = 100.0 # [Hz] frequency of encoder position messages
+GPS_FREQ = 4.0 # [Hz] frequency of gps messages
 BUFFER_PAST_MEASUREMENTS_LENGTH = int(round(GPS_DELAY * ENCODER_POS_FREQ))
 
 # Vehicle driving parameters
@@ -174,8 +175,11 @@ class Automobile_Data():
         self.ekf = AutomobileEKF(x0=self.est_init_state, WB=self.WB)
 
         self.past_encoder_distances = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
+        self.past_yaws = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
         self.past_gps_increments_x = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
         self.past_gps_increments_y = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
+
+        self.yaws_between_updates = deque(maxlen=int(round(ENCODER_POS_FREQ/GPS_FREQ)))
 
         # I/O interface
         rospy.init_node('automobile_data', anonymous=False)
@@ -232,8 +236,14 @@ class Automobile_Data():
         """  
         self.yaw_loc = self.yaw - self.yaw_loc_o
         curr_dist = self.encoder_distance
+
         #add curr_dist to distance buffer
-        self.past_encoder_distances.append((curr_dist, self.yaw))
+        self.past_encoder_distances.append(curr_dist)
+        #update yaw buffer
+        if len(self.past_yaws) > BUFFER_PAST_MEASUREMENTS_LENGTH-1:
+            self.yaws_between_updates.append(self.past_yaws.popleft())
+        self.past_yaws.append(self.yaw)
+
         self.dist_loc = np.abs(curr_dist - self.dist_loc_o)
         signed_L = curr_dist - self.prev_dist
         L = np.abs(signed_L)
@@ -246,17 +256,16 @@ class Automobile_Data():
         if self.new_gps_sample_arrived:
             self.last_gps_sample_time = time.time()    
             self.new_gps_sample_arrived = False           
-        else:
-            if (time.time() - self.last_gps_sample_time) > 0.8 and np.abs(self.filtered_encoder_velocity) > 0.1:
-                self.trust_gps = False #too much time passed from previous gps pos
-                self.gps_cnt = 0
-            yaw = self.yaw
-            dx = signed_L * np.cos(yaw)
-            dy = signed_L * np.sin(yaw) 
-            self.past_gps_increments_x.append(dx)  
-            self.past_gps_increments_y.append(dy)
-            self.x_est += dx
-            self.y_est += dy            
+        if (time.time() - self.last_gps_sample_time) > 0.8 and np.abs(self.filtered_encoder_velocity) > 0.1:
+            self.trust_gps = False #too much time passed from previous gps pos
+            self.gps_cnt = 0
+        yaw = self.yaw
+        dx = signed_L * np.cos(yaw)
+        dy = signed_L * np.sin(yaw) 
+        self.past_gps_increments_x.append(dx)  
+        self.past_gps_increments_y.append(dy)
+        self.x_est += dx
+        self.y_est += dy            
 
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received
@@ -280,7 +289,8 @@ class Automobile_Data():
             #calculate velocity using the encoder for maximum precision
             #note: we are using the encoder distance delayed of GPS delay
             #get the last element of the buffer
-            curr_gps_dist, curr_yaw = self.past_encoder_distances.popleft() #delayed distance
+            curr_gps_dist = self.past_encoder_distances.popleft() #delayed distance
+            curr_yaw = np.median(np.array(self.yaws_between_updates)) #delayed yaw
             # curr_gps_dist = self.encoder_distance  #istantaneous distance
             # curr_yaw = self.yaw #istantaneous yaw
             dist = curr_gps_dist - self.prev_gps_dist
@@ -298,36 +308,24 @@ class Automobile_Data():
             x_est, y_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
             ## check if x_est and y_est are valid
             #if the estimate is way off set the estimate to the current gps position
-            curr_x_est = self.ekf.x[0,0]
-            curr_y_est = self.ekf.x[1,0]
-            p_ekf = np.array([curr_x_est, curr_y_est]) #estimate of the kalmann filter
+            # curr_x_est = self.ekf.x[0,0]
+            # curr_y_est = self.ekf.x[1,0]
+            # p_ekf = np.array([curr_x_est, curr_y_est]) #estimate of the kalmann filter
+            p_ekf = np.array([x_est, y_est]) #estimate of the kalmann filter
             p_gps = np.array([self.x, self.y])       #current gps position
-            # p_enc = np.array([self.x_est, self.y_est]) #curr estimate using the encoder
             #distances
             ekf_gps_diff =  np.linalg.norm(p_ekf - p_gps)
-            # enc_gps_diff =  np.linalg.norm(p_enc - p_gps)
             #checks
-            if ekf_gps_diff > 0.4:# and enc_gps_diff > 0.4: #both estimates way off
+            if ekf_gps_diff > 0.4:
                 #-> use gps
                 self.ekf.x[0,0] = p_gps[0]
                 self.ekf.x[1,0] = p_gps[1]
                 self.trust_gps = False
                 self.gps_cnt = 0
-            # elif ekf_gps_diff > 0.4 and enc_gps_diff <= 0.4: #only ekf estimate way off
-            #     #-> use encoder
-            #     self.ekf.x[0,0] = p_enc[0]
-            #     self.ekf.x[1,0] = p_enc[1]
-            #     self.trust_gps = False
-            #     self.gps_cnt = 0
-            else: #both fairly accurate
-                #w8 for KF to converge before trusting gps
-                if ekf_gps_diff > 0.25: #a little off
-                    self.trust_gps = False
-                    self.gps_cnt = 0
-                else: 
-                    self.gps_cnt +=1
-                    if self.gps_cnt > EKF_STEPS_BEFORE_TRUST:
-                        self.trust_gps = True
+            else: # fairly accurate
+                self.gps_cnt +=1
+                if self.gps_cnt > EKF_STEPS_BEFORE_TRUST:
+                    self.trust_gps = True
             #update the estimated state, if gps is trusted
             if self.trust_gps:
                 tot_delta_x = np.sum(self.past_gps_increments_x)

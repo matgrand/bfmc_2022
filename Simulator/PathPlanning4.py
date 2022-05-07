@@ -440,7 +440,6 @@ class PathPlanning():
             #we need to add the local path to the complete path
             complete_path = np.concatenate((complete_path, self.path))
         self.path = complete_path
-        self.augment_path()
 
     def get_path_ahead(self, index, look_ahead=100):
         assert index < len(self.path) and index >= 0
