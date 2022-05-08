@@ -17,7 +17,8 @@ from helper_functions import *
 from PathPlanning4 import PathPlanning
 from controller3 import Controller
 from controllerSP import ControllerSpeed
-from detection import NO_SIGN, Detection
+from detection import Detection
+from environmental_data_simulator import EnvironmentalData
 
 from helper_functions import *
 
@@ -94,8 +95,13 @@ ACHIEVEMENTS = {
 #==============================================================
 #========================= PARAMTERS ==========================
 #==============================================================
+#signs
 SIGN_DIST_THRESHOLD = 0.5
+#sempahores
+SEMAPHORE_IS_ALWAYS_GREEN = False
+
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
+
 #STOPLINES
 USE_ADVANCED_NETWORK_FOR_STOPLINES = True
 STOP_LINE_APPROACH_DISTANCE = 0.45 if USE_ADVANCED_NETWORK_FOR_STOPLINES else 0.4
@@ -186,7 +192,7 @@ MAX_ERROR_ON_LOCAL_DIST = 0.05 #[m] max error on the local distance
 #=========================== BRAIN ============================
 #==============================================================
 class Brain:
-    def __init__(self, car, controller, controller_sp, detection, path_planner, checkpoints=None, desired_speed=0.3, debug=True):
+    def __init__(self, car, controller, controller_sp, env, detection, path_planner, checkpoints=None, desired_speed=0.3, debug=True):
         print("Initialize brain")
         self.car = Automobile_Data() #not needed, just to import he methods in visual studio
         self.car = car
@@ -202,6 +208,9 @@ class Brain:
         self.path_planner = PathPlanning(None)
         self.path_planner = path_planner
         assert isinstance(self.path_planner, PathPlanning)
+        self.env = EnvironmentalData() #again, not needed
+        self.env = env
+
         
         #navigation instruction is a list of tuples:
         # ()
@@ -257,7 +266,6 @@ class Brain:
             WAITING_FOR_PEDESTRIAN:   State(WAITING_FOR_PEDESTRIAN, self.waiting_for_pedestrian),
             WAITING_FOR_GREEN:        State(WAITING_FOR_GREEN, self.waiting_for_green),
             WAITING_AT_STOPLINE:      State(WAITING_AT_STOPLINE, self.waiting_at_stopline),
-            WAITING_FOR_REROUTING:    State(WAITING_FOR_REROUTING, self.waiting_for_rerouting),
             #overtaking manouver
             OVERTAKING_STATIC_CAR:    State(OVERTAKING_STATIC_CAR, self.overtaking_static_car),
             OVERTAKING_MOVING_CAR:    State(OVERTAKING_MOVING_CAR, self.overtaking_moving_car),
@@ -293,13 +301,19 @@ class Brain:
         self.curr_sign = NO_SIGN
 
         self.frame_for_stopline_angle = None
-
-
-
         self.last_run_call = time()
+
         print('Brain initialized')
+        print('Waiting for start semaphore...')
+        while True:
+            semaphore_start_state = self.env.get_semaphore_state(START)
+            if SEMAPHORE_IS_ALWAYS_GREEN:
+                semaphore_start_state = GREEN
+            if semaphore_start_state == GREEN:
+                break
+            sleep(0.1)
+
         self.switch_to_state(START_STATE)
-        # self.switch_to_state(DOING_NOTHING)
 
     #=============== STATES ===============#
     def start_state(self):
@@ -787,21 +801,27 @@ class Brain:
                 self.switch_to_state(LANE_FOLLOWING) #NOTE
             
     def waiting_for_green(self):
-        #temporary fix
-        self.switch_to_state(WAITING_AT_STOPLINE)
+        semaphore, tl_state = self.env.get_closest_semaphore_state(np.array([self.car.x_est, self.car.y_est]))
+        print(f'Waiting at semaphore: {semaphore}, state: {tl_state}')
+        if self.curr_state.just_switched:
+            self.activate_routines([])
+            if tl_state != GREEN: self.car.drive_speed(0.0)
+            self.curr_state.just_switched = False
+        
+        if tl_state == GREEN:
+            self.switch_to_state(INTERSECTION_NAVIGATION)
 
     def waiting_at_stopline(self):
         self.activate_routines([]) #no routines
         if STOP_WAIT_TIME > 0.0:
-            self.car.drive_speed(0.0)
-            sleep(SLEEP_AFTER_STOPPING)
+            if self.curr_state.just_switched:
+                self.activate_routines([])
+                self.car.drive_speed(0.0)
+                self.curr_state.just_switched = False
             if (time() - self.curr_state.start_time) > STOP_WAIT_TIME:
                 self.switch_to_state(INTERSECTION_NAVIGATION)
         else:
             self.switch_to_state(INTERSECTION_NAVIGATION)
-
-    def waiting_for_rerouting(self):
-        pass
 
     def overtaking_static_car(self):
         self.activate_routines([])

@@ -24,7 +24,6 @@ ROUNDABOUT_NAVIGATION = 'roundabout_navigation'
 WAITING_FOR_PEDESTRIAN = 'waiting_for_pedestrian'
 WAITING_FOR_GREEN = 'waiting_for_green'
 WAITING_AT_STOPLINE = 'waiting_at_stopline'
-WAITING_FOR_REROUTING = 'waiting_for_rerouting'
 OVERTAKING_STATIC_CAR = 'overtaking_static_car'
 OVERTAKING_MOVING_CAR = 'overtaking_moving_car'
 TAILING_CAR = 'tailing_car'
@@ -101,6 +100,16 @@ PEDESTRIAN_ON_CROSSWALK = 'pedestrian_on_crosswalk'
 PEDESTRIAN_ON_ROAD = 'pedestrian_on_road'
 ROADBLOCK = 'roadblock'
 BUMPY_ROAD = 'bumpy_road'
+
+#sempahores
+MASTER = 'master'
+SLAVE = 'slave'
+ANTIMASTER = 'antimaster'
+START = 'start'
+#semaphore states
+GREEN = 2
+YELLOW = 1
+RED = 0
 
 #################################################################################################################################################################
 #################################################################################################################################################################

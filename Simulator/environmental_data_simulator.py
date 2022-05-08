@@ -29,10 +29,13 @@ else:
 
 VEHICLE_CLOSE_RADIUS = 0.5  # [m]
 
-MASTER = 'master'
-SLAVE = 'slave'
-ANTIMASTER = 'antimaster'
-START = 'start'
+SEMAPHORE_POSITIONS = {
+                MASTER:     np.array([2.01,4.16]), 
+                SLAVE:      np.array([3.69,4.54]), 
+                ANTIMASTER: np.array([3.06,3.5]),
+                START:      np.array([0.84,0.64])
+                } 
+
 
 
 class EnvironmentalData():
@@ -52,21 +55,21 @@ class EnvironmentalData():
         # VEHICLE-TO-EVERYTHING (V2X)
         self.obstacle_list = []
         self.obstacle_map = {
-                                'STOP':                     1,
-                                'PRIORITY':                 2,
-                                'PARKING':                  3,
-                                'CROSSWALK':                4,
-                                'HIGHWAYENTER':             5,
-                                'HIGHWAYEXIT':              6,
-                                'ROUNDABOUT':               7,
-                                'ONEWAY':                   8,
-                                'TRAFFICLIGHT':             9,
-                                'STATICCAR_ONROAD':         10,
-                                'STATICCAR_PARKING':        11,
-                                'PEDESTRIAN_ONCROSSWALK':   12,
-                                'PEDESTRIAN_ONROAD':        13,
-                                'ROADBLOCK':                14,
-                                'BUMPYROAD':                15
+                                STOP:                   1,
+                                PRIORITY:               2,
+                                PARK:                   3,
+                                CROSSWALK:              4,
+                                HW_ENTER:               5,
+                                HW_EXIT:                6,
+                                ROUNDABOUT:             7,
+                                ONE_WAY:                8,
+                                TRAFFIC_LIGHT:          9,
+                                STATIC_CAR_ON_ROAD:     10,
+                                STATIC_CAR_PARKING:     11,
+                                PEDESTRIAN_ON_CROSSWALK:12,
+                                PEDESTRIAN_ON_ROAD:     13,
+                                ROADBLOCK:              14,
+                                BUMPY_ROAD:             15
                             }
         # SEMAPHORE
         self.semaphore_states = {MASTER:0, SLAVE:0, ANTIMASTER:0, START:0}# can be changed to 1,2,3,4
@@ -169,7 +172,20 @@ class EnvironmentalData():
         assert semaphore_key in self.semaphore_states.keys(), "Semaphore key not recognized"
         return self.semaphore_states[semaphore_key]
 
-    
+    def get_closest_semaphore_state(self, car_position):
+        """
+        :param car_position: position of the car
+        :type car_position: nd-array
+        :return: closest semaphre name and state of the closest semaphore: 0:RED, 1:YELLOW, 2:GREEN
+        :rtype: byte
+        """
+        closest_semaphore = min(SEMAPHORE_POSITIONS.items(), key=lambda x: np.linalg.norm(car_position - x[1]))
+        print(f'Closest semaphore: {closest_semaphore[0]}')
+        print(f'Closest semaphore state: {self.get_semaphore_state(closest_semaphore[0])}')
+        return closest_semaphore[0], self.get_semaphore_state(closest_semaphore[0])
+
+
+
     # STATIC METHODS
     
 

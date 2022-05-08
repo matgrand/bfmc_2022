@@ -9,6 +9,8 @@ print('Main brain starting...')
 # from automobile_data import Automobile_Data
 from automobile_data_simulator import AutomobileDataSimulator
 from helper_functions import *
+from environmental_data_simulator import EnvironmentalData
+
 
 from detection import Detection
 
@@ -31,7 +33,7 @@ if __name__ == '__main__':
 
 
     # init the car data
-    os.system('rosservice call /gazebo/reset_simulation')
+    # os.system('rosservice call /gazebo/reset_simulation')
     car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
 
@@ -47,6 +49,9 @@ if __name__ == '__main__':
 
     #initiliaze all the neural networks for detection and lane following
     detect = Detection()
+
+    #initiliaze the environmental data
+    env = EnvironmentalData(trig_v2v=True, trig_v2x=True, trig_semaphore=True)
 
     map1 = map.copy()
     draw_car(map1, car.x_true, car.y_true, car.yaw)
@@ -70,6 +75,9 @@ if __name__ == '__main__':
             stopline_x, stopline_y, stopline_angle = detect.detect_stop_line2(car.frame, show_ROI=True)
 
             frame, _ = project_stopline(frame, car, stopline_x, stopline_y, stopline_angle, color=(0,200,0))
+
+
+            semaphore, state = env.get_closest_semaphore_state(np.array([car.x_est, car.y_est]))
 
             # #test drive distance
             # print('driving 0.5')

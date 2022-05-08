@@ -22,6 +22,7 @@ from controller3 import Controller
 from controllerSP import ControllerSpeed
 from detection import Detection
 from brain import Brain
+from environmental_data_simulator import EnvironmentalData
 
 map = cv.imread('data/2021_VerySmall.png')
 
@@ -64,7 +65,7 @@ if __name__ == '__main__':
 
 
     # init the car data
-    os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
+    # os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
     os.system('rosservice call gazebo/unpause_physics') if SIMULATOR else None
     # sleep(1.5)
     if SIMULATOR:
@@ -89,6 +90,9 @@ if __name__ == '__main__':
     # init trajectory
     path_planner = PathPlanning(map) 
 
+    # init env
+    env = EnvironmentalData(trig_v2v=True, trig_v2x=True, trig_semaphore=True)
+
     # init controller
     controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, ff=ff_curvature)
     controller_sp = ControllerSpeed(desired_speed=DESIRED_SPEED, curve_speed=CURVE_SPEED)
@@ -97,7 +101,7 @@ if __name__ == '__main__':
     detect = Detection()
 
     #initiliaze the brain
-    brain = Brain(car=car, controller=controller, controller_sp=controller_sp, detection=detect, path_planner=path_planner, desired_speed=DESIRED_SPEED)
+    brain = Brain(car=car, controller=controller, controller_sp=controller_sp, detection=detect, env=env, path_planner=path_planner, desired_speed=DESIRED_SPEED)
 
     if SHOW_IMGS:
         map1 = map.copy()
