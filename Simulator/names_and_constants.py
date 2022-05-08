@@ -38,10 +38,6 @@ DETECT_STOP_LINE = 'detect_stop_line'
 SLOW_DOWN = 'slow_down'
 ACCELERATE = 'accelerate'
 CONTROL_FOR_SIGNS = 'control_for_signs'
-CONTROL_FOR_SEMAPHORE = 'control_for_semaphore'
-CONTROL_FOR_PEDESTRIANS = 'control_for_pedestrians'
-CONTROL_FOR_VEHICLES = 'control_for_vehicles'
-CONTROL_FOR_ROADBLOCKS = 'control_for_roadblocks'
 CONTROL_FOR_OBSTACLES = 'control_for_obstacles'
 UPDATE_STATE = 'update_state'
 
@@ -61,14 +57,12 @@ HIGHWAY_EXIT_EVENT = 'highway_exit_event'
 PARK_ACHIEVED = 'park_achieved'
 
 #======================== CONDITIONS ==========================
-IN_RIGHT_LANE = 'in_right_lane'
-IN_LEFT_LANE = 'in_left_lane'
-IS_DOTTED_LINE = 'is_dotted_line'
 CAN_OVERTAKE = 'can_overtake'
 HIGHWAY = 'highway'
 TRUST_GPS = 'trust_gps'
 CAR_ON_PATH = 'car_on_path'
 REROUTING = 'rerouting'
+BUMPY_ROAD = 'bumpy_road'
 
 
 #################################################################################################################################################################
@@ -92,6 +86,11 @@ NO_SIGN = 'NO_sign'
 TRAFFIC_LIGHT = 'traffic_light'
 SIGN_NAMES = [PARK, CLOSED_ROAD, HW_EXIT, HW_ENTER, STOP, ROUNDABOUT, PRIORITY, CROSSWALK, ONE_WAY, NO_SIGN]
 # SIGN_NAMES = [PARK, CLOSED_ROAD, HW_EXIT, HW_ENTER, STOP, ROUNDABOUT, PRIORITY, CROSSWALK, ONE_WAY, NO_SIGN, TRAFFIC_LIGHT]
+
+#obstacles 
+CAR = 'car'
+PEDESTRIAN = 'pedestrian'
+ROADBLOCK = 'roadblock'
 
 #ENVIROMENTAL SERVER
 STATIC_CAR_ON_ROAD = 'static_car_on_road'

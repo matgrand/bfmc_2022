@@ -85,7 +85,8 @@ CONDITIONS = {
     TRUST_GPS:                True,     # if true the car will trust the gps, for example in expecting a sign or traffic light
                                         # can be set as false if there is a lot of package loss or the car has not received signal in a while
     CAR_ON_PATH:              True,     # if true, the car is on the path, if the gps is trusted and the position is too far from the path it will be set to false
-    REROUTING:                True      # if true, the car is rerouting, for example at the beginning or after a roadblock
+    REROUTING:                True,      # if true, the car is rerouting, for example at the beginning or after a roadblock
+    BUMPY_ROAD:               False,    # if true, the car is on a bumpy road
 }
 
 ACHIEVEMENTS = {
@@ -98,7 +99,7 @@ ACHIEVEMENTS = {
 #signs
 SIGN_DIST_THRESHOLD = 0.5
 #sempahores
-SEMAPHORE_IS_ALWAYS_GREEN = False
+SEMAPHORE_IS_ALWAYS_GREEN = True
 
 YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
 
@@ -165,21 +166,30 @@ STEER_ACTUATION_DELAY = 0.3 #[s] delay to perform the steering manouver
 OBSTACLE_IS_ALWAYS_PEDESTRIAN = False
 OBSTACLE_IS_ALWAYS_CAR = False
 OBSTACLE_IS_ALWAYS_ROADBLOCK = False
-MIN_DIST_BETWEEN_OBSTACLES = 0.5 #dont detect obstacle for this distance after detecting one of them
 assert OBSTACLE_IS_ALWAYS_PEDESTRIAN ^ OBSTACLE_IS_ALWAYS_CAR ^ OBSTACLE_IS_ALWAYS_ROADBLOCK or not (OBSTACLE_IS_ALWAYS_PEDESTRIAN or OBSTACLE_IS_ALWAYS_CAR or OBSTACLE_IS_ALWAYS_ROADBLOCK)
+#obstacle classification
+MIN_DIST_BETWEEN_OBSTACLES = 0.5 #dont detect obstacle for this distance after detecting one of them
 OBSTACLE_DISTANCE_THRESHOLD = 0.5 #[m] distance from the obstacle to consider it as an obstacle
 OBSTACLE_CONTROL_DISTANCE = 0.25 #distance to where to stop wrt the obstacle
 OBSTACLE_IMGS_CAPTURE_START_DISTANCE = 0.45 #dist from where we capture imgs 
 OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE = 0.28 #dist up to we capture imgs
 assert OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE > OBSTACLE_CONTROL_DISTANCE
+#pedestrian
 PEDESTRIAN_CONTROL_DISTANCE = 0.35 #[m] distance to keep from the pedestrian
 PEDESTRIAN_TIMEOUT = 2.0 #[s] time to w8 after the pedestrian cleared the road
 TAILING_DISTANCE = 0.3 #[m] distance to keep from the vehicle while tailing
+#overtake static car
 OVERTAKE_STEER_ANGLE = 27.0 #[deg]
 OVERTAKE_STATIC_CAR_SPEED = 0.2  #[m/s]
 OT_STATIC_SWITCH_1 = 0.3
 OT_STATIC_SWITCH_2 = 0.4
 OT_STATIC_LANE_FOLLOW = 0.45
+#overtake moving car
+OVERTAKE_MOVING_CAR_SPEED = 0.2  #[m/s]
+OT_MOVING_SWITCH_1 = 0.3
+OT_MOVING_LANE_FOLLOW = 0.45
+OT_MOVING_SWITCH_2 = 0.5
+#roadblock
 AVOID_ROADBLOCK_ANGLE = 27.0 #[deg]
 AVOID_ROADBLOCK_SPEED = 0.2 #[m/s]
 AVOID_ROADBLOCK_DISTANCE = 0.6 #[m]
@@ -285,10 +295,6 @@ class Brain:
             SLOW_DOWN:                Routine(SLOW_DOWN,  self.slow_down),     
             ACCELERATE:               Routine(ACCELERATE,  self.accelerate),         
             CONTROL_FOR_SIGNS:        Routine(CONTROL_FOR_SIGNS,  self.control_for_signs),         
-            CONTROL_FOR_SEMAPHORE:    Routine(CONTROL_FOR_SEMAPHORE,  self.control_for_semaphore), 
-            CONTROL_FOR_PEDESTRIANS:  Routine(CONTROL_FOR_PEDESTRIANS,  self.control_for_pedestrians), 
-            CONTROL_FOR_VEHICLES:     Routine(CONTROL_FOR_VEHICLES,  self.control_for_roadblocks),   
-            CONTROL_FOR_ROADBLOCKS:   Routine(CONTROL_FOR_ROADBLOCKS,  self.control_for_roadblocks),
             CONTROL_FOR_OBSTACLES:    Routine(CONTROL_FOR_OBSTACLES,  self.control_for_obstacles),
             UPDATE_STATE:             Routine(UPDATE_STATE, self.update_state)  
         }
@@ -410,6 +416,10 @@ class Brain:
             self.activate_routines([FOLLOW_LANE, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES])
             self.curr_state.just_switched = False
         
+        #highway conditions
+        if self.conditions[HIGHWAY]:
+            self.add_routines([ACCELERATE])
+
         #check parking
         if self.next_event.name == PARKING_EVENT:
             self.activate_routines([FOLLOW_LANE, CONTROL_FOR_OBSTACLES]) #we dont need stoplines in parking
@@ -455,7 +465,6 @@ class Brain:
                     self.car.stop()
                     sleep(3)
                     exit()
-            
         #check if we are approaching a stop_line, but only if we are far enough from the previous stop_line
         else:
             if self.conditions[TRUST_GPS]:
@@ -473,9 +482,6 @@ class Brain:
                 if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE and far_enough_from_prev_stop_line and self.routines[DETECT_STOP_LINE].active:
                     self.switch_to_state(APPROACHING_STOP_LINE)
 
-
-        if self.conditions[HIGHWAY]:
-            self.add_routines([ACCELERATE])
 
 
     def approaching_stop_line(self):
@@ -806,9 +812,10 @@ class Brain:
         if self.curr_state.just_switched:
             self.activate_routines([])
             if tl_state != GREEN: self.car.drive_speed(0.0)
+            #publish traffic light
+            self.env.publish_obstacle(TRAFFIC_LIGHT, self.car.x_est, self.car.y_est)
             self.curr_state.just_switched = False
-        
-        if tl_state == GREEN:
+        if tl_state == GREEN or SEMAPHORE_IS_ALWAYS_GREEN:
             self.switch_to_state(INTERSECTION_NAVIGATION)
 
     def waiting_at_stopline(self):
@@ -833,6 +840,7 @@ class Brain:
         if self.curr_state.just_switched:
             self.curr_state.var1 = (OT_SWITCHING_LANE, True)
             self.curr_state.var2 = self.car.encoder_distance
+            self.env.publish_obstacle(STATIC_CAR_ON_ROAD, self.car.x_est, self.car.y_est)
             self.curr_state.just_switched = False
         sub_state, just_sub_switched = self.curr_state.var1
         dist_prev_manouver = self.curr_state.var2
@@ -875,7 +883,56 @@ class Brain:
         self.curr_state.var2 = dist_prev_manouver
 
     def overtaking_moving_car(self):
-        pass
+        self.activate_routines([])
+        #states
+        OT_SWITCHING_LANE = 1
+        OT_LANE_FOLLOWING = 2 
+        OT_SWITCHING_BACK = 3
+
+        if self.curr_state.just_switched:
+            self.curr_state.var1 = (OT_SWITCHING_LANE, True)
+            self.curr_state.var2 = self.car.encoder_distance
+            # self.env.publish_obstacle(STATIC_CAR_ON_ROAD, self.car.x_est, self.car.y_est) #NO need to publish a moving car
+            self.curr_state.just_switched = False
+        sub_state, just_sub_switched = self.curr_state.var1
+        dist_prev_manouver = self.curr_state.var2
+        if sub_state == OT_SWITCHING_LANE:
+            if just_sub_switched:
+                self.car.drive_angle(-OVERTAKE_STEER_ANGLE)
+                dist_prev_manouver = self.car.encoder_distance
+                self.car.drive_speed(OVERTAKE_MOVING_CAR_SPEED)
+                just_sub_switched = False
+            dist = self.car.encoder_distance - dist_prev_manouver 
+            assert dist > -0.05
+            print(f'Switching lane: {dist:.2f}/{OT_MOVING_SWITCH_1:.2f}')
+            if dist > OT_MOVING_SWITCH_1:
+                sub_state, just_sub_switched = OT_LANE_FOLLOWING, True
+                dist_prev_manouver = self.car.encoder_distance
+        elif sub_state == OT_LANE_FOLLOWING:
+            self.activate_routines([FOLLOW_LANE])
+            dist = self.car.encoder_distance - dist_prev_manouver
+            print(f'Following lane: {dist:.2f}/{OT_MOVING_LANE_FOLLOW:.2f}')
+            if dist > OT_MOVING_LANE_FOLLOW:
+                sub_state, just_sub_switched = OT_SWITCHING_BACK, True
+                dist_prev_manouver = self.car.encoder_distance 
+        elif sub_state == OT_SWITCHING_BACK:
+            if just_sub_switched:
+                self.car.drive_angle(OVERTAKE_STEER_ANGLE)
+                dist_prev_manouver = self.car.encoder_distance
+                just_sub_switched = False
+            dist = self.car.encoder_distance - dist_prev_manouver 
+            assert dist > -0.05
+            print(f'Switching back: {dist:.2f}/{OT_MOVING_SWITCH_2:.2f}')
+            if dist > OT_MOVING_SWITCH_2:
+                self.switch_to_state(LANE_FOLLOWING)
+        else:
+            print('ERROR: OVERTAKE: Wrong substate')
+            self.car.stop()
+            sleep(3)
+            exit()
+
+        self.curr_state.var1 = (sub_state, just_sub_switched)
+        self.curr_state.var2 = dist_prev_manouver
 
     def tailing_car(self):
         dist = self.car.filtered_sonar_distance
@@ -916,6 +973,7 @@ class Brain:
                 if norm(curr_pos - prev_pos) < GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE:
                     cnt += 1
                     if cnt >= GPS_CONVERGENCE_PATIANCE:
+                        self.env.publish_obstacle(ROADBLOCK, self.car.x_est, self.car.y_est)
                         self.curr_state.var3 = (AR_SWITCHING_LANE, True)
                         closest_node, distance = self.path_planner.get_closest_node(curr_pos)
                         print(f'GPS converged, node: {closest_node}, distance: {distance:.2f}')
@@ -972,7 +1030,6 @@ class Brain:
             sleep(3)
             exit()
     
-
     def parking(self):
         #Substates
         LOCALIZING_PARKING_SPOT = 1
@@ -1137,6 +1194,7 @@ class Brain:
                 checked1 = True
                 if lateral_sonar_dist < 0.5:
                     print('Car in spot 1')
+                    self.env.publish_obstacle(STATIC_CAR_PARKING, self.car.x_est, self.car.y_est)
                     car_in_spot1 = True
                 self.car.drive_speed(PARK_MANOUVER_SPEED)
             elif (dist_first_spot+dist_spots < curr_dist < (dist_first_spot+dist_spots+0.1)) and not checked2:
@@ -1147,6 +1205,7 @@ class Brain:
                 checked2 = True
                 if lateral_sonar_dist < 0.5:
                     print('Car in spot 2')
+                    self.env.publish_obstacle(STATIC_CAR_PARKING, self.car.x_est, self.car.y_est)
                     car_in_spot2 = True
                 self.car.drive_speed(PARK_MANOUVER_SPEED)
             elif dist_first_spot+dist_spots+further_dist < curr_dist:
@@ -1465,20 +1524,22 @@ class Brain:
                 # for i,img in enumerate(imgs_deque):
                 #     cv.imshow(f'img {i}', img)
                 # SWITCH STATE
-                if OBSTACLE_IS_ALWAYS_CAR: obstacle = 'car'
-                if OBSTACLE_IS_ALWAYS_PEDESTRIAN: obstacle = 'pedestrian'
-                if OBSTACLE_IS_ALWAYS_ROADBLOCK: obstacle = 'roadblock'
-                if obstacle == 'car':
+                if OBSTACLE_IS_ALWAYS_CAR: obstacle = CAR
+                if OBSTACLE_IS_ALWAYS_PEDESTRIAN: obstacle = PEDESTRIAN
+                if OBSTACLE_IS_ALWAYS_ROADBLOCK: obstacle = ROADBLOCK
+                if obstacle == CAR:
                     self.switch_to_state(TAILING_CAR)
-                elif obstacle == 'pedestrian':
+                elif obstacle == PEDESTRIAN:
+                    pedestrian_obstacle = PEDESTRIAN_ON_CROSSWALK if self.next_event.name == CROSSWALK_EVENT else PEDESTRIAN_ON_ROAD
+                    self.env.publish_obstacle(pedestrian_obstacle, self.car.x_est, self.car.y_est)
                     self.switch_to_state(WAITING_FOR_PEDESTRIAN)
-                elif obstacle == 'roadblock':
+                elif obstacle == ROADBLOCK:
                     self.switch_to_state(AVOIDING_ROADBLOCK)
                 else:
                     print('ERROR: OBSTACLE CLASSIFICATION: Unknown obstacle')
                     exit()
             else:
-                print('ERROR: FRONT DETECTION: Couldnt capture images while approachin obstacle')
+                print('ERROR: FRONT DETECTION: Couldnt capture images while approaching obstacle')
                 self.car.stop()
                 sleep(3)
                 exit()
@@ -1547,6 +1608,7 @@ class Brain:
 
     def control_for_signs(self):
         if SPEED_CHALLENGE: return
+        prev_sign = self.curr_sign
         if not self.conditions[REROUTING]:
             if self.conditions[TRUST_GPS]:
                 car_pos_on_path = self.path_planner.path[int(round(self.car_dist_on_path*100))]
@@ -1560,7 +1622,6 @@ class Brain:
                             self.sign_seen[i] = 1
                             print(f'SEEN SIGN {SIGN_NAMES[self.sign_types[i]]}, at pos {self.sign_points[i]}')
                             self.curr_sign = SIGN_NAMES[self.sign_types[i]]
-                            #PUB SIGN TODO
                 else:
                     self.curr_sign = NO_SIGN
 
@@ -1569,18 +1630,10 @@ class Brain:
                 if sign != NO_SIGN and sign !=self.curr_sign:
                     self.curr_sign = sign
 
-    def control_for_semaphore(self):
-        pass
-
-    def control_for_pedestrians(self):
-        pass
-
-    def control_for_vehicles(self):
-        pass
-
-    def control_for_roadblocks(self):
-        pass
-
+            #publish sign
+            if self.curr_sign != prev_sign and self.curr_sign != NO_SIGN:
+                self.env.publish_obstacle(self.curr_sign, self.car.x_est, self.car.y_est)
+                    
     def control_for_obstacles(self):
         #check for obstacles
         if not SPEED_CHALLENGE:
@@ -1624,6 +1677,13 @@ class Brain:
 
             #OVERTAKE/DOTTED_LINE
             self.conditions[CAN_OVERTAKE] = self.path_planner.is_dotted(closest_node) 
+
+            #BUMPY_ROAD
+            was_bumpy = self.conditions[BUMPY_ROAD]
+            self.conditions[BUMPY_ROAD] = closest_node in self.path_planner.bumpy_road_nodes
+            if self.conditions[BUMPY_ROAD] and not was_bumpy:
+                self.env.publish_obstacle(BUMPY_ROAD, self.car.x_est, self.car.y_est)
+
 
             #REROUTING updated in start state
 

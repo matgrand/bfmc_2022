@@ -112,6 +112,9 @@ class PathPlanning():
         #highway nodes
         self.highway_nodes = [str(i) for i in [*range(311,338), *range(375,398), *range(348,371), *range(400,424)]]
 
+        #bumpy road nodes
+        self.bumpy_road_nodes = [str(i) for i in [*range(427,466)]]
+
         # import map to plot trajectory and car
         self.map = map_img
 
