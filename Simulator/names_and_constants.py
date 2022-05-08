@@ -40,6 +40,7 @@ ACCELERATE = 'accelerate'
 CONTROL_FOR_SIGNS = 'control_for_signs'
 CONTROL_FOR_OBSTACLES = 'control_for_obstacles'
 UPDATE_STATE = 'update_state'
+DRIVE_DESIRED_SPEED = 'drive_desired_speed'
 
 #========================== EVENTS ==========================
 INTERSECTION_STOP_EVENT = 'intersection_stop_event'

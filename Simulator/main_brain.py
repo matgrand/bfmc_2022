@@ -65,7 +65,7 @@ if __name__ == '__main__':
 
 
     # init the car data
-    # os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
+    os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
     os.system('rosservice call gazebo/unpause_physics') if SIMULATOR else None
     # sleep(1.5)
     if SIMULATOR:

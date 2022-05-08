@@ -62,7 +62,7 @@ EST_INIT_X      = 3.0               # [m]
 EST_INIT_Y      = 3.0               # [m]
 
 
-EKF_STEPS_BEFORE_TRUST = 15 #10 is fine, 15 is safe
+EKF_STEPS_BEFORE_TRUST = 10 #10 is fine, 15 is safe
 
 class Automobile_Data():
     def __init__(self,

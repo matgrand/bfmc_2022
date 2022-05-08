@@ -19,7 +19,7 @@ DISTANCE_POINT_AHEAD_AHEAD = 0.6
 STOP_LINE_ESTIMATOR_PATH = "models/stop_line_estimator.onnx"
 
 STOP_LINE_ESTIMATOR_ADV_PATH = "models/stop_line_estimator_advanced.onnx"
-PREDICTION_OFFSET = -0.05
+PREDICTION_OFFSET = -0.08
 
 # SIGN_CLASSIFIER_PATH = 'models/sign_classifier.onnx'
 
