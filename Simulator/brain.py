@@ -7,7 +7,7 @@ import cv2 as cv
 from time import time, sleep
 from numpy.linalg import norm
 from collections import deque
-from name_and_constants import *
+from names_and_constants import *
 
 if not SIMULATOR_FLAG:
     from control.automobile_data_interface import Automobile_Data
@@ -108,7 +108,7 @@ assert GPS_STOPLINE_STOP_DISTANCE <= GPS_STOPLINE_APPROACH_DISTANCE
 STOP_WAIT_TIME = 0.5 if not SPEED_CHALLENGE else 0.0 #3.0
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which is possible to start detecting a stop line again
-POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3
+POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3 #0.3
 USE_LOCAL_TRACKING_FOR_INTERSECTIONS = True
 
 ACCELERATION_CONST = 1.5 #multiplier for desired speed, used to regulate highway speed
@@ -467,7 +467,7 @@ class Brain:
     def approaching_stop_line(self):
         self.activate_routines([FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES]) #FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES
 
-        if self.conditions[TRUST_GPS]:
+        if self.conditions[TRUST_GPS] and False:
             dist_to_stopline = self.next_event.dist - self.car_dist_on_path
             if GPS_STOPLINE_APPROACH_DISTANCE <= dist_to_stopline:
                 print(f'Switching to lane following')
@@ -490,7 +490,7 @@ class Brain:
             if dist > STOP_LINE_APPROACH_DISTANCE:
                 self.switch_to_state(LANE_FOLLOWING)
                 return
-            if self.stop_line_distance_median is not None: #we have a median, => we have an accurate position for the stopline
+            if self.stop_line_distance_median is not None and False: #we have a median, => we have an accurate position for the stopline
                 print('Driving towards stop line... at distance: ', self.stop_line_distance_median)
                 self.activate_routines([SLOW_DOWN]) #FOLLOW_LANE, SLOW_DOWN#deactivate detect stop line
                 dist_to_drive = self.stop_line_distance_median - self.car.encoder_distance
@@ -582,7 +582,7 @@ class Brain:
             stop_line_yaw = self.next_event.yaw_stopline
             local_path_slf_rot = self.next_event.path_ahead #local path in the stop line frame
     
-            if self.conditions[TRUST_GPS]:
+            if self.conditions[TRUST_GPS] and False:
                 USE_PRECISE_LOCATION_AND_YAW = True
                 point_car_est = np.array([self.car.x_est, self.car.y_est])
                 point_car_path = self.path_planner.path[int(round(self.car_dist_on_path*100))]
@@ -610,16 +610,17 @@ class Brain:
                     self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
                     e2, _, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
                     e2 = 0.0 # NOTE e2 is usually bad
-                if self.stop_line_distance_median is None:
+                if self.stop_line_distance_median is not None and False:
+                    print('We HAVE the median, using median estimation')
+                    print(len(self.routines[DETECT_STOP_LINE].var2))
+                    d = self.stop_line_distance_median - self.car.encoder_distance 
+                else: #we do not have an accurate position for the stopline
                     print('We DONT have the median, using simple net estimation')
                     print(len(self.routines[DETECT_STOP_LINE].var2))
                     if self.detect.est_dist_to_stop_line < STOP_LINE_APPROACH_DISTANCE:
                         d = self.detect.est_dist_to_stop_line
                     else: d = 0.0
-                else: #we have an accurate position for the stopline
-                    print('We HAVE the median, using median estimation')
-                    print(len(self.routines[DETECT_STOP_LINE].var2))
-                    d = self.stop_line_distance_median - self.car.encoder_distance 
+
                 car_position_slf = -np.array([+d+0.38, +e2])#-np.array([+d+0.3+0.15, +e2])#np.array([+d+0.2, -e2])
 
             # get orientation of the car in the stop line frame
@@ -729,10 +730,12 @@ class Brain:
             cv.circle(self.path_planner.map, mR2pix(true_pos_wf), 7, (0, 255, 0), 2)
             cv.imshow('Path', self.path_planner.map)
             cv.waitKey(1)
-        if np.abs(get_curvature(local_path_cf)) < 0.5: #the local path is straight
+        if np.abs(get_curvature(local_path_cf)) < 0.1: #the local path is straight
+            print('straight')
             max_idx = len(local_path_cf)-60 #dont follow until the end
         else: #curvy path
             max_idx = len(local_path_cf)-1  #follow until the end
+            print('curvy')
         # State exit conditions
         if idx_point_ahead >= max_idx: #we reached the end of the path
             self.switch_to_state(LANE_FOLLOWING)

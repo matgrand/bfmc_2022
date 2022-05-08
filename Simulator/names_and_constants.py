@@ -79,9 +79,28 @@ REROUTING = 'rerouting'
 
 
 # DETECTION
-SIGN_NAMES = ['park', 'closed_road', 'hw_exit', 'hw_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'NO_sign']
-# SIGN_NAMES = ['park', 'closed_road', 'hw_exit', 'hw_enter', 'stop', 'roundabout', 'priority', 'cross_walk', 'one_way', 'traffic_light', 'NO_sign']
+#PARKING SIGNS
+PARK = 'park'
+CLOSED_ROAD = 'closed_road'
+HW_EXIT = 'hw_exit'
+HW_ENTER = 'hw_enter'
+STOP = 'stop'
+ROUNDABOUT = 'roundabout'
+PRIORITY = 'priority'
+CROSSWALK = 'cross_walk'
+ONE_WAY = 'one_way'
+NO_SIGN = 'NO_sign'
+TRAFFIC_LIGHT = 'traffic_light'
+SIGN_NAMES = [PARK, CLOSED_ROAD, HW_EXIT, HW_ENTER, STOP, ROUNDABOUT, PRIORITY, CROSSWALK, ONE_WAY, NO_SIGN]
+# SIGN_NAMES = [PARK, CLOSED_ROAD, HW_EXIT, HW_ENTER, STOP, ROUNDABOUT, PRIORITY, CROSSWALK, ONE_WAY, NO_SIGN, TRAFFIC_LIGHT]
 
+#ENVIROMENTAL SERVER
+STATIC_CAR_ON_ROAD = 'static_car_on_road'
+STATIC_CAR_PARKING = 'static_car_parking'
+PEDESTRIAN_ON_CROSSWALK = 'pedestrian_on_crosswalk'
+PEDESTRIAN_ON_ROAD = 'pedestrian_on_road'
+ROADBLOCK = 'roadblock'
+BUMPY_ROAD = 'bumpy_road'
 
 #################################################################################################################################################################
 #################################################################################################################################################################

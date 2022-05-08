@@ -4,7 +4,7 @@ import numpy as np
 import cv2 as cv
 import pickle , collections
 from time import time, sleep
-from name_and_constants import *
+from names_and_constants import *
 
 from helper_functions import *
 from stopline import StopLine, detect_angle
@@ -19,6 +19,7 @@ DISTANCE_POINT_AHEAD_AHEAD = 0.6
 STOP_LINE_ESTIMATOR_PATH = "models/stop_line_estimator.onnx"
 
 STOP_LINE_ESTIMATOR_ADV_PATH = "models/stop_line_estimator_advanced.onnx"
+PREDICTION_OFFSET = -0.05
 
 # SIGN_CLASSIFIER_PATH = 'models/sign_classifier.onnx'
 
@@ -315,7 +316,7 @@ class Detection:
         # assert blob.shape == (1, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
         self.stop_line_estimator_adv.setInput(blob)
         output = self.stop_line_estimator_adv.forward()
-        stopline_x = dist = output[0][0]
+        stopline_x = dist = output[0][0] + PREDICTION_OFFSET
         stopline_y = output[0][1]
         stopline_angle = output[0][2]
         self.est_dist_to_stop_line = dist

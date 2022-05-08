@@ -6,6 +6,7 @@ SIMULATOR = True
 import rospy
 import numpy as np
 import json
+from names_and_constants import *
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types """
     def default(self, obj):
@@ -27,6 +28,11 @@ else:
     from control.helper_functions import *
 
 VEHICLE_CLOSE_RADIUS = 0.5  # [m]
+
+MASTER = 'master'
+SLAVE = 'slave'
+ANTIMASTER = 'antimaster'
+START = 'start'
 
 
 class EnvironmentalData():
@@ -63,7 +69,7 @@ class EnvironmentalData():
                                 'BUMPYROAD':                15
                             }
         # SEMAPHORE
-        self.semaphore_states = {'master':0, 'slave':0, 'antimaster':0, 'start':0}# can be changed to 1,2,3,4
+        self.semaphore_states = {MASTER:0, SLAVE:0, ANTIMASTER:0, START:0}# can be changed to 1,2,3,4
                 
         # ==================== SUBSCRIBERS AND PUBLISHERS ====================
         # VEHICLE-TO-VEHICLE (V2V)
@@ -132,6 +138,7 @@ class EnvironmentalData():
 
     # V2X CALLBACKS AND FUNCTIONS
     def publish_obstacle(self, type, x, y):
+        assert type in self.obstacle_map.keys(), "Obstacle type not recognized"
         data = environmental()
         data.obstacle_id    = self.obstacle_map[type]
         data.x              = x
@@ -159,6 +166,7 @@ class EnvironmentalData():
         :return: state of the semaphore: 0:RED, 1:YELLOW, 2:GREEN
         :rtype: byte
         """             
+        assert semaphore_key in self.semaphore_states.keys(), "Semaphore key not recognized"
         return self.semaphore_states[semaphore_key]
 
     

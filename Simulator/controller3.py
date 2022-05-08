@@ -11,8 +11,8 @@ SEQ_POINTS_INTERVAL = 20 #interval between points in the sequence in cm
 NUM_POINTS = 5 #number of points in the sequence
 L = 0.4  #length of the car, matched with lane_detection
 
-NOISE_RESET_MEAN = 4 #avg frames after which the noise is reset
-NOISE_RESET_STD = 2 #frames max "deviation"
+NOISE_RESET_MEAN = 10 #avg frames after which the noise is reset
+NOISE_RESET_STD = 8 #frames max "deviation"
 
 class Controller():
     def __init__(self, k1=1.0,k2=1.0,k3=1.0, k3D=0.08, ff=1.0, cm_ahead=35, folder='training_imgs',
