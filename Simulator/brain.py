@@ -101,7 +101,8 @@ SIGN_DIST_THRESHOLD = 0.5
 #sempahores
 SEMAPHORE_IS_ALWAYS_GREEN = True
 
-YAW_GLOBAL_OFFSET = 0.0 #global offset of the yaw angle between the real track and the simulator map
+DEQUE_OF_PAST_FRAMES_LENGTH = 50
+DISTANCES_BETWEEN_FRAMES = 0.03
 
 #STOPLINES
 USE_ADVANCED_NETWORK_FOR_STOPLINES = True
@@ -196,6 +197,8 @@ OT_MOVING_SWITCH_1 = 0.3
 OT_MOVING_LANE_FOLLOW = 0.45
 OT_MOVING_SWITCH_2 = 0.5
 #roadblock
+RB_NODES_LEFT_LANE = ['16','138','137','136','135','134','7']
+RB_NODES_RIGHT_LANE = ['15','143','142','141','140','139','8']
 AVOID_ROADBLOCK_ANGLE = 27.0 #[deg]
 AVOID_ROADBLOCK_SPEED = 0.2 #[m/s]
 AVOID_ROADBLOCK_DISTANCE = 0.6 #[m]
@@ -312,6 +315,7 @@ class Brain:
         assert len(self.sign_points) == len(self.sign_types)
         self.sign_seen = np.zeros(len(self.sign_types))
         self.curr_sign = NO_SIGN
+        self.past_frames = deque(maxlen=DEQUE_OF_PAST_FRAMES_LENGTH)
 
         self.frame_for_stopline_angle = None
         self.last_run_call = time()
@@ -895,9 +899,6 @@ class Brain:
         #substates
         AR_WATING_FOR_GPS = 1
         AR_SWITCHING_LANE = 2
-        #allowed nodes
-        NODES_LEFT = ['16','138','137','136','135','134','7']
-        NODES_RIGHT = ['15','143','142','141','140','139','8']
         if self.curr_state.just_switched:
             self.car.drive_distance(0.0)
             self.curr_state.var2 = time()
@@ -915,9 +916,9 @@ class Brain:
                 self.curr_state.var3 = (AR_SWITCHING_LANE, True)
                 closest_node, distance = self.path_planner.get_closest_node(curr_pos)
                 print(f'GPS converged, node: {closest_node}, distance: {distance:.2f}')
-                if closest_node in NODES_LEFT:
+                if closest_node in RB_NODES_LEFT_LANE:
                     self.curr_state.var4 = True
-                elif closest_node in NODES_RIGHT:
+                elif closest_node in RB_NODES_RIGHT_LANE:
                     self.curr_state.var4 = False
                 else:
                     self.error('ERROR: ROADBLOCK: GPS converged but we are not in a possible node for switching lane')
@@ -1353,68 +1354,40 @@ class Brain:
     
     def classifying_obstacle(self):
         self.activate_routines([FOLLOW_LANE])
-        IMGS_DEQUE_MAX_LEN = 20
         dist = self.car.filtered_sonar_distance
         if self.curr_state.just_switched:
             #drive to fixed dist from the obstacle
-            dist_to_drive = dist - OBSTACLE_CONTROL_DISTANCE
-            self.car.drive_distance(dist_to_drive)
-            #initialize deque of images
-            self.curr_state.var1 = deque(maxlen=IMGS_DEQUE_MAX_LEN) #stored in var1
-            dist_save_imgs = dist_to_drive 
-            self.curr_state.var2 = (0, np.linspace(OBSTACLE_IMGS_CAPTURE_START_DISTANCE, OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE, IMGS_DEQUE_MAX_LEN)) #var2 holds a touple: (index, position where to take the image)
-            self.curr_state.var3 = []
+            self.car.drive_distance(dist - OBSTACLE_CONTROL_DISTANCE)
             self.curr_state.just_switched=False
 
-        if dist >= OBSTACLE_DISTANCE_THRESHOLD: #
+        if OBSTACLE_DISTANCE_THRESHOLD <= dist: #
             print('Sonar got confused: switch back to previous state')
             self.switch_to_prev_state()
-            return
-
-        #more readable variables
-        imgs_deque = self.curr_state.var1
-        idx, img_distances = self.curr_state.var2
-        distances = self.curr_state.var3
-
-        if dist > OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE: #we are approaching the obstacle
+        elif OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE <= dist < OBSTACLE_DISTANCE_THRESHOLD: #we are approaching the obstacle
             print('Capturing imgs')
-            if dist < img_distances[idx]:
-                print(f'Saving img {idx}, at distance: {img_distances[idx]}, sonar_dist: {dist} ')
-                frame_to_save = self.car.frame.copy()
-                imgs_deque.append(frame_to_save)
-                distances.append(dist)
-                idx += 1
         else:
-            if len(imgs_deque) > 0:
-                ## DO SOMETHING WITH THE IMAGES
-                frames = [img for img in imgs_deque]
-                print(f'Captured {len(frames)} imgs, running classification...')
-                obstacle, conf = self.detect.classify_frontal_obstacle(frames, distances, show_ROI=SHOW_IMGS)    
-                print(f'Obstacle: {obstacle}')
-                sleep(1) #TODO remove it
-                if OBSTACLE_IS_ALWAYS_CAR: obstacle = CAR
-                if OBSTACLE_IS_ALWAYS_PEDESTRIAN: obstacle = PEDESTRIAN
-                if OBSTACLE_IS_ALWAYS_ROADBLOCK: obstacle = ROADBLOCK
+            frames = self.get_frames_in_range(start_dist=OBSTACLE_IMGS_CAPTURE_START_DISTANCE-OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE)
+            print(f'Captured {len(frames)} imgs, running classification...')
+            distances = [OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE + DISTANCES_BETWEEN_FRAMES*(len(frames)-i) for i in range(len(frames))]
+            obstacle, conf = self.detect.classify_frontal_obstacle(frames, distances, show_ROI=SHOW_IMGS)    
+            print(f'Obstacle: {obstacle}')
+            sleep(1) #TODO remove it
+            if OBSTACLE_IS_ALWAYS_CAR: obstacle = CAR
+            if OBSTACLE_IS_ALWAYS_PEDESTRIAN: obstacle = PEDESTRIAN
+            if OBSTACLE_IS_ALWAYS_ROADBLOCK: obstacle = ROADBLOCK
 
-                #TODO: add conditions to filter out false positives
+            #TODO: add conditions to filter out false positives
 
-                if obstacle == CAR:
-                    self.switch_to_state(TAILING_CAR)
-                elif obstacle == PEDESTRIAN:
-                    pedestrian_obstacle = PEDESTRIAN_ON_CROSSWALK if self.next_event.name == CROSSWALK_EVENT else PEDESTRIAN_ON_ROAD
-                    self.env.publish_obstacle(pedestrian_obstacle, self.car.x_est, self.car.y_est)
-                    self.switch_to_state(WAITING_FOR_PEDESTRIAN)
-                elif obstacle == ROADBLOCK:
-                    self.switch_to_state(AVOIDING_ROADBLOCK)
-                else:
-                    self.error('ERROR: OBSTACLE CLASSIFICATION: Unknown obstacle')
+            if obstacle == CAR:
+                self.switch_to_state(TAILING_CAR)
+            elif obstacle == PEDESTRIAN:
+                pedestrian_obstacle = PEDESTRIAN_ON_CROSSWALK if self.next_event.name == CROSSWALK_EVENT else PEDESTRIAN_ON_ROAD
+                self.env.publish_obstacle(pedestrian_obstacle, self.car.x_est, self.car.y_est)
+                self.switch_to_state(WAITING_FOR_PEDESTRIAN)
+            elif obstacle == ROADBLOCK:
+                self.switch_to_state(AVOIDING_ROADBLOCK)
             else:
-                self.error('ERROR: FRONT DETECTION: Couldnt capture images while approaching obstacle')
-
-        #reassing the variables
-        self.curr_state.var1 = imgs_deque
-        self.curr_state.var2 = (idx, img_distances)
-        self.curr_state.var3 = distances
+                self.error('ERROR: OBSTACLE CLASSIFICATION: Unknown obstacle')
 
     #=============== ROUTINES ===============#
     def follow_lane(self):
@@ -1525,6 +1498,13 @@ class Brain:
         """"
         This will update the conditions at every iteration, it is called at the end of a self.run
         """
+        #deque of past imgs
+        prev_dist = self.routines[UPDATE_STATE].var1 if self.routines[UPDATE_STATE].var1 is not None else self.car.encoder_distance
+        curr_dist = self.car.encoder_distance
+        if np.abs(prev_dist-curr_dist) > DISTANCES_BETWEEN_FRAMES:
+            self.past_frames.append(self.car.frame)
+        self.routines[UPDATE_STATE].var1 = prev_dist = curr_dist
+
         #mirror trust gps from automobile_data
         self.conditions[TRUST_GPS] = self.car.trust_gps and not ALWAYS_DISTRUST_GPS or ALWAYS_TRUST_GPS
         
@@ -1696,6 +1676,18 @@ class Brain:
         end_event = Event(END_EVENT, dist=0.0, point=ee_point)
         to_ret.append(end_event)
         return to_ret
+
+    #Utility functions
+    def get_frames_in_range(self, start_dist, end_dist=0.0):
+        len_past_frames = len(self.past_frames)
+        idx_start = int(round(start_dist/DISTANCES_BETWEEN_FRAMES))
+        idx_end = int(round(end_dist/DISTANCES_BETWEEN_FRAMES))
+        assert idx_start < len_past_frames and idx_end >= 0
+        #reverse the idxs
+        idx_start = len_past_frames-1 - idx_start
+        idx_end = len_past_frames-1 - idx_end
+        return self.past_frames[idx_start:idx_end]
+
 
     #DEBUG
     def error(self, error_msg):

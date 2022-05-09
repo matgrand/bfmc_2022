@@ -18,6 +18,8 @@ from collections import deque
 START_X = 0.2
 START_Y = 14.8
 
+YAW_OFFSET = 0.0 if SIMULATOR else 0.0
+
 GPS_DELAY = 0.45 # [s] delay for gps message to arrive
 ENCODER_POS_FREQ = 100.0 # [Hz] frequency of encoder position messages
 GPS_FREQ = 4.0 # [Hz] frequency of gps messages
@@ -109,6 +111,7 @@ class Automobile_Data():
         self.pitch = 0.0                        # [rad]     IMU:pitch angle of the car
         self.pitch_deg = 0.0                    # [deg]     IMU:pitch angle of the car
         self.yaw = 0.0                          # [rad]     IMU:yaw angle of the car
+        self.yaw_offset = YAW_OFFSET            # [rad]     IMU:variable offset to add to the imu measurement, needs to be added in the implementations
         self.yaw_deg = 0.0                      # [deg]     IMU:yaw angle of the car
         self.accel_x = 0.0                      # [m/ss]    IMU:accelx angle of the car
         self.accel_y = 0.0                      # [m/ss]    IMU:accely angle of the car
