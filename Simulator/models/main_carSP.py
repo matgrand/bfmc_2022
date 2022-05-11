@@ -22,8 +22,8 @@ SHOW_IMGS = False
 SHOW_MATPLOTLIB = False
 
 # PARAMETERS
-DESIRED_SPEED = 0.99   # [m/s]
-CURVE_SPEED = 0.9
+DESIRED_SPEED = 0.7   # [m/s]
+CURVE_SPEED = 0.6
 
 PLOT_BUF_SIZE = 100
 NUM_SUBPLOTS = 3
@@ -44,7 +44,7 @@ cap.set(cv.CAP_PROP_FRAME_WIDTH, 320)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, 240)
 cap.set(cv.CAP_PROP_FPS, 30)
 
-LOOP_FPS = 30.1
+LOOP_FPS = 30.0
 
 speed_ref, angle_ref = 0.0, 0.0    
 
@@ -132,11 +132,8 @@ if __name__ == '__main__':
                 # print(f'yaw: {car.yaw}')
                 # print(f'Lane detection time = {detect.avg_lane_detection_time:.2f} ms')
                 # print(f'Sign detection time = {detect.avg_sign_detection_time:.2f} ms')
-                # os.system('cls' if os.name=='nt' else 'clear')
                 loop_time = time() - start_time_loop
-                print(f'FPS = {1.0/loop_time:.2f}')
                 if loop_time < 1/LOOP_FPS:
-                    print(f'Sleep for {1/LOOP_FPS - loop_time:.2f}')
                     sleep(1/LOOP_FPS - loop_time)
                 
                 if SHOW_IMGS:

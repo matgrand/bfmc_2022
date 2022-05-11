@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = True
-SHOW_IMGS = True
+SIMULATOR_FLAG = False
+SHOW_IMGS = False
 
 import numpy as np
 import cv2 as cv
@@ -22,7 +22,7 @@ from environmental_data_simulator import EnvironmentalData
 
 from helper_functions import *
 
-CHECKPOINTS = [86,99,116,192,430,285,85]
+CHECKPOINTS = [86,99,112]
 # CHECKPOINTS = [86,99,112,337,463,240]
 SPEED_CHALLENGE = False
 
@@ -107,9 +107,9 @@ DISTANCES_BETWEEN_FRAMES = 0.03
 #STOPLINES
 USE_ADVANCED_NETWORK_FOR_STOPLINES = True
 STOP_LINE_APPROACH_DISTANCE = 0.45 if USE_ADVANCED_NETWORK_FOR_STOPLINES else 0.4
-STOP_LINE_STOP_DISTANCE = 0.1 if not SPEED_CHALLENGE else 0.2 #0.05
+STOP_LINE_STOP_DISTANCE = 0.1 if not SPEED_CHALLENGE else 0.1 #0.05
 GPS_STOPLINE_APPROACH_DISTANCE = 0.7
-GPS_STOPLINE_STOP_DISTANCE = 0.5 if not SPEED_CHALLENGE else 0.6 #0.55
+GPS_STOPLINE_STOP_DISTANCE = 0.5 if not SPEED_CHALLENGE else 0.5 #0.55
 assert STOP_LINE_STOP_DISTANCE <= STOP_LINE_APPROACH_DISTANCE
 assert GPS_STOPLINE_STOP_DISTANCE <= GPS_STOPLINE_APPROACH_DISTANCE
 
@@ -128,7 +128,7 @@ STRAIGHT_DIST_TO_EXIT_HIGHWAY = 0.8 #[m] go straight for this distance in orther
 
 #GPS
 ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
-ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
+ALWAYS_DISTRUST_GPS = True #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
 #Rerouting
 GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE = 0.2 #distance between 2 consecutive measure of the gps for the kalmann filter to be considered converged
@@ -177,20 +177,20 @@ assert OBSTACLE_IS_ALWAYS_PEDESTRIAN ^ OBSTACLE_IS_ALWAYS_CAR ^ OBSTACLE_IS_ALWA
 #obstacle classification
 MIN_DIST_BETWEEN_OBSTACLES = 0.5 #dont detect obstacle for this distance after detecting one of them
 OBSTACLE_DISTANCE_THRESHOLD = 0.5 #[m] distance from the obstacle to consider it as an obstacle
-OBSTACLE_CONTROL_DISTANCE = 0.25 #distance to where to stop wrt the obstacle
-OBSTACLE_IMGS_CAPTURE_START_DISTANCE = 0.45 #dist from where we capture imgs 
-OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE = 0.28 #dist up to we capture imgs
+OBSTACLE_CONTROL_DISTANCE = 0.3 #distance to where to stop wrt the obstacle
+OBSTACLE_IMGS_CAPTURE_START_DISTANCE = 0.48 #dist from where we capture imgs 
+OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE = 0.31 #dist up to we capture imgs
 assert OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE > OBSTACLE_CONTROL_DISTANCE
 #pedestrian
 PEDESTRIAN_CONTROL_DISTANCE = 0.35 #[m] distance to keep from the pedestrian
 PEDESTRIAN_TIMEOUT = 2.0 #[s] time to w8 after the pedestrian cleared the road
-TAILING_DISTANCE = 0.3 #[m] distance to keep from the vehicle while tailing
+TAILING_DISTANCE = 0.25 #[m] distance to keep from the vehicle while tailing
 #overtake static car
 OVERTAKE_STEER_ANGLE = 27.0 #[deg]
 OVERTAKE_STATIC_CAR_SPEED = 0.2  #[m/s]
 OT_STATIC_SWITCH_1 = 0.3
-OT_STATIC_SWITCH_2 = 0.4
-OT_STATIC_LANE_FOLLOW = 0.45
+OT_STATIC_SWITCH_2 = 0.55
+OT_STATIC_LANE_FOLLOW = 0.3
 #overtake moving car
 OVERTAKE_MOVING_CAR_SPEED = 0.2  #[m/s]
 OT_MOVING_SWITCH_1 = 0.3
@@ -465,7 +465,7 @@ class Brain:
     def approaching_stop_line(self):
         self.activate_routines([FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES]) #FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES
 
-        if self.conditions[TRUST_GPS] and False:
+        if self.conditions[TRUST_GPS]:
             dist_to_stopline = self.next_event.dist - self.car_dist_on_path
             if GPS_STOPLINE_APPROACH_DISTANCE <= dist_to_stopline:
                 print(f'Switching to lane following')
@@ -485,7 +485,7 @@ class Brain:
             if dist > STOP_LINE_APPROACH_DISTANCE:
                 self.switch_to_state(LANE_FOLLOWING)
                 return
-            if self.stop_line_distance_median is not None and False: #we have a median, => we have an accurate position for the stopline
+            if self.stop_line_distance_median is not None: #we have a median, => we have an accurate position for the stopline
                 print('Driving towards stop line... at distance: ', self.stop_line_distance_median)
                 self.activate_routines([SLOW_DOWN]) #FOLLOW_LANE, SLOW_DOWN#deactivate detect stop line
                 dist_to_drive = self.stop_line_distance_median - self.car.encoder_distance
@@ -559,7 +559,7 @@ class Brain:
             stop_line_yaw = self.next_event.yaw_stopline
             local_path_slf_rot = self.next_event.path_ahead #local path in the stop line frame
     
-            if self.conditions[TRUST_GPS] and False:
+            if self.conditions[TRUST_GPS]:
                 USE_PRECISE_LOCATION_AND_YAW = True
                 point_car_est = np.array([self.car.x_est, self.car.y_est])
                 point_car_path = self.path_planner.path[int(round(self.car_dist_on_path*100))]
@@ -587,7 +587,7 @@ class Brain:
                     self.detect.detect_stop_line(self.car.frame, SHOW_IMGS)
                     e2, _, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
                     e2 = 0.0 # NOTE e2 is usually bad
-                if self.stop_line_distance_median is not None and False:
+                if self.stop_line_distance_median is not None:
                     print('We HAVE the median, using median estimation')
                     print(len(self.routines[DETECT_STOP_LINE].var2))
                     d = self.stop_line_distance_median - self.car.encoder_distance 
@@ -608,7 +608,8 @@ class Brain:
             print(f'alpha true: {np.rad2deg(alpha):.1f}')
             alpha = self.detect.detect_yaw_stopline(self.car.frame, SHOW_IMGS and False) * 0.8
             print(f'alpha est: {np.rad2deg(alpha):.1f}')
-            assert np.abs(alpha - alpha_true) < np.deg2rad(5.0), f'Estimated alpha is too different from true alpha'
+            if SIMULATOR_FLAG:
+                assert np.abs(alpha - alpha_true) < np.deg2rad(5.0), f'Estimated alpha is too different from true alpha'
             assert abs(alpha) < np.pi/6, f'Car orientation wrt stopline is too big, it needs to be better aligned, alpha = {alpha}'
             rot_matrix = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
             
@@ -884,7 +885,7 @@ class Brain:
 
     def tailing_car(self):
         dist = self.car.filtered_sonar_distance
-        if dist > OBSTACLE_DISTANCE_THRESHOLD:
+        if dist > OBSTACLE_DISTANCE_THRESHOLD+0.05:
             self.switch_to_state(LANE_FOLLOWING)
         else:
             self.activate_routines([FOLLOW_LANE])
@@ -1394,15 +1395,15 @@ class Brain:
         if not SPEED_CHALLENGE:
             e2, e3, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
             #NOTE 
-            e3 = -e3 if not SIMULATOR_FLAG else e3 
+            # e3 = -e3 if not SIMULATOR_FLAG else e3 
             _, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
             angle_ref = np.rad2deg(angle_ref)
             # if self.car.speed < 0.1: #inverse driving in reverse
             #     angle_ref = -angle_ref
             self.car.drive_angle(angle_ref)
         else:
-            e3, _ = self.detect.detect_lane_ahead(self.car.frame)
-            output_speed, output_angle = self.controller_sp.get_control_speed(e3)
+            e3, _ = self.detect.detect_lane_ahead(self.car.frame, show_ROI=SHOW_IMGS)
+            output_speed, output_angle = self.controller_sp.get_control_speed(0.0,0.0,e3)
             print(f'output_speed: {output_speed:.2f}, output_angle: {np.rad2deg(output_angle):.2f}')
             self.car.drive(speed=output_speed, angle=np.rad2deg(output_angle))
 
@@ -1435,14 +1436,17 @@ class Brain:
             self.stop_line_distance_median = None 
 
     def slow_down(self):
+        if SPEED_CHALLENGE: return
         if np.abs(self.car.filtered_encoder_velocity - SLOW_DOWN_CONST*self.desired_speed) > 0.1:
             self.car.drive_speed(self.desired_speed*SLOW_DOWN_CONST)
 
     def accelerate(self):
+        if SPEED_CHALLENGE: return        
         if np.abs(self.car.filtered_encoder_velocity < ACCELERATION_CONST*self.desired_speed):
             self.car.drive_speed(ACCELERATION_CONST*self.desired_speed)
 
     def control_for_signs(self):
+        return #debug TODO remove this
         if SPEED_CHALLENGE: return
         prev_sign = self.curr_sign
         if not self.conditions[REROUTING]:
@@ -1485,6 +1489,7 @@ class Brain:
                     self.routines[CONTROL_FOR_OBSTACLES].var1 = curr_dist
 
     def drive_desired_speed(self):
+        if SPEED_CHALLENGE: return        
         if np.abs(self.car.filtered_encoder_velocity - self.desired_speed) > 0.1:
             self.car.drive_speed(self.desired_speed)
 
@@ -1499,12 +1504,17 @@ class Brain:
         This will update the conditions at every iteration, it is called at the end of a self.run
         """
         #deque of past imgs
-        prev_dist = self.routines[UPDATE_STATE].var1 if self.routines[UPDATE_STATE].var1 is not None else self.car.encoder_distance
-        curr_dist = self.car.encoder_distance
-        if np.abs(prev_dist-curr_dist) > DISTANCES_BETWEEN_FRAMES:
-            self.past_frames.append(self.car.frame)
-        self.routines[UPDATE_STATE].var1 = prev_dist = curr_dist
-
+        if not SPEED_CHALLENGE:
+            print(f'UPDATE STATE')
+            prev_dist = self.routines[UPDATE_STATE].var1 if self.routines[UPDATE_STATE].var1 is not None else self.car.encoder_distance
+            curr_dist = self.car.encoder_distance
+            print(f'{self.routines[UPDATE_STATE].var1}')
+            print(f'DISTANCE CHANGE: {prev_dist-curr_dist}')
+            if np.abs(prev_dist-curr_dist) > DISTANCES_BETWEEN_FRAMES:
+                self.past_frames.append(self.car.frame)
+                prev_dist = curr_dist
+            self.routines[UPDATE_STATE].var1 = prev_dist
+        
         #mirror trust gps from automobile_data
         self.conditions[TRUST_GPS] = self.car.trust_gps and not ALWAYS_DISTRUST_GPS or ALWAYS_TRUST_GPS
         
@@ -1542,7 +1552,6 @@ class Brain:
 
     #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
-        print(f'CURR_SIGN: {self.curr_sign}')
         print('==========================================================================')
         print(f'STATE:          {self.curr_state}')
         print(f'UPCOMING_EVENT: {self.next_event}')
@@ -1550,6 +1559,7 @@ class Brain:
         print(f'CONDITIONS:     {self.conditions}')
         print('==========================================================================')
         self.run_current_state()
+        print(f'CURR_SIGN: {self.curr_sign}')
         print('==========================================================================')
         print()
         self.run_routines()
@@ -1680,13 +1690,18 @@ class Brain:
     #Utility functions
     def get_frames_in_range(self, start_dist, end_dist=0.0):
         len_past_frames = len(self.past_frames)
+        print(f'len_past_frames: {len_past_frames}')
         idx_start = int(round(start_dist/DISTANCES_BETWEEN_FRAMES))
         idx_end = int(round(end_dist/DISTANCES_BETWEEN_FRAMES))
+        print(f'idx_start: {idx_start}, idx_end: {idx_end}')
         assert idx_start < len_past_frames and idx_end >= 0
         #reverse the idxs
         idx_start = len_past_frames-1 - idx_start
         idx_end = len_past_frames-1 - idx_end
-        return self.past_frames[idx_start:idx_end]
+        print(f'idx_start: {idx_start}, idx_end: {idx_end}')
+        #convert self.past_frames to a list
+        past_frames = list(self.past_frames)
+        return past_frames[idx_start:idx_end]
 
 
     #DEBUG

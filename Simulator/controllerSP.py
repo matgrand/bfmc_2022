@@ -129,7 +129,7 @@ class ControllerSpeed():
 
 
 
-    def get_control_speed(self, long_e3):
+    def get_control_speed(self, short_e2, short_e3, long_e3):
         curr_time = time.time()
         if self.prev_time is None:
             self.prev_time = curr_time
@@ -138,6 +138,8 @@ class ControllerSpeed():
             DT = curr_time - self.prev_time
 
             # ----- MEASUREMENTS -----
+            self.ey = short_e2   # lateral error
+            self.alpha_short = -short_e3    # heading error - short
             self.alpha_long = -long_e3      # heading error - long
             self.alpha_long_rate = (self.alpha_long - self.alpha_long_prev)/DT
             # ----- FILTER MEASUREMENTS -----
@@ -152,6 +154,7 @@ class ControllerSpeed():
             # self.ey_int += self.ey
             # delta_i = self.Ki * self.ey_int
             # ----- Pure Pursuit -----
+            # delta_pp = self.Kpp_short * np.arctan((2*WB*np.sin(self.alpha_short))/(self.L_short))                             # SIMPLE - SHORT
             # delta_pp = self.Kpp_long * np.arctan( (WB*np.sin(self.alpha_long)) / (self.L_long/2 + 0.5*WB*np.cos(self.alpha_long)) )            # SIMPLE - LONG - MIT
             # delta_pp = self.Kpp_long * np.arctan((2*WB*np.sin(self.alpha_long))/(self.L_long))                                # SIMPLE - LONG
             
@@ -190,12 +193,13 @@ class ControllerSpeed():
             self.prev_time = curr_time
             self.alpha_long_prev = self.alpha_long
 
-            os.system('cls' if os.name=='nt' else 'clear')
-            print(f'DT is: {DT}')
-            print(f'output_speed is: {output_speed}')
-            print(f'output angle is: {np.rad2deg(output_angle)}')
-            print(f'alpha_long is {np.rad2deg(self.alpha_long)}')
-            print(f'alpha_long_rate is {np.rad2deg(self.alpha_long_rate)}')
+            # os.system('cls' if os.name=='nt' else 'clear')
+            # print(f'DT is: {DT}')
+            # print(f'output_speed is: {output_speed}')
+            # print(f'output angle is: {np.rad2deg(output_angle)}')
+            # print(f'alpha_long is {np.rad2deg(self.alpha_long)}')
+            # print(f'alpha_short is {np.rad2deg(self.alpha_short)}')
+            # print(f'alpha_long_rate is {np.rad2deg(self.alpha_long_rate)}')
             # print(f'alpha rate is : {np.rad2deg(alpha_rate)} rad/s')
 
         return output_speed, output_angle
