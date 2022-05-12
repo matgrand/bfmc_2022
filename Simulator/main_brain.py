@@ -1,6 +1,5 @@
 #!/usr/bin/python3
-SIMULATOR = True # True: run simulator, False: run real car
-SHOW_IMGS = True
+from brain import SIMULATOR_FLAG, SHOW_IMGS
 
 import os, signal
 import cv2 as cv
@@ -10,7 +9,7 @@ from time import sleep, time
 os.system('clear')
 print('Main brain starting...')
 # from automobile_data import Automobile_Data
-if SIMULATOR:
+if SIMULATOR_FLAG:
     from automobile_data_simulator import AutomobileDataSimulator
     from helper_functions import *
 else: #PI
@@ -47,8 +46,6 @@ cap.set(cv.CAP_PROP_FRAME_WIDTH, 320)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, 240)
 cap.set(cv.CAP_PROP_FPS, 30)
 
-
-
 if __name__ == '__main__':
 
     if SHOW_IMGS:
@@ -62,10 +59,10 @@ if __name__ == '__main__':
 
 
     # init the car data
-    os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
-    os.system('rosservice call gazebo/unpause_physics') if SIMULATOR else None
+    os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR_FLAG else None
+    os.system('rosservice call gazebo/unpause_physics') if SIMULATOR_FLAG else None
     # sleep(1.5)
-    if SIMULATOR:
+    if SIMULATOR_FLAG:
         car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
     else:
@@ -78,7 +75,7 @@ if __name__ == '__main__':
     def handler(signum, frame):
         print("Exiting ...")
         car.stop()
-        os.system('rosservice call gazebo/pause_physics') if SIMULATOR else None 
+        os.system('rosservice call gazebo/pause_physics') if SIMULATOR_FLAG else None 
         cv.destroyAllWindows()
         sleep(.99)
         exit()
@@ -130,7 +127,7 @@ if __name__ == '__main__':
                 cv.imshow('Map', map1)
                 cv.waitKey(1)
 
-            if not SIMULATOR:
+            if not SIMULATOR_FLAG:
                 ret, frame = cap.read()
                 brain.car.frame = frame
                 if not ret:

@@ -2,10 +2,12 @@
 
 SIMULATOR = True#True
 
+
 # Functional libraries
 from cv2 import mean
 import rospy
 import numpy as np
+import os
 if SIMULATOR:
     from automobile_ekf import AutomobileEKF
     from helper_functions import *
@@ -14,6 +16,10 @@ else:
     from control.helper_functions import *
 import time
 from collections import deque
+
+# from estimation import EKFCar
+
+YAW_GLOBAL_OFFSET = np.deg2rad(52.0)
 
 START_X = 0.2
 START_Y = 14.8
@@ -106,12 +112,12 @@ class Automobile_Data():
         self.x = 0.0                            # [m]       GPS:x global coordinate
         self.y = 0.0                            # [m]       GPS:y global coordinate
         # IMU           
+        self.yaw_offset = YAW_GLOBAL_OFFSET     # [rad]     IMU:yaw offset
         self.roll = 0.0                         # [rad]     IMU:roll angle of the car
         self.roll_deg = 0.0                     # [deg]     IMU:roll angle of the car
         self.pitch = 0.0                        # [rad]     IMU:pitch angle of the car
         self.pitch_deg = 0.0                    # [deg]     IMU:pitch angle of the car
         self.yaw = 0.0                          # [rad]     IMU:yaw angle of the car
-        self.yaw_offset = YAW_OFFSET            # [rad]     IMU:variable offset to add to the imu measurement, needs to be added in the implementations
         self.yaw_deg = 0.0                      # [deg]     IMU:yaw angle of the car
         self.accel_x = 0.0                      # [m/ss]    IMU:accelx angle of the car
         self.accel_y = 0.0                      # [m/ss]    IMU:accely angle of the car
@@ -140,10 +146,10 @@ class Automobile_Data():
         self.dist_loc_o = 0.0                   # [m]       local:absolute distance origin, wrt global encoder distance
         self.last_gps_sample_time = time.time() 
         self.new_gps_sample_arrived = True
-        # SONAR
-        self.sonar_distance = 0.0               # [m]       SONAR: unfiltered distance from the front sonar
+        # SONARs
+        self.sonar_distance = 3.0          # [m]       SONAR: unfiltered distance from the front sonar
         self.filtered_sonar_distance = 3.0      # [m]       SONAR: filtered distance from the front sonar
-        self.lateral_sonar_distance = 0.0       # [m]       SONAR: unfiltered distance from the lateral sonar
+        self.lateral_sonar_distance = 3.0      # [m]       SONAR: unfiltered distance from the lateral sonar
         self.filtered_lateral_sonar_distance = 3.0#[m]      SONAR: filtered distance from the lateral sonar
         # CAMERA
         self.frame = np.zeros((FRAME_WIDTH, FRAME_HEIGHT)) # [ndarray] CAM:image of the camera
@@ -246,7 +252,7 @@ class Automobile_Data():
         if len(self.past_yaws) > BUFFER_PAST_MEASUREMENTS_LENGTH-1:
             self.yaws_between_updates.append(self.past_yaws.popleft())
         self.past_yaws.append(self.yaw)
-
+        
         self.dist_loc = np.abs(curr_dist - self.dist_loc_o)
         signed_L = curr_dist - self.prev_dist
         L = np.abs(signed_L)
@@ -268,7 +274,7 @@ class Automobile_Data():
         self.past_gps_increments_x.append(dx)  
         self.past_gps_increments_y.append(dy)
         self.x_est += dx
-        self.y_est += dy            
+        self.y_est += dy               
 
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received
