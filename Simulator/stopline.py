@@ -482,6 +482,8 @@ def detect_angle(original_frame=None, plot=False):
   # cv2.waitKey(0) 
   lines = cv2.HoughLinesP(img, rho=1, theta=np.pi/180, threshold=30, minLineLength=80, maxLineGap=5)
   angles = []
+  if lines is None:
+    return 0.0
   for line in lines:
     for x1,y1,x2,y2 in line:
       angle = np.arctan2(y2-y1,x2-x1)

@@ -100,7 +100,8 @@ class Detection:
         self.svm_model = pickle.load(open('models/obstacle_models/svm_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
         self.kmean_model = pickle.load(open('models/obstacle_models/kmeans_' + self.kernel_type + '_' +  str(self.no_clusters) + '.pkl', 'rb'))
         self.scale_model = pickle.load(open('models/obstacle_models/scale_'+ self.kernel_type + '_' + str(self.no_clusters) + '.pkl', 'rb'))
-        self.sift = cv.SIFT_create()
+        # self.sift = cv.SIFT_create() 
+        self.sift = cv.ORB_create(nfeatures=100)
         # self.obstacles_probs_buffer = collections.deque(maxlen=OBSTACLE_DETECTION_DEQUE_LENGTH) 
         self.prediction = None
         self.conf = 0        
@@ -251,13 +252,13 @@ class Detection:
         IMG_SIZE = (32,32) #match with trainer
         #convert to gray
         frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        frame = frame[int(frame.shape[0]*(2/5)):,:]
+        frame = frame[0:int(frame.shape[0]*(2/5)):,:]#frame = frame[int(frame.shape[0]*(2/5)):,:]
         #keep the bottom 2/3 of the image
         #blur
         # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
         frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
         frame = cv.Canny(frame, 100, 200)
-        frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
+        frame = cv.blur(frame, (5,5), 0)#frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
         frame = cv.resize(frame, IMG_SIZE)
 
         # # # add noise 1.5 ms 
@@ -298,7 +299,7 @@ class Detection:
         frame = frame[int(frame.shape[0]*(2/5)):,:]
         #keep the bottom 2/3 of the image
         #blur
-        frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11 #with 15,15 is 1ms
+        frame = cv.blur(frame, (9,9), 0) #worse than blur after 11,11 #with 15,15 is 1ms
         frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
         frame = cv.Canny(frame, 100, 200)
         frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
@@ -328,6 +329,7 @@ class Detection:
         self.lane_cnt += 1
         if show_ROI:
             cv.imshow('stop_line_detection', frame)
+            cv.imwrite(f'sd_{int(time()*1000)}.png', frame)
             cv.waitKey(1)
         print(f"stop_line_detection dist: {dist:.2f}, in {stop_line_detection_time:.2f} ms")
         return stopline_x, stopline_y, stopline_angle
@@ -502,6 +504,7 @@ class Detection:
             if show_ROI:
                 Detection.draw_ROI(frame, TL, BR, show_rect = False, prediction = None, conf= None, show_prediction = False)
                 cv.imshow('ROI', img)
+                cv.imwrite(f'sd_{int(time()*1000)}.png', img)
                 cv.waitKey(1)
 
             kp, des = self.sift.detectAndCompute(img, None) #des = descriptors
@@ -539,6 +542,95 @@ class Detection:
             print(f'Prediction proposal: {prediction} , {conf}')
             if show_ROI:
                 Detection.draw_ROI(frame, TL, BR, show_rect = True, prediction = self.prediction, conf= int(100*self.conf), show_prediction = True)      
+            return self.prediction, self.conf     
+        else:
+            print('No predictions')
+            return None, None
+
+    def classify_frontal_obstacle2(self, frames, distances, show_ROI=False, show_kp=False):
+        """
+        Obstacle classifier:
+        takes the whole frames as input and returns the obstacle name and classification
+        confidence.
+        """
+        assert len(frames) == len(distances)
+        assert len(frames) > 0
+
+        obstacles_probs_buffer = collections.deque(maxlen=len(frames)) 
+
+        for frame, distance  in zip(frames, distances):
+            img = frame.copy()
+            img = Detection.automatic_brightness_and_contrast(img)
+            img = cv.resize(img, (160,120))
+            img = cv.cvtColor(img, cv.COLOR_BGR2GRAY) 
+            distance = distance*100
+            # if distance >= 50:
+            #     distance = 50
+            #     TL = distance_dict[str(distance)][0]
+            #     BR = distance_dict[str(distance)][1]
+            #     img = img[TL[1]:BR[1],TL[0]:BR[0]]
+            # elif distance < 50 and distance >= 40:
+            #     distance = 40
+            #     ratio = 0.9
+            #     TL = distance_dict[str(distance)][0]
+            #     BR = distance_dict[str(distance)][1]
+            #     img = img[TL[1]:BR[1],TL[0]:BR[0]]            
+            #     img = cv.resize(img, None, fx = ratio, fy = ratio, interpolation = cv.INTER_AREA)
+                
+            # elif distance < 40 and distance >= 30:
+            #     distance = 30
+            #     TL = distance_dict[str(distance)][0]
+            #     BR = distance_dict[str(distance)][1]
+            #     img = img[TL[1]:BR[1],TL[0]:BR[0]]            
+            #     ratio = 0.7
+            #     img = cv.resize(img, None, fx = ratio, fy = ratio, interpolation = cv.INTER_AREA)
+            # #  distance < 30:     
+            # else:
+            #     distance = 20
+            #     TL = distance_dict[str(distance)][0]
+            #     BR = distance_dict[str(distance)][1]
+            #     img = img[TL[1]:BR[1],TL[0]:BR[0]]            
+            #     ratio = 0.6
+            #     img = cv.resize(img, None, fx = ratio, fy = ratio, interpolation = cv.INTER_AREA)
+            # if show_ROI:
+            #     Detection.draw_ROI(frame, TL, BR, show_rect = False, prediction = None, conf= None, show_prediction = False)
+            #     cv.imshow('ROI', img)
+            #     cv.imwrite(f'sd_{int(time()*1000)}.png', img)
+            #     cv.waitKey(1)
+
+            kp, des = self.sift.detectAndCompute(img, None) #des = descriptors
+            if des is not None and len(des) >= 15:
+                if show_kp:
+                    cop = img.copy()
+                    cop = cv.drawKeypoints(cop,kp,cop,flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                    cv.imshow('keypoints',cop)
+                    cv.waitKey(1)   
+                im_hist = Detection.ImageHistogram(self.kmean_model, des, self.no_clusters)
+                im_hist = im_hist.reshape(1,-1)
+                im_hist = self.scale_model.transform(im_hist)
+                probs_array = self.svm_model.predict_proba(im_hist)
+                probs_array = probs_array.reshape(-1)
+                # inserting the No sing probability
+                probs_array = np.concatenate([probs_array, [0]])
+                # buffer of classification probabilities
+                obstacles_probs_buffer.append(probs_array)        
+            else:
+                print('No descriptors or not enough descriptors')
+                #do not add it to the buffer
+        
+        if len(obstacles_probs_buffer) > 0:
+            # mean of the predicion probabilities in the buffer
+            buffer_mean = list(obstacles_probs_buffer)
+            buffer_mean = np.asarray(buffer_mean)
+            buffer_mean = np.mean(buffer_mean, axis = 0)
+            buffer_mean = buffer_mean.reshape(-1)
+            pred_idx = np.argmax(buffer_mean)
+            # most likely prediction
+            prediction = obstacles_dict[str(pred_idx)]
+            self.prediction = prediction
+            conf = buffer_mean[pred_idx]
+            self.conf = conf
+            print(f'Prediction proposal: {prediction} , {conf}')      
             return self.prediction, self.conf     
         else:
             print('No predictions')
@@ -590,7 +682,7 @@ class Detection:
         # feature is the descriptor of a single keypoint
         for feature in descriptor_list:
 
-            feature = feature.reshape(1, 128)
+            feature = feature.reshape(1, 32)
             idx = kmeans.predict(feature)
             im_hist[idx] += 1
         return im_hist

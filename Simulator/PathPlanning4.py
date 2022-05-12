@@ -70,6 +70,8 @@ class PathPlanning():
         self.junctions = [str(i) for i in self.junctions]
 
         self.forbidden_nodes = self.intersection_cen + self.intersection_in + self.intersection_out + self.crosswalk + self.ra + self.ra_enter + self.ra_exit + self.junctions
+        
+        self.no_yaw_calibration_nodes = [str(i) for i in [340,341,342,464,465,466,467]]
 
         #event points
         self.event_points = np.load('data/event_points.npy') #created in R coord

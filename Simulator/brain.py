@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = True
+SIMULATOR_FLAG = False
 SHOW_IMGS = False
 
 import numpy as np
@@ -22,8 +22,9 @@ from environmental_data_simulator import EnvironmentalData
 
 from helper_functions import *
 
-CHECKPOINTS = [86,99,112]
-# CHECKPOINTS = [86,99,112,337,463,240]
+# CHECKPOINTS = [299,275] #roundabout
+# CHECKPOINTS = [86,99,116] #left right left right
+CHECKPOINTS = [86,111] #complete track
 SPEED_CHALLENGE = False
 
 class State():
@@ -104,9 +105,12 @@ SEMAPHORE_IS_ALWAYS_GREEN = True
 DEQUE_OF_PAST_FRAMES_LENGTH = 50
 DISTANCES_BETWEEN_FRAMES = 0.03
 
+#Yaw
+APPLY_YAW_CORRECTION = False
+
 #STOPLINES
 USE_ADVANCED_NETWORK_FOR_STOPLINES = True
-STOP_LINE_APPROACH_DISTANCE = 0.45 if USE_ADVANCED_NETWORK_FOR_STOPLINES else 0.4
+STOP_LINE_APPROACH_DISTANCE = 0.4 if USE_ADVANCED_NETWORK_FOR_STOPLINES else 0.4
 STOP_LINE_STOP_DISTANCE = 0.1 if not SPEED_CHALLENGE else 0.1 #0.05
 GPS_STOPLINE_APPROACH_DISTANCE = 0.7
 GPS_STOPLINE_STOP_DISTANCE = 0.5 if not SPEED_CHALLENGE else 0.5 #0.55
@@ -128,7 +132,7 @@ STRAIGHT_DIST_TO_EXIT_HIGHWAY = 0.8 #[m] go straight for this distance in orther
 
 #GPS
 ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
-ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
+ALWAYS_DISTRUST_GPS = True #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
 #Rerouting
 GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE = 0.2 #distance between 2 consecutive measure of the gps for the kalmann filter to be considered converged
@@ -164,9 +168,9 @@ S_ANGLE = 29.0 #[deg] angle to perform the s manouver
 DIST_2T = 0.8 #[m] distance to perform the 2nd part of t manouver
 DIST_3T = 0.1 #[m] distance to perform the 3rd part of t manouver 
 DIST_2S = 0.40 #0.38 #[m] distance to perform the 2nd part of s manouver
-DIST_4S = 0.05 #[m] distance to perform the 4th part of s manouver
+DIST_4S = 0.05 #[m] dsemaphoreistance to perform the 4th part of s manouver
 STEER_ACTUATION_DELAY_PARK = 0.5 #[s] delay to perform the steering manouver
-SLEEP_AFTER_STOPPING = 0.2 #[s] WARNING: this stops the state machine. So be careful increasing it
+SLEEP_AFTER_STOPPING = 2.0 #[s] WARNING: this stops the state machine. So be careful increasing it
 STEER_ACTUATION_DELAY = 0.3 #[s] delay to perform the steering manouver
 
 # OBSTACLES
@@ -330,6 +334,7 @@ class Brain:
                 break
             sleep(0.1)
 
+        # self.switch_to_state(DOING_NOTHING)
         self.switch_to_state(START_STATE)
 
     #=============== STATES ===============#
@@ -347,7 +352,10 @@ class Brain:
             #get closest node
             curr_pos = np.array([self.car.x_est, self.car.y_est])
             closest_node, distance = self.path_planner.get_closest_node(curr_pos)
+            closest_node = '86'
+            distance = 0.0
             print(f'GPS converged, starting from node: {closest_node}, distance: {distance:.2f}')
+            sleep(3.0)
             self.checkpoints[self.checkpoint_idx] = closest_node
             if distance > 0.8: 
                 self.error('ERROR: REROUTING: GPS converged, but distance is too large, we are too far from the lane')
@@ -357,6 +365,7 @@ class Brain:
             print(f'Waiting for gps: {(curr_time-start_time):.1f}/{GPS_TIMEOUT}')
             if curr_time - start_time > GPS_TIMEOUT:
                 print('WARNING: ROUTE_GENERATION: No gps signal, Starting from the first checkpoint')
+                sleep(3.0)
                 can_generate_route = True
         
         if can_generate_route:
@@ -465,6 +474,9 @@ class Brain:
     def approaching_stop_line(self):
         self.activate_routines([FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES]) #FOLLOW_LANE, SLOW_DOWN, DETECT_STOP_LINE, CONTROL_FOR_OBSTACLES
 
+        if self.curr_state.just_switched:
+            cv.imwrite(f'asl/asl_{int(time() * 1000)}.png', self.car.frame)
+            self.curr_state.just_switched = False
         if self.conditions[TRUST_GPS]:
             dist_to_stopline = self.next_event.dist - self.car_dist_on_path
             if GPS_STOPLINE_APPROACH_DISTANCE <= dist_to_stopline:
@@ -598,7 +610,7 @@ class Brain:
                         d = self.detect.est_dist_to_stop_line
                     else: d = 0.0
 
-                car_position_slf = -np.array([+d+0.38, +e2])#-np.array([+d+0.3+0.15, +e2])#np.array([+d+0.2, -e2])
+                car_position_slf = -np.array([+d+0.33, +e2])#-np.array([+d+0.38, +e2])#-np.array([+d+0.3+0.15, +e2])#np.array([+d+0.2, -e2])
 
             # get orientation of the car in the stop line frame
             yaw_car = self.car.yaw
@@ -608,6 +620,14 @@ class Brain:
             print(f'alpha true: {np.rad2deg(alpha):.1f}')
             alpha = self.detect.detect_yaw_stopline(self.car.frame, SHOW_IMGS and False) * 0.8
             print(f'alpha est: {np.rad2deg(alpha):.1f}')
+            if APPLY_YAW_CORRECTION:
+                closest_node, dist_node = self.path_planner.get_closest_node(np.array([self.car.x, self.car.y]))
+                if closest_node in self.path_planner.no_yaw_calibration_nodes:
+                    pass
+                else:
+                    self.car.yaw_offset = diff_angle(self.next_event.yaw_stopline + alpha, self.car.yaw)
+
+
             if SIMULATOR_FLAG:
                 assert np.abs(alpha - alpha_true) < np.deg2rad(5.0), f'Estimated alpha is too different from true alpha'
             assert abs(alpha) < np.pi/6, f'Car orientation wrt stopline is too big, it needs to be better aligned, alpha = {alpha}'
@@ -1370,7 +1390,7 @@ class Brain:
             frames = self.get_frames_in_range(start_dist=OBSTACLE_IMGS_CAPTURE_START_DISTANCE-OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE)
             print(f'Captured {len(frames)} imgs, running classification...')
             distances = [OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE + DISTANCES_BETWEEN_FRAMES*(len(frames)-i) for i in range(len(frames))]
-            obstacle, conf = self.detect.classify_frontal_obstacle(frames, distances, show_ROI=SHOW_IMGS, show_kp=SHOW_IMGS)
+            obstacle, conf = self.detect.classify_frontal_obstacle2(frames, distances, show_ROI=SHOW_IMGS or True, show_kp=SHOW_IMGS)
             print(f'Obstacle: {obstacle}')
             sleep(1) #TODO remove it
             if OBSTACLE_IS_ALWAYS_CAR: obstacle = CAR

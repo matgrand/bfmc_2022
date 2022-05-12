@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR = True # True: run simulator, False: run real car
-SHOW_IMGS = True
+SIMULATOR = False # True: run simulator, False: run real car
+SHOW_IMGS = False
 
 import os, signal
 import cv2 as cv
@@ -26,14 +26,11 @@ from environmental_data_simulator import EnvironmentalData
 
 map = cv.imread('data/2021_VerySmall.png')
 
-LOOP_DELAY = 0.01
-ACTUATION_DELAY = 0.0#0.15
-VISION_DELAY = 0.0#0.08
-
 # PARAMETERS
+TARGET_FPS = 30.0
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.5# [m/s]
-CURVE_SPEED = 0.6# [m/s]
+DESIRED_SPEED = 0.3# [m/s]
+CURVE_SPEED = 0.8# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -72,8 +69,8 @@ if __name__ == '__main__':
         car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
     else:
-        car = AutomobileDataPi(trig_cam=False, trig_gps=False, trig_bno=True, 
-                               trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
+        car = AutomobileDataPi(trig_cam=False, trig_gps=True, trig_bno=True, 
+                               trig_enc=True, trig_control=True, trig_estimation=True, trig_sonar=True)
     sleep(1.5)
     car.encoder_distance = 0.0
     
@@ -115,9 +112,10 @@ if __name__ == '__main__':
         fps_avg = 0.0
         fps_cnt = 0
         while not rospy.is_shutdown():
-            os.system('cls' if os.name=='nt' else 'clear')
 
             loop_start_time = time()
+            # os.system('cls' if os.name=='nt' else 'clear')
+            print('\n'*50)
 
             if SHOW_IMGS:
                 map1 = map.copy()
@@ -147,7 +145,7 @@ if __name__ == '__main__':
             print(car)
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
             # print(f'Sign detection time = {detect.avg_sign_detection_time:.1f} [ms]')
-            print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}')
+            print(f'FPS = {fps_avg:.1f},  loop_cnt = {fps_cnt}, capped at {TARGET_FPS}')
 
             if SHOW_IMGS:
                 frame = car.frame.copy()
@@ -160,10 +158,13 @@ if __name__ == '__main__':
                     cv.destroyAllWindows()
                     break
             
-            sleep(LOOP_DELAY)
             loop_time = time() - loop_start_time
             fps_avg = (fps_avg * fps_cnt + 1.0 / loop_time) / (fps_cnt + 1)
             fps_cnt += 1
+            if loop_time < 1.0 / TARGET_FPS:
+                sleep(1.0 / TARGET_FPS - loop_time)
+
+
 
     except KeyboardInterrupt:
         print("Shutting down")

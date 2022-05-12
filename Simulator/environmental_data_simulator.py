@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-SIMULATOR = True
+SIMULATOR = False
 
 # Functional libraries
 import rospy
