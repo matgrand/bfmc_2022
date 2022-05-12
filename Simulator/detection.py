@@ -329,7 +329,7 @@ class Detection:
         self.lane_cnt += 1
         if show_ROI:
             cv.imshow('stop_line_detection', frame)
-            cv.imwrite(f'sd_{int(time()*1000)}.png', frame)
+            cv.imwrite(f'sd/sd_{int(time()*1000)}.png', frame)
             cv.waitKey(1)
         print(f"stop_line_detection dist: {dist:.2f}, in {stop_line_detection_time:.2f} ms")
         return stopline_x, stopline_y, stopline_angle
@@ -504,7 +504,7 @@ class Detection:
             if show_ROI:
                 Detection.draw_ROI(frame, TL, BR, show_rect = False, prediction = None, conf= None, show_prediction = False)
                 cv.imshow('ROI', img)
-                cv.imwrite(f'sd_{int(time()*1000)}.png', img)
+                cv.imwrite(f'sd/sd_{int(time()*1000)}.png', img)
                 cv.waitKey(1)
 
             kp, des = self.sift.detectAndCompute(img, None) #des = descriptors

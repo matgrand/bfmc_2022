@@ -24,7 +24,7 @@ class AutomobileEKF(EKF):
         """        
         dim_xx = 3      # xx = [x, y, yaw]^T
         dim_zz = 3      # zz = [GPS:x, GPS:y, IMU:yaw]^T
-        dim_uu = 2      # uu = [speed, steer]^T
+        dim_uu = 1     # uu = [speed]^T
 
         EKF.__init__(self, dim_x=dim_xx, dim_z=dim_zz, dim_u=dim_uu)
         assert np.shape(x0) == (dim_xx,1)
@@ -42,14 +42,13 @@ class AutomobileEKF(EKF):
 
         # Input: [speed, steering angle]
         v = self.uu[0]      # [m/s] SPEED
-        psi = self.uu[1]    # [rad] YAW
 
         # *******************************************
         # Useful parameters
         lr = WB/2                       # [m]   dist from rear wheel to CoM
         # *******************************************
         # ODE integration
-        self.rhs = vertcat(v*cos(psi), v*sin(psi), 0)
+        self.rhs = vertcat(v*cos(yaw), v*sin(yaw), 0)
         self.model = {}              # ODE declaration
         self.model['x']   = self.xx  # states
         self.model['p']   = self.uu  # inputs (as parameters)
@@ -93,7 +92,7 @@ class AutomobileEKF(EKF):
 
         # *******************************************
         # Error covariance prediction
-        # *******************************************
+        # *******************************************uu
         self.Q = np.diag([0.001, 0.001, 0.1])
         self.P = self.gammaP * F @ self.P @ F.T + self.Q * self.gammaQ
 
@@ -129,7 +128,7 @@ class AutomobileEKF(EKF):
         # yaw: YAW
         yaw_est = xxEst[2,0]
 
-        return x_est, y_est
+        return x_est, y_est, yaw_est
     
 def residual(a,b):
     """ compute residual between two measurement.
@@ -137,7 +136,7 @@ def residual(a,b):
     c = np.zeros_like(a)
     c[0] = a[0] - b[0]
     c[1] = a[1] - b[1]
-    c[2] = diff_angle(a[3]-b[3])
+    c[2] = diff_angle(a[2],b[2])
     return c
 
 def diff_angle(angle1, angle2):

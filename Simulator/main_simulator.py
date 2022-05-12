@@ -28,14 +28,14 @@ with open("data/classes.txt", "r") as f:
 training = True
 generate_path = True if training else False
 folder = 'training_imgs' 
-# folder = 'test_imgs'
+folder = 'test_imgs'
 PATH_NODES = [86, 116,115,116,453,466,465,466,465,466,465,466,465,466,465,466,465,
                 428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                 115,116,298,236,274,225,349,298,244,115,116,428,116,428,466,465,466,465,466,465,
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355,
                 87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
-# PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,466,249] #,273,136,321,262]
+PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,466,249] #,273,136,321,262]
 
 if training and folder == 'training_imgs':
     print('WARNING, WE ARE ABOUT TO OVERWRITE THE TRAINING DATA! ARE U SURE TO CONTINUE?')
@@ -275,11 +275,13 @@ if __name__ == '__main__':
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
 
             cv.imshow("Frame preview", frame)
+            cv.imwrite(f'test_imgs/frame{int(loop_start_time*1000)}.png', frame)
             frame = frame[int(frame.shape[0]*(2/5)):,:]
             cv.imshow("Stopline", frame)
             # cv.imshow('SIGNS ROI', signs_roi)
             # cv.imshow('FRONT ROI', front_obstacle_roi)
             cv.imshow("2D-MAP", tmp) if SIMULATOR else None
+            cv.imwrite(f'test_imgs/map{int(loop_start_time*1000)}.png', tmp)
             key = cv.waitKey(1)
             if key == 27:
                 car.stop()

@@ -19,7 +19,7 @@ from collections import deque
 
 # from estimation import EKFCar
 
-YAW_GLOBAL_OFFSET = np.deg2rad(52.0)
+YAW_GLOBAL_OFFSET = 0.0#np.deg2rad(52.0)
 
 START_X = 0.2
 START_Y = 14.8
@@ -68,6 +68,7 @@ CAM_K = np.array([[CAM_F*CAM_Sx,      0.0,            CAM_Ox],
 # Estimator parameters
 EST_INIT_X      = 3.0               # [m]
 EST_INIT_Y      = 3.0               # [m]
+EST_INIT_YAW    = 0.0               # [rad] 
 
 
 EKF_STEPS_BEFORE_TRUST = 10 #10 is fine, 15 is safe
@@ -180,7 +181,7 @@ class Automobile_Data():
         self.CAM_K = CAM_K
         # ESTIMATION PARAMETERS
         self.last_estimation_callback_time = None
-        self.est_init_state = np.array([EST_INIT_X, EST_INIT_Y]).reshape(-1,1)
+        self.est_init_state = np.array([EST_INIT_X, EST_INIT_Y, EST_INIT_YAW]).reshape(-1,1)
         self.ekf = AutomobileEKF(x0=self.est_init_state, WB=self.WB)
 
         self.past_encoder_distances = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
@@ -307,14 +308,15 @@ class Automobile_Data():
             self.prev_gps_dist = curr_gps_dist
             # INPUT: [SPEED, STEER]
             u0 = velocity
-            u1 = curr_yaw
-            u = np.array([u0, u1]).reshape(-1,1)
+            # u1 = curr_yaw
+            u = np.array([u0]).reshape(-1,1)
             # OUTPUT: [GPS:x, GPS:y, IMU:yaw]
             zx = self.x
             zy = self.y 
-            z = np.array([zx, zy]).reshape(-1,1)
+            zyaw = curr_yaw
+            z = np.array([zx, zy, zyaw]).reshape(-1,1)
             # PREDICT and UPDATE STEPS
-            x_est, y_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
+            x_est, y_est, yaw_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
             ## check if x_est and y_est are valid
             #if the estimate is way off set the estimate to the current gps position
             # curr_x_est = self.ekf.x[0,0]

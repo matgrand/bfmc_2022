@@ -24,7 +24,7 @@ from helper_functions import *
 
 # CHECKPOINTS = [299,275] #roundabout
 # CHECKPOINTS = [86,99,116] #left right left right
-CHECKPOINTS = [86,111] #complete track
+CHECKPOINTS = [86,430,193,141,346,85] #complete track
 SPEED_CHALLENGE = False
 
 class State():
@@ -132,7 +132,7 @@ STRAIGHT_DIST_TO_EXIT_HIGHWAY = 0.8 #[m] go straight for this distance in orther
 
 #GPS
 ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
-ALWAYS_DISTRUST_GPS = True #if true, the car will always distrust the gps (bypass)
+ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
 #Rerouting
 GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE = 0.2 #distance between 2 consecutive measure of the gps for the kalmann filter to be considered converged
@@ -352,8 +352,6 @@ class Brain:
             #get closest node
             curr_pos = np.array([self.car.x_est, self.car.y_est])
             closest_node, distance = self.path_planner.get_closest_node(curr_pos)
-            closest_node = '86'
-            distance = 0.0
             print(f'GPS converged, starting from node: {closest_node}, distance: {distance:.2f}')
             sleep(3.0)
             self.checkpoints[self.checkpoint_idx] = closest_node
