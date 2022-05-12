@@ -5,24 +5,11 @@ import networkx as nx
 import numpy as np
 import cv2 as cv
 from pyclothoids import Clothoid
-
+from names_and_constants import *
 from helper_functions import *
 
 SHOW_IMGS = False
 
-# EVENT TYPES #match with brain.py
-INTERSECTION_STOP_EVENT = 'intersection_stop_event'
-INTERSECTION_TRAFFIC_LIGHT_EVENT = 'intersection_traffic_light_event'
-INTERSECTION_PRIORITY_EVENT = 'intersection_priority_event'
-JUNCTION_EVENT = 'junction_event'
-ROUNDABOUT_EVENT = 'roundabout_event'
-CROSSWALK_EVENT = 'crosswalk_event'
-PARKING_EVENT = 'parking_event'
-HIGHWAY_EXIT_EVENT = 'highway_exit_event'
-
-EVENT_TYPES = [INTERSECTION_STOP_EVENT, INTERSECTION_TRAFFIC_LIGHT_EVENT, INTERSECTION_PRIORITY_EVENT,
-                JUNCTION_EVENT, ROUNDABOUT_EVENT, CROSSWALK_EVENT, PARKING_EVENT, HIGHWAY_EXIT_EVENT]
-                
 class PathPlanning(): 
     def __init__(self, map_img):
         # start and end nodes

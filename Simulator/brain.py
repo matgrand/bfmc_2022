@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = False
+SIMULATOR_FLAG = True
 SHOW_IMGS = False
 
 import numpy as np
@@ -128,7 +128,7 @@ STRAIGHT_DIST_TO_EXIT_HIGHWAY = 0.8 #[m] go straight for this distance in orther
 
 #GPS
 ALWAYS_TRUST_GPS = False  # if true the car will always trust the gps (bypass)
-ALWAYS_DISTRUST_GPS = True #if true, the car will always distrust the gps (bypass)
+ALWAYS_DISTRUST_GPS = False #if true, the car will always distrust the gps (bypass)
 assert not(ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS), 'ALWAYS_TRUST_GPS and ALWAYS_DISTRUST_GPS cannot be both True'
 #Rerouting
 GPS_DISTANCE_THRESHOLD_FOR_CONVERGENCE = 0.2 #distance between 2 consecutive measure of the gps for the kalmann filter to be considered converged
@@ -1370,7 +1370,7 @@ class Brain:
             frames = self.get_frames_in_range(start_dist=OBSTACLE_IMGS_CAPTURE_START_DISTANCE-OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE)
             print(f'Captured {len(frames)} imgs, running classification...')
             distances = [OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE + DISTANCES_BETWEEN_FRAMES*(len(frames)-i) for i in range(len(frames))]
-            obstacle, conf = self.detect.classify_frontal_obstacle(frames, distances, show_ROI=SHOW_IMGS)    
+            obstacle, conf = self.detect.classify_frontal_obstacle(frames, distances, show_ROI=SHOW_IMGS, show_kp=SHOW_IMGS)
             print(f'Obstacle: {obstacle}')
             sleep(1) #TODO remove it
             if OBSTACLE_IS_ALWAYS_CAR: obstacle = CAR

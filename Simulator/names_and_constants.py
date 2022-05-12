@@ -53,6 +53,10 @@ PARKING_EVENT = 'parking_event'
 END_EVENT = 'end_event'
 HIGHWAY_EXIT_EVENT = 'highway_exit_event'
 
+EVENT_TYPES = [INTERSECTION_STOP_EVENT, INTERSECTION_TRAFFIC_LIGHT_EVENT, INTERSECTION_PRIORITY_EVENT,
+                JUNCTION_EVENT, ROUNDABOUT_EVENT, CROSSWALK_EVENT, PARKING_EVENT, HIGHWAY_EXIT_EVENT]
+                
+
 #======================== ACHIEVEMENTS ========================
 #consider adding all the tasks, may be too cumbersome
 PARK_ACHIEVED = 'park_achieved'

@@ -455,7 +455,7 @@ class Detection:
             Detection.draw_ROI(frame, TL, BR, show_rect = True, prediction = self.sign_prediction, conf= int(100*self.sign_conf), show_prediction = True)      
         return self.sign_prediction, self.sign_conf      
 
-    def classify_frontal_obstacle(self, frames, distances, show_ROI=True, show_kp=True):
+    def classify_frontal_obstacle(self, frames, distances, show_ROI=False, show_kp=False):
         """
         Obstacle classifier:
         takes the whole frames as input and returns the obstacle name and classification

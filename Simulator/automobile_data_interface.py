@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-SIMULATOR = True
+SIMULATOR = True#True
 
 # Functional libraries
 from cv2 import mean
