@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = False
-SHOW_IMGS = False
+SIMULATOR_FLAG = True
+SHOW_IMGS = True
 
 import numpy as np
 import cv2 as cv

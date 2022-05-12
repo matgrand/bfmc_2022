@@ -1,0 +1,2 @@
+string prediction
+float32 conf

@@ -1,0 +1,22 @@
+<launch>
+    <node pkg="input" type="imuNODE.py"                         name="imuNODE"         				output="screen"/>
+    <?ignore <node pkg="input" type="sonarNODE_ahead.py"        name="sonarNODE_ahead"  			output="screen"/> ?>
+    <node pkg="input" type="sonarNODE_latead.py" 				name="sonarNODE_latead"  			output="screen"/> 
+    <?ignore <node pkg="input" type="sonarNODE_ahead_single.py"          name="sonarNODE_ahead_single"       output="screen"/> ?>
+    <?ignore <node pkg="input" type="sonarNODE_lateral.py" 		        name="sonarNODE_lateral"  			output="screen"/> ?>
+    
+    
+    
+    <node name="ROSserialNODE"        pkg="rosserial_python"      type="serial_node.py">
+    <param name="port"              type="string"               value="/dev/ttyACM0"/>
+    <param name="baud"              type="int"                  value="1000000"/>
+    </node>
+    
+    
+    <node pkg="input" type="gpstrackerNODE.py" 			name="gpstrackerNODE"  			output="screen"/>
+    <node pkg="output" type="environmentalNODE.py" 		name="environmentalNODE"  		output="screen"/>
+    <?ignore <node pkg="input" type="cameraNODE.py" 				name="camaeraNODE"  			output="screen"/> ?>
+    <node pkg="input" type="semaphoreNODE.py" 			name="semaphoreNODE"  			output="screen"/>
+    <?ignore <node pkg="input" type="vehicletovehicleNODE.py" 	name="vehicletovehicleNODE"  	output="screen"/> ?>
+    <?ignore <node pkg="output" type="serialNODE.py" 			name="serialNODE"  				output="screen"/> ?>
+</launch>

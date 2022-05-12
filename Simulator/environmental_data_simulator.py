@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-SIMULATOR = False
+from brain import SIMULATOR_FLAG
 
 # Functional libraries
 import rospy
@@ -22,7 +22,7 @@ from std_msgs.msg import Byte
 from utils.msg import environmental
 from utils.msg import vehicles
 
-if SIMULATOR:
+if SIMULATOR_FLAG:
     from helper_functions import *
 else:
     from control.helper_functions import *
@@ -83,7 +83,7 @@ class EnvironmentalData():
             self.pub_v2x = rospy.Publisher('/automobile/environment', environmental, queue_size=1)
         # SEMAPHORE
         if trig_semaphore:
-            if SIMULATOR:
+            if SIMULATOR_FLAG:
                 self.sub_semaphoremaster= rospy.Subscriber("/automobile/trafficlight/master", Byte, self.semaphore_master_callback)
                 self.sub_semaphoreslave = rospy.Subscriber("/automobile/trafficlight/slave", Byte, self.semaphore_slave_callback)
                 self.sub_semaphoreantimaster = rospy.Subscriber("/automobile/trafficlight/antimaster", Byte, self.semaphore_antimaster_callback)

@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR = False # True: run simulator, False: run real car
-SHOW_IMGS = False
+SIMULATOR = True # True: run simulator, False: run real car
+SHOW_IMGS = True
 
 import os, signal
 import cv2 as cv

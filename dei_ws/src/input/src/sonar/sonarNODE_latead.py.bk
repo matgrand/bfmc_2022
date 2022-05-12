@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+
+from turtle import left
+import RPi.GPIO as gpio
+import time
+import sys
+#import signal
+import rospy
+from std_msgs.msg import Float32
+
+
+class sonarNODE():
+    def __init__(self):
+        rospy.init_node('sonarNODE', anonymous=True)
+        self.center_publisher = rospy.Publisher('/automobile/sonar/ahead/center',Float32, queue_size=1)
+        self.left_publisher = rospy.Publisher('/automobile/sonar/ahead/left',Float32, queue_size=1)
+        self.right_publisher = rospy.Publisher('/automobile/sonar/ahead/right',Float32, queue_size=1)
+        self.lateral_publisher = rospy.Publisher('/automobile/sonar/lateral',Float32, queue_size=1)
+
+        # self.r = rospy.Rate(15)
+        self.sampling_time = 1/20.0
+        self.max_train_pulse_time = 0.01
+        self.max_fly_time = 0.01*2
+
+    def run(self):
+        rospy.loginfo("starting sonarNODE")
+        self._initSONAR()
+        self._getting()
+    
+    def _initSONAR(self):
+        gpio.setmode(gpio.BCM)
+        self.trig = 23
+        self.echo = 24
+        self.echo_left = 25
+        self.echo_right = 8
+
+        self.trig_lateral = 27
+        self.echo_lateral = 22
+
+        gpio.setup(self.trig, gpio.OUT)
+        gpio.setup(self.trig_lateral, gpio.OUT)
+        gpio.setup(self.echo, gpio.IN)
+        gpio.setup(self.echo_left, gpio.IN)
+        gpio.setup(self.echo_right, gpio.IN)
+        gpio.setup(self.echo_lateral, gpio.IN)
+
+        print("SONAR Name: HC-SR04")
+
+    def _getting(self):
+        gpio.output(self.trig, False)
+        gpio.output(self.trig_lateral, False)
+        time.sleep(0.5)
+
+        while not rospy.is_shutdown() :
+            # Send the impulse
+            gpio.output(self.trig, True)
+            gpio.output(self.trig_lateral, True)
+            time.sleep(0.00001)# impulse duration to 10us
+            gpio.output(self.trig, False)
+            gpio.output(self.trig_lateral, False)
+
+            center_flag = False
+            left_flag = False
+            right_flag = False
+            lateral_flag = False
+
+            center_done = False
+            left_done = False
+            right_done = False
+            lateral_done = False
+            
+            # wait for the comeback impulse
+            start_time = time.time()       
+            while not (center_done and left_done and right_done and lateral_done):
+                curr_time = time.time()
+                if gpio.input(self.echo) == 1 and not center_flag:
+                    # print('center is 1')
+                    center_flag = True
+                    start_center_time = curr_time
+                if gpio.input(self.echo_left) == 1 and not left_flag:
+                    # print('left is 1')
+                    left_flag = True
+                    start_left_time = curr_time
+                if gpio.input(self.echo_right) == 1 and not right_flag:
+                    # print('left is 1')
+                    right_flag = True
+                    start_right_time = curr_time
+                if gpio.input(self.echo_lateral) == 1 and not lateral_flag:
+                    # print('lateral is 1')
+                    lateral_flag = True
+                    start_lateral_time = curr_time
+
+                if gpio.input(self.echo) == 0 and center_flag and not center_done:
+                    pulse_duration = curr_time - start_center_time
+                    distance = pulse_duration * 343.0 / 2
+                    self.center_publisher.publish(distance)
+                    center_done = True
+                if gpio.input(self.echo_left) == 0 and left_flag and not left_done:
+                    pulse_duration = curr_time - start_left_time
+                    distance = pulse_duration * 343.0 / 2
+                    self.left_publisher.publish(distance)
+                    left_done = True
+                if gpio.input(self.echo_right) == 0 and right_flag and not right_done:
+                    pulse_duration = curr_time - start_right_time
+                    distance = pulse_duration * 343.0 / 2
+                    self.right_publisher.publish(distance)
+                    right_done = True
+                if gpio.input(self.echo_lateral) == 0 and lateral_flag and not lateral_done:
+                    pulse_duration = curr_time - start_lateral_time
+                    distance = pulse_duration * 343.0 / 2
+                    self.lateral_publisher.publish(distance)
+                    lateral_done = True
+                
+                if curr_time - start_time > self.max_train_pulse_time and not center_flag and not left_flag and not right_flag and not lateral_flag:
+                    self.center_publisher.publish(-2)
+                    # print('max train pulse time reached')
+                    break
+                if center_flag and curr_time - start_center_time > self.max_fly_time:
+                    self.center_publisher.publish(3.0)
+                    # print(f'max fly time for center reached')
+                    break
+                if left_flag and curr_time - start_left_time > self.max_fly_time:
+                    self.left_publisher.publish(3.0)
+                    # print(f'max fly time for left reached')
+                    break
+                if right_flag and curr_time - start_right_time > self.max_fly_time:
+                    self.right_publisher.publish(3.0)
+                    # print(f'max fly time for right reached')
+                    break
+                if lateral_flag and curr_time - start_lateral_time > self.max_fly_time:
+                    self.lateral_publisher.publish(3.0)
+                    # print(f'max fly time for center reached')
+                    break
+                # print(f'loop time is {time.time()-curr_time:.6f}')
+            
+            time.sleep(self.sampling_time)
+
+if __name__ == "__main__":
+    try:
+        sonarNod = sonarNODE()
+        sonarNod.run()
+    except (KeyboardInterrupt, SystemExit):
+        print("Exception from KeyboardInterrupt or SystemExit")
+        gpio.cleanup()
+        sys.exit(0)
+    except Exception as e:
+        print('Finally *************++')
+        print(e)
+        gpio.cleanup()
+        sys.exit(0)
+        
+        

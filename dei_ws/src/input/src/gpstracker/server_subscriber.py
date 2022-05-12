@@ -35,7 +35,7 @@ import traceback
 
 import socket
 
-from utils import load_public_key, verify_data
+from util import load_public_key, verify_data
 
 class ServerSubscriber:
 	""" It has role to subscribe on the server, to create a connection and verify the server authentication.

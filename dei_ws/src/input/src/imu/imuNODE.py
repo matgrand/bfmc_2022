@@ -30,25 +30,25 @@
 
 import sys
 sys.path.append('.')
-import RTIMU
+from adafruit_extended_bus import ExtendedI2C as I2C
+import adafruit_bno055
+from adafruit_bno055 import COMPASS_MODE
+from adafruit_bno055 import NDOF_FMC_OFF_MODE
+from adafruit_bno055 import NDOF_MODE
+
 import os.path
 import time
-import math
+import json
 
 import rospy
 
 from utils.msg import IMU
 
+PUB_FREQ = 100.0
+
 class imuNODE():
     def __init__(self): 
-        self.SETTINGS_FILE = "RTIMULib"
-        print("Using settings file " + self.SETTINGS_FILE + ".ini")
-        if not os.path.exists(self.SETTINGS_FILE + ".ini"):
-            print("Settings file does not exist, will be created")
-        self.s = RTIMU.Settings(self.SETTINGS_FILE)
-        
         rospy.init_node('imuNODE', anonymous=False)
-        
         # BNO publisher object
         self.BNO_publisher = rospy.Publisher("/automobile/imu", IMU, queue_size=1)
         
@@ -60,45 +60,89 @@ class imuNODE():
     
     #================================ INIT IMU ========================================
     def _initIMU(self):
-        self.imu = RTIMU.RTIMU(self.s)
-        
-        if (not self.imu.IMUInit()):
-            sys.exit(1)
-        print("IMU Name: " + self.imu.IMUName())
-        self.imu.setSlerpPower(0.02)
-        self.imu.setGyroEnable(True)
-        self.imu.setAccelEnable(True)
-        self.imu.setCompassEnable(True)
+        self.i2c = I2C(1)  # Device is /dev/i2c-1        
+        self.imu = adafruit_bno055.BNO055_I2C(self.i2c, address=0x29)
 
-        self.poll_interval = self.imu.IMUGetPollInterval()
+        self.imu.offsets_accelerometer = (-36, -56, -16)
+        self.imu.offsets_gyroscope = (-1, -2, 1)
+        self.imu.offsets_magnetometer = (128, 0, 0)
+        self.imu.radius_accelerometer = 1000
+        self.imu.radius_magnetometer = 480
+
+        self.imu.mode = NDOF_MODE# COMPASS MODE
+        def myhook():
+            data = {}
+            data['offsets_accelerometer'] = self.imu.offsets_accelerometer
+            data['offsets_gyroscope'] = self.imu.offsets_gyroscope
+            data['offsets_magnetometer'] = self.imu.offsets_magnetometer
+            data['radius_accelerometer'] = self.imu.radius_accelerometer
+            data['radius_magnetometer'] = self.imu.radius_magnetometer
+
+            data = json.dump(data, open("/home/pi/dei_ws/src/input/src/imu/imu_calibration_status.json","w"), indent=1)
+
+            print("shutdown time!")
+        rospy.on_shutdown(myhook)
+
+        print("IMU Name: BNO055")
+
         #print(f'********* this is the imu interval: {self.poll_interval} *********************')
 
     #================================ GETTING ========================================
     def _getting(self):
         while not rospy.is_shutdown():
-            if self.imu.IMURead():
-                data = self.imu.getIMUData()
-                # print(data)
-                fusionPose = data["fusionPose"]
-                # print(f'fusionPose: {fusionPose}')
-                accel = data["accel"]
-                # print(f'accel = {accel}')
-                gyro = data["gyro"]
-                # print(f'gyro = {gyro}')
-                imudata = IMU()
-                imudata.roll   =  math.degrees(fusionPose[0])
-                imudata.pitch  =  math.degrees(fusionPose[1])
-                imudata.yaw    =  math.degrees(fusionPose[2])
-                imudata.accelx =  accel[0]
-                imudata.accely =  accel[1]
-                imudata.accelz =  accel[2]
-                imudata.gyrox  =  gyro[0]
-                imudata.gyroy  =  gyro[1]
-                imudata.gyroz  =  gyro[2]
-                
+            # if self.imu.calibration_status[-1] < 3:
+            #     print(f'Magnetometer not calibrated with status {self.imu.calibration_status}, keep moving the car ...')
+            print(f'IMU not calibrated with status {self.imu.calibration_status}, keep moving the car ...')
+
+            
+            euler_angles = self.imu.euler
+            gyro = self.imu.gyro
+            accel = self.imu.acceleration    
+            
+            imudata = IMU()
+            publish = True
+
+            if euler_angles[2] is not None:
+                imudata.roll   =  - float(euler_angles[2]) + 180
+            else:
+                publish = False
+            if euler_angles[1] is not None:
+                imudata.pitch  =  - float(euler_angles[1]) + 180
+            else:
+                publish = False
+            if euler_angles[0] is not None:
+                imudata.yaw    =  - float(euler_angles[0]) + 180
+            else:
+                publish = False
+            if accel[0] is not None:
+                imudata.accelx =  float(accel[0])
+            else:
+                publish = False
+            if accel[1] is not None:
+                imudata.accely =  float(accel[1])
+            else:
+                publish = False
+            if accel[2] is not None:
+                imudata.accelz =  float(accel[2])
+            else:
+                publish = False
+            if gyro[0] is not None:
+                imudata.gyrox  =  float(gyro[0])
+            else:
+                publish = False
+            if gyro[1] is not None:
+                imudata.gyroy  =  float(gyro[1])
+            else:
+                publish = False
+            if gyro[2] is not None:
+                imudata.gyroz  =  float(gyro[2])
+            else:
+                publish = False
+        
+            if publish:
                 self.BNO_publisher.publish(imudata)
-                
-                time.sleep(self.poll_interval*1.0/1000.0)
+        
+            time.sleep(1/PUB_FREQ)
         
 if __name__ == "__main__":
     imuNod = imuNODE()

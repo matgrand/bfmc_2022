@@ -52,12 +52,15 @@ add_message_files(
   localisation.msg
   vehicles.msg
   environmental.msg
+  Log.msg
+  TopicInfo.msg
 )
 
 ## Generate services in the 'srv' folder
 add_service_files(
   FILES
   subscribing.srv
+  RequestParam.srv
 )
 
 ## Generate actions in the 'action' folder

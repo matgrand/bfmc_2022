@@ -89,14 +89,14 @@ class cameraNODE():
         self.camera = PiCamera()
         # camera settings
         self.camera.resolution      =   (1640,1232)
-        self.camera.framerate       =   15
+        self.camera.framerate       =   30
 
         self.camera.brightness      =   50
         self.camera.shutter_speed   =   1200
         self.camera.contrast        =   0
         self.camera.iso             =   0 # auto
 
-        self.imgSize                =   (640, 480)    # the actual image size
+        self.imgSize                =   (320, 240)    # the actual image size
             
             
     # ===================================== GET STAMP ====================================
@@ -121,7 +121,7 @@ class cameraNODE():
 
             # read and reshape from bytes to np.array
             data  = np.frombuffer(data, dtype=np.uint8)
-            data  = np.reshape(data, (480, 640, 3))
+            data  = np.reshape(data, (240, 320, 3))
             stamp = time.time()
 
             # output image and time stamp

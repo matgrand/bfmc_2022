@@ -1,0 +1,19 @@
+{
+ "offsets_accelerometer": [
+  0,
+  4,
+  -20
+ ],
+ "offsets_gyroscope": [
+  128,
+  -1,
+  1
+ ],
+ "offsets_magnetometer": [
+  -32587,
+  -32576,
+  -32559
+ ],
+ "radius_accelerometer": 1000,
+ "radius_magnetometer": 464
+}

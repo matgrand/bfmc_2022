@@ -19,7 +19,7 @@ class sonarNODE():
                            rospy.Publisher('/automobile/sonar/lateral',Float32, queue_size=1)]
 
         # self.r = rospy.Rate(15)
-        self.sampling_time = 1/20.0
+        self.sampling_time = 0.06#1/20.0
         self.max_train_pulse_time = 0.01
         self.max_fly_time = 0.01*2
 
@@ -64,7 +64,7 @@ class sonarNODE():
             start_time = time.time()       
             curr_time = start_time
             start_sonar_times = [start_time] * self.sonars_n
-            while curr_time - start_time < self.max_fly_time:
+            while curr_time - start_time < self.max_fly_time and not all(done_flags):
                 curr_time = time.time()
                 for i in range(self.sonars_n):
                     if gpio.input(self.echos[i]) == 1 and not echo_flags[i]:

@@ -80,13 +80,13 @@ class semaphoreNODE():
                 ID = int(dat['id'])
                 state = int(dat['state'])
                 if (ID == 1):
-                    self.Semaphoremaster_publisher(state)
+                    self.Semaphoremaster_publisher.publish(state)
                 elif (ID == 2):
-                    self.Semaphoreslave_publisher(state)
+                    self.Semaphoreslave_publisher.publish(state)
                 elif (ID == 3):
-                    self.Semaphoreantimaster_publisher(state)
+                    self.Semaphoreantimaster_publisher.publish(state)
                 elif (ID == 4):
-                    self.Semaphorestart_publisher(state)
+                    self.Semaphorestart_publisher.publish(state)
 
             except Exception as e:
                 if str(e) !="timed out":
