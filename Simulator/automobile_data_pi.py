@@ -47,6 +47,9 @@ class AutomobileDataPi(Automobile_Data):
         self.estimation_last_encoder_distance = 0.0
         self.estimation_last_yaw_est = 0.0
 
+        self.x_buffer = collections.deque(maxlen=3)
+        self.y_buffer = collections.deque(maxlen=3)
+
         # PUBLISHERS AND SUBSCRIBERS
         if trig_control:
             self.pub_speed = rospy.Publisher('/automobile/command/speed', Float32, queue_size=1)
@@ -139,8 +142,12 @@ class AutomobileDataPi(Automobile_Data):
         # print(f'PR = {pR}')
         # self.x = pR[0]
         # self.y = pR[1]
-        self.x = pR[0] - self.WB/2*np.cos(self.yaw)
-        self.y = pR[1] - self.WB/2*np.sin(self.yaw)
+        tmp_x = pR[0] - self.WB/2*np.cos(self.yaw)
+        tmp_y = pR[1] - self.WB/2*np.sin(self.yaw)
+        self.x_buffer.append(tmp_x)
+        self.y_buffer.append(tmp_y)
+        self.x = np.mean(self.x_buffer)
+        self.y = np.mean(self.y_buffer)
         self.x_est = self.x
         self.y_est = self.y
         # self.update_estimated_state()

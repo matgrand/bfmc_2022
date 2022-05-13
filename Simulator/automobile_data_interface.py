@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-SIMULATOR = True#True
+SIMULATOR = False#True
 
 
 # Functional libraries
@@ -19,7 +19,7 @@ from collections import deque
 
 # from estimation import EKFCar
 
-YAW_GLOBAL_OFFSET = np.deg2rad(52.0)*0.0
+YAW_GLOBAL_OFFSET = np.deg2rad(-5)
 
 START_X = 0.2
 START_Y = 14.8

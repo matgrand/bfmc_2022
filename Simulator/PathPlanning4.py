@@ -73,6 +73,8 @@ class PathPlanning():
         
         self.no_yaw_calibration_nodes = [str(i) for i in [340,341,342,464,465,466,467]]
 
+        # self.near_crosswalk_nodes = [str(i) for i in [67,95,80,92,96,295,296,276,277,]]
+
         #event points
         self.event_points = np.load('data/event_points.npy') #created in R coord
         self.event_types = np.load('data/event_types.npy')

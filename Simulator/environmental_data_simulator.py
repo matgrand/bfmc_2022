@@ -144,8 +144,10 @@ class EnvironmentalData():
         assert type in self.obstacle_map.keys(), "Obstacle type not recognized"
         data = environmental()
         data.obstacle_id    = self.obstacle_map[type]
-        data.x              = x
-        data.y              = y
+        pR = np.array([x,y])
+        pL = mR2mL(pR)
+        data.x              = pL[0]
+        data.y              = pL[1]
         self.pub_v2x.publish(data)
         self.obstacle_list.append(f'{type} found at position ({x},{y}) m')
     

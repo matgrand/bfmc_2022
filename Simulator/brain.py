@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = True
-SHOW_IMGS = True
+SIMULATOR_FLAG = False
+SHOW_IMGS = False
 
 import numpy as np
 import cv2 as cv
@@ -24,8 +24,8 @@ from helper_functions import *
 
 # CHECKPOINTS = [299,275] #roundabout
 # CHECKPOINTS = [86,99,116] #left right left right
-CHECKPOINTS = [86,430,193,141,346,85] #complete track#[86,430,193,141,346,85] #complete track
-SPEED_CHALLENGE = True
+CHECKPOINTS = [86,141,346,85] #complete track#[86,430,193,141,346,85] #complete track
+SPEED_CHALLENGE = False
 
 class State():
     def __init__(self, name=None, method=None, activated=False):
@@ -100,7 +100,7 @@ ACHIEVEMENTS = {
 #signs
 SIGN_DIST_THRESHOLD = 0.5
 #sempahores
-SEMAPHORE_IS_ALWAYS_GREEN = True
+SEMAPHORE_IS_ALWAYS_GREEN = False
 
 DEQUE_OF_PAST_FRAMES_LENGTH = 50
 DISTANCES_BETWEEN_FRAMES = 0.03
@@ -161,7 +161,7 @@ END_STATE_DISTANCE_THRESHOLD = 0.3 #[m] distance from the end of the path for th
 
 #PARKING
 PARKING_DISTANCE_SLOW_DOWN_THRESHOLD = 0.7#1.0
-PARKING_DISTANCE_STOP_THRESHOLD = 0.05 #0.1
+PARKING_DISTANCE_STOP_THRESHOLD = 0.1 #0.1
 SUBPATH_LENGTH_FOR_PARKING = 300 # length in samples of the path to consider around the parking position, max
 ALWAYS_USE_GPS_FOR_PARKING = False #debug
 ALWAYS_USE_SIGN_FOR_PARKING = False #debug
@@ -177,8 +177,8 @@ DIST_SIGN_FIRST_T_SPOT = 0.75 #[m] distance from the sign to the first parking s
 DIST_T_SPOTS = 0.45 #[m] distance from the sign to the second parking spot
 DIST_SIGN_FIRST_S_SPOT = 0.9 #[m] distance from the sign to the first parking spot
 DIST_S_SPOTS = 0.7 #[m] distance from the sign to the second parking spot
-FURTHER_DIST_S = 0.69 #[m] distance to proceed further in order to perform the s manouver
-FURTHER_DIST_T = 0.64 #[m] distance to proceed further in order to perform the t manouver
+FURTHER_DIST_S = 0.69+0.08 #[m] distance to proceed further in order to perform the s manouver
+FURTHER_DIST_T = 0.64+0.08 #[m] distance to proceed further in order to perform the t manouver
 T_ANGLE = 27.0 #[deg] angle to perform the t manouver
 S_ANGLE = 29.0 #[deg] angle to perform the s manouver
 DIST_2T = 0.8 #[m] distance to perform the 2nd part of t manouver
@@ -1404,7 +1404,22 @@ class Brain:
             frames = self.get_frames_in_range(start_dist=OBSTACLE_IMGS_CAPTURE_START_DISTANCE-OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE)
             print(f'Captured {len(frames)} imgs, running classification...')
             distances = [OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE + DISTANCES_BETWEEN_FRAMES*(len(frames)-i) for i in range(len(frames))]
-            obstacle, conf = self.detect.classify_frontal_obstacle2(frames, distances, show_ROI=SHOW_IMGS or True, show_kp=SHOW_IMGS)
+            # obstacle, conf = self.detect.classify_frontal_obstacle2(frames, distances, show_ROI=SHOW_IMGS or True, show_kp=SHOW_IMGS)
+            #forcing the classification
+            if self.conditions[CAN_OVERTAKE]:
+                obstacle = CAR
+            elif self.conditions[BUMPY_ROAD]:
+                obstacle = CAR
+            else: #we cannot overtake and we are NOT in a bumpy road 
+                obstacle = PEDESTRIAN
+
+            #check for roadblock 
+            closeest_node, _ = self.path_planner.get_closest_node(np.array(self.car.x_est, self.car.y_est))
+            if closeest_node in RB_NODES_LEFT_LANE or closeest_node in RB_NODES_RIGHT_LANE:
+                obstacle = ROADBLOCK
+
+
+            
             print(f'Obstacle: {obstacle}')
             sleep(1) #TODO remove it
             if OBSTACLE_IS_ALWAYS_CAR: obstacle = CAR

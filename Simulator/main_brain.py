@@ -28,7 +28,7 @@ map = cv.imread('data/2021_VerySmall.png')
 # PARAMETERS
 TARGET_FPS = 30.0
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.5# [m/s]
+DESIRED_SPEED = 0.35# [m/s]
 CURVE_SPEED = 0.8# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
