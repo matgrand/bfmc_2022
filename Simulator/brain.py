@@ -24,8 +24,8 @@ from helper_functions import *
 
 # CHECKPOINTS = [299,275] #roundabout
 # CHECKPOINTS = [86,99,116] #left right left right
-CHECKPOINTS = [86,141,346,85] #complete track#[86,430,193,141,346,85] #complete track
-SPEED_CHALLENGE = False
+CHECKPOINTS = [86,430,193,141,346,85] #complete track#[86,430,193,141,346,85] #complete track
+SPEED_CHALLENGE = True
 
 class State():
     def __init__(self, name=None, method=None, activated=False):
@@ -141,7 +141,7 @@ POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3 #0.3
 
 #speed control
 ACCELERATION_CONST = 1.5 #multiplier for desired speed, used to regulate highway speed
-SLOW_DOWN_CONST = 0.3 if not SPEED_CHALLENGE else 1.0#0.3 #multiplier, used when approaching lines
+SLOW_DOWN_CONST = 0.3 if not SPEED_CHALLENGE else 0.5#0.3 #multiplier, used when approaching lines
 
 #highway exit
 STRAIGHT_DIST_TO_EXIT_HIGHWAY = 0.8 #[m] go straight for this distance in orther to exit the hihgway
@@ -160,8 +160,8 @@ GPS_TIMEOUT = 5.0 #[s] time to wait to have gps signal
 END_STATE_DISTANCE_THRESHOLD = 0.3 #[m] distance from the end of the path for the car to be considered at the end of the path
 
 #PARKING
-PARKING_DISTANCE_SLOW_DOWN_THRESHOLD = 1.0
-PARKING_DISTANCE_STOP_THRESHOLD = 0.1
+PARKING_DISTANCE_SLOW_DOWN_THRESHOLD = 0.7#1.0
+PARKING_DISTANCE_STOP_THRESHOLD = 0.05 #0.1
 SUBPATH_LENGTH_FOR_PARKING = 300 # length in samples of the path to consider around the parking position, max
 ALWAYS_USE_GPS_FOR_PARKING = False #debug
 ALWAYS_USE_SIGN_FOR_PARKING = False #debug
@@ -572,7 +572,7 @@ class Brain:
 
         distance_to_stop = self.curr_state.var1
         if self.car.encoder_distance < distance_to_stop: 
-            self.car.drive(speed=self.desired_speed, angle=0.0)
+            self.car.drive(speed=self.desired_speed, angle=5.0)
         else: #end of the maneuver
             self.switch_to_state(LANE_FOLLOWING)
             self.go_to_next_event()
@@ -1430,11 +1430,11 @@ class Brain:
             e2, e3, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
             #NOTE 
             # e3 = -e3 if not SIMULATOR_FLAG else e3 
-            _, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
+            speed, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
             angle_ref = np.rad2deg(angle_ref)
             # if self.car.speed < 0.1: #inverse driving in reverse
             #     angle_ref = -angle_ref
-            self.car.drive_angle(angle_ref)
+            self.car.drive_angle(angle_ref) if not SPEED_CHALLENGE else self.car.drive(speed=speed, angle=np.rad2deg(angle_ref))
         else:
             e3, _ = self.detect.detect_lane_ahead(self.car.frame, show_ROI=SHOW_IMGS)
             output_speed, output_angle = self.controller_sp.get_control_speed(0.0,0.0,e3)

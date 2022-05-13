@@ -135,7 +135,7 @@ class Automobile_Data():
         self.y_est = 0.0                        # [m]       EST:y EKF estimated global coordinate
         self.yaw_est = self.yaw_offset          # [rad]     EST:yaw EKF estimated
         self.gps_cnt = 0
-        self.trust_gps = False                  # [bool]    EST:variable set to true if the EKF trust the GPS
+        self.trust_gps = True                  # [bool]    EST:variable set to true if the EKF trust the GPS
         self.buffer_gps_positions_still_car = []
         # LOCAL POSITION
         self.x_loc = 0.0                        # [m]       local:x local coordinate
@@ -265,9 +265,9 @@ class Automobile_Data():
         if self.new_gps_sample_arrived:
             self.last_gps_sample_time = time.time()    
             self.new_gps_sample_arrived = False           
-        if (time.time() - self.last_gps_sample_time) > 0.8 and np.abs(self.filtered_encoder_velocity) > 0.1:
-            self.trust_gps = False #too much time passed from previous gps pos
-            self.gps_cnt = 0
+        # if (time.time() - self.last_gps_sample_time) > 0.8 and np.abs(self.filtered_encoder_velocity) > 0.1:
+        #     self.trust_gps = False #too much time passed from previous gps pos
+        #     self.gps_cnt = 0
         # yaw = self.yaw
         # dx = signed_L * np.cos(yaw)
         # dy = signed_L * np.sin(yaw) 
@@ -283,6 +283,7 @@ class Automobile_Data():
         pass
 
     def update_estimated_state(self):
+        return 
         ''' Updates estimated state according to EKF '''
         # Sampling time of the estimator
         callback_time = time.time()
