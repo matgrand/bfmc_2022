@@ -31,6 +31,7 @@ AVOIDING_ROADBLOCK = 'avoiding_roadblock'
 PARKING = 'parking'
 CROSSWALK_NAVIGATION = 'crosswalk_navigation'
 CLASSIFYING_OBSTACLE = 'classifying_obstacle'
+BRAINLESS = 'brainless'
 
 #======================== ROUTINES ==========================
 FOLLOW_LANE = 'follow_lane'

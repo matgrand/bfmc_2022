@@ -22,6 +22,7 @@ from controllerSP import ControllerSpeed
 from detection import Detection
 from brain import Brain
 from environmental_data_simulator import EnvironmentalData
+from shutil import get_terminal_size
 
 map = cv.imread('data/2021_VerySmall.png')
 
@@ -29,7 +30,8 @@ map = cv.imread('data/2021_VerySmall.png')
 TARGET_FPS = 30.0
 sample_time = 0.01 # [s]
 DESIRED_SPEED = 0.35# [m/s]
-CURVE_SPEED = 0.8# [m/s]
+SP_SPEED = 0.8 # [m/s]
+CURVE_SPEED = 0.6# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
@@ -59,7 +61,7 @@ if __name__ == '__main__':
 
 
     # init the car data
-    # os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR_FLAG else None
+    os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR_FLAG else None
     os.system('rosservice call gazebo/unpause_physics') if SIMULATOR_FLAG else None
     # sleep(1.5)
     if SIMULATOR_FLAG:
@@ -89,7 +91,7 @@ if __name__ == '__main__':
 
     # init controller
     controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, ff=ff_curvature)
-    controller_sp = ControllerSpeed(desired_speed=DESIRED_SPEED, curve_speed=CURVE_SPEED)
+    controller_sp = ControllerSpeed(desired_speed=SP_SPEED, curve_speed=CURVE_SPEED)
 
     #initiliaze all the neural networks for detection and lane following
     detect = Detection()
@@ -111,8 +113,9 @@ if __name__ == '__main__':
         while not rospy.is_shutdown():
 
             loop_start_time = time()
-            # os.system('cls' if os.name=='nt' else 'clear')
-            print('\n'*50)
+            # os.system('cls' if os.name=='nt' else 'clear') #0.1 sec
+            print('\n' * get_terminal_size().lines, end='')
+            print('\033[F' * get_terminal_size().lines, end='')
 
             if SHOW_IMGS:
                 map1 = map.copy()
