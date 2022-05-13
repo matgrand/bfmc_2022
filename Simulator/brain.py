@@ -24,7 +24,7 @@ from helper_functions import *
 
 # CHECKPOINTS = [299,275] #roundabout
 # CHECKPOINTS = [86,99,116] #left right left right
-CHECKPOINTS = [86,430,193,141,346,85] #complete track
+CHECKPOINTS = [86,141,346,85] #complete track#[86,430,193,141,346,85] #complete track
 SPEED_CHALLENGE = False
 
 class State():
@@ -106,7 +106,23 @@ DEQUE_OF_PAST_FRAMES_LENGTH = 50
 DISTANCES_BETWEEN_FRAMES = 0.03
 
 #Yaw
-APPLY_YAW_CORRECTION = False
+APPLY_YAW_CORRECTION = True
+GPS_DELAY = 0.45 # [s] delay for gps message to arrive
+ENCODER_POS_FREQ = 100.0 # [Hz] frequency of encoder position messages
+GPS_FREQ = 10.0 # [Hz] frequency of gps messages
+BUFFER_PAST_MEASUREMENTS_LENGTH = int(round(GPS_DELAY * ENCODER_POS_FREQ))
+
+# Vehicle driving parameters
+MIN_SPEED = -0.3                    # [m/s]     minimum speed
+MAX_SPEED = 2.5                     # [m/s]     maximum speed
+MAX_ACCEL = 5.5                     # [m/ss]    maximum accel
+MAX_STEER = 28.0                    # [deg]     maximum steering angle
+
+# Vehicle parameters
+LENGTH = 0.45  			            # [m]       car body length
+WIDTH = 0.18   			            # [m]       car body width
+BACKTOWHEEL = 0.10  		        # [m]       distance of the wheel and the car body
+WHEEL_LEN = 0.03  			
 
 #STOPLINES
 USE_ADVANCED_NETWORK_FOR_STOPLINES = True
@@ -117,7 +133,7 @@ GPS_STOPLINE_STOP_DISTANCE = 0.5 if not SPEED_CHALLENGE else 0.5 #0.55
 assert STOP_LINE_STOP_DISTANCE <= STOP_LINE_APPROACH_DISTANCE
 assert GPS_STOPLINE_STOP_DISTANCE <= GPS_STOPLINE_APPROACH_DISTANCE
 
-STOP_WAIT_TIME = 0.5 if not SPEED_CHALLENGE else 0.0 #3.0
+STOP_WAIT_TIME = 3.0 if not SPEED_CHALLENGE else 0.0 #3.0
 #local tracking
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which is possible to start detecting a stop line again
@@ -170,7 +186,7 @@ DIST_3T = 0.1 #[m] distance to perform the 3rd part of t manouver
 DIST_2S = 0.40 #0.38 #[m] distance to perform the 2nd part of s manouver
 DIST_4S = 0.05 #[m] dsemaphoreistance to perform the 4th part of s manouver
 STEER_ACTUATION_DELAY_PARK = 0.5 #[s] delay to perform the steering manouver
-SLEEP_AFTER_STOPPING = 2.0 #[s] WARNING: this stops the state machine. So be careful increasing it
+SLEEP_AFTER_STOPPING = 0.3 #[s] WARNING: this stops the state machine. So be careful increasing it
 STEER_ACTUATION_DELAY = 0.3 #[s] delay to perform the steering manouver
 
 # OBSTACLES
@@ -427,11 +443,11 @@ class Brain:
 
         #check highway exit case
         elif self.next_event.name == HIGHWAY_EXIT_EVENT:
-            if self.conditions[TRUST_GPS]:
+            if self.conditions[TRUST_GPS] or True:
                 diff = self.next_event.dist - self.car_dist_on_path 
-                if 0.0 < diff:
+                if 0.0+0.1 < diff:
                     print(f'Driving toward highway exit: exiting in {diff:.2f} [m]')
-                elif -0.05 < diff <= 0.0:
+                elif -0.05 < diff <= 0.0+0.1:
                     print(f'Arrived at highway exit, switching to going straight for exiting')
                     self.switch_to_state(GOING_STRAIGHT)
                 else:
@@ -488,7 +504,7 @@ class Brain:
                 print(f'Arrived at stop line')
                 decide_next_state = True
             else:
-                self.error('ERROR: APPROACHING STOP LINE: Missed stop line')
+                self.error(f'ERROR: APPROACHING STOP LINE: Missed stop line, dist: {dist_to_stopline}')
         else:
             dist = self.detect.est_dist_to_stop_line
             # #check if we are here by mistake
@@ -570,7 +586,7 @@ class Brain:
             local_path_slf_rot = self.next_event.path_ahead #local path in the stop line frame
     
             if self.conditions[TRUST_GPS]:
-                USE_PRECISE_LOCATION_AND_YAW = True
+                USE_PRECISE_LOCATION_AND_YAW = False
                 point_car_est = np.array([self.car.x_est, self.car.y_est])
                 point_car_path = self.path_planner.path[int(round(self.car_dist_on_path*100))]
 
@@ -580,13 +596,13 @@ class Brain:
                     car_position_slf = point_car_est - stop_line_position
                     car_position_slf = car_position_slf @ rot_matrix
                 else:
-                    point_ahead = self.path_planner.path[int(round(self.car_dist_on_path*100+10))]
-                    point_behind = self.path_planner.path[int(round(self.car_dist_on_path*100-10))]
-                    yaw_path = np.arctan2(point_ahead[1]-point_behind[1], point_ahead[0]-point_behind[0])
-                    yaw_error_path = np.arctan2(point_car_est[1]-point_car_path[1], point_car_est[0]-point_car_path[0])
-                    sign = np.sign(diff_angle(yaw_path, yaw_error_path))
+                    # point_ahead = self.path_planner.path[int(round(self.car_dist_on_path*100+10))]
+                    # point_behind = self.path_planner.path[int(round(self.car_dist_on_path*100-10))]
+                    # yaw_path = np.arctan2(point_ahead[1]-point_behind[1], point_ahead[0]-point_behind[0])
+                    # yaw_error_path = np.arctan2(point_car_est[1]-point_car_path[1], point_car_est[0]-point_car_path[0])
+                    # sign = np.sign(diff_angle(yaw_path, yaw_error_path))
                     x_dist = self.next_event.dist - self.car_dist_on_path 
-                    y_dist = sign*norm(point_car_est-point_car_path)*0.0
+                    y_dist = 0.0#sign*norm(point_car_est-point_car_path)
                     car_position_slf = -np.array([x_dist, y_dist])
                 print('Car position in stop line frame: ', car_position_slf)
             else:
@@ -623,11 +639,11 @@ class Brain:
                 if closest_node in self.path_planner.no_yaw_calibration_nodes:
                     pass
                 else:
-                    self.car.yaw_offset = diff_angle(self.next_event.yaw_stopline + alpha, self.car.yaw)
-
-
-            if SIMULATOR_FLAG:
-                assert np.abs(alpha - alpha_true) < np.deg2rad(5.0), f'Estimated alpha is too different from true alpha'
+                    print(f'yaw = {np.rad2deg(self.car.yaw):.2f}')
+                    print(f'est yaw = {np.rad2deg(self.next_event.yaw_stopline + alpha):.2f}')
+                    diff = diff_angle(self.next_event.yaw_stopline + alpha, self.car.yaw)
+                    self.car.yaw_offset += diff
+                    self.car.yaw += diff
             assert abs(alpha) < np.pi/6, f'Car orientation wrt stopline is too big, it needs to be better aligned, alpha = {alpha}'
             rot_matrix = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
             
@@ -1464,12 +1480,12 @@ class Brain:
             self.car.drive_speed(ACCELERATION_CONST*self.desired_speed)
 
     def control_for_signs(self):
-        return #debug TODO remove this
+        # return #debug TODO remove this
         if SPEED_CHALLENGE: return
         prev_sign = self.curr_sign
         if not self.conditions[REROUTING]:
             if self.conditions[TRUST_GPS]:
-                car_pos_on_path = self.path_planner.path[int(round(self.car_dist_on_path*100))]
+                car_pos_on_path = self.path_planner.path[min(int(round(self.car_dist_on_path*100)), len(self.path_planner.path-1))]
                 distances = norm(self.sign_points-car_pos_on_path, axis=1)
                 
                 print(f'MIN DISTANCE = {np.min(distances)}')
@@ -1513,8 +1529,9 @@ class Brain:
 
     # STATE CHECKS
     def check_logic(self):
-        if not self.conditions[CAR_ON_PATH]:
-            self.error(f'ERROR: CHECKS: Car is not on path')
+        # if not self.conditions[CAR_ON_PATH]:
+        #     self.error(f'ERROR: CHECKS: Car is not on path')
+        pass
 
     # UPDATE CONDITIONS
     def update_state(self):
@@ -1565,9 +1582,12 @@ class Brain:
                     self.conditions[CAR_ON_PATH] = True
 
                 #UPDATING CAR PATH INDEX
+                GPS_DELAY = 0.4 #[s]
+                dist_delay_increment = GPS_DELAY*self.car.filtered_encoder_velocity #- self.car.WB/2
+                print(f'IDX DELAY INCREMENT: {dist_delay_increment}')
                 if self.conditions[CAR_ON_PATH]:
                     self.car_dist_on_path = np.argmin(norm(self.path_planner.path - est_pos, axis=1))*0.01 #NOTE assume step length is 0.01 #NOTE 2: Assumes no self loops in the path 
-
+                    self.car_dist_on_path += dist_delay_increment
     #===================== STATE MACHINE MANAGEMENT =====================#
     def run(self):
         print('==========================================================================')

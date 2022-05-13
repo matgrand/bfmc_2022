@@ -99,7 +99,7 @@ if __name__ == '__main__':
 
     if SHOW_IMGS:
         map1 = map.copy()
-        draw_car(map1, car.x_true, car.y_true, car.yaw)
+        draw_car(map1, car.x_true, car.y_true, car.yaw_true)
         cv.imshow('Map', map1)
         cv.waitKey(1)
 
@@ -118,7 +118,7 @@ if __name__ == '__main__':
                 map1 = map.copy()
                 draw_car(map1, car.x, car.y, car.yaw, color=(180,0,0))
                 color=(255,0,255) if car.trust_gps else (100,0,100)
-                draw_car(map1, car.x_true, car.y_true, car.yaw, color=(0,180,0))
+                draw_car(map1, car.x_true, car.y_true, car.yaw_true, color=(0,180,0))
                 draw_car(map1, car.x_est, car.y_est, car.yaw, color=color)
                 if len(brain.path_planner.path) > 0: 
                     cv.circle(map1, mR2pix(brain.path_planner.path[int(brain.car_dist_on_path*100)]), 10, (150,50,255), 3) 

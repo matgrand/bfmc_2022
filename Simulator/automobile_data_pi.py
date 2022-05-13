@@ -129,18 +129,21 @@ class AutomobileDataPi(Automobile_Data):
         self.lateral_sonar_distance_buffer.append(self.lateral_sonar_distance)
         self.filtered_lateral_sonar_distance = np.median(self.lateral_sonar_distance_buffer)
 
-
-
     def position_callback(self, data) -> None:
         """Receive and store global coordinates from GPS
         :acts on: self.x, self.y
         """        
         pL = np.array([data.posA, data.posB])
         pR = mL2mR(pL)
-        self.x = pR[0]
-        self.y = pR[1]
-        if self.trig_estimation:
-            self.update_estimated_state()
+        # print(f'PL = {pL}')
+        # print(f'PR = {pR}')
+        # self.x = pR[0]
+        # self.y = pR[1]
+        self.x = pR[0] - self.WB/2*np.cos(self.yaw)
+        self.y = pR[1] - self.WB/2*np.sin(self.yaw)
+        self.x_est = self.x
+        self.y_est = self.y
+        # self.update_estimated_state()
 
 
     def imu_callback(self, data) -> None:
@@ -150,9 +153,9 @@ class AutomobileDataPi(Automobile_Data):
         """        
         self.roll = np.deg2rad(data.roll)
         self.pitch = np.deg2rad(data.pitch)
-        self.yaw = np.deg2rad(data.yaw)
+        self.yaw = diff_angle(np.deg2rad(data.yaw) + self.yaw_offset, 0.0)
 
-        self.yaw = diff_angle(self.yaw, self.yaw_offset)
+        # self.yaw = diff_angle(self.yaw, self.yaw_offset)
 
         self.roll_deg = np.rad2deg(self.roll)
         self.pitch_deg = np.rad2deg(self.pitch)

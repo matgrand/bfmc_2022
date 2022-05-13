@@ -19,16 +19,14 @@ from collections import deque
 
 # from estimation import EKFCar
 
-YAW_GLOBAL_OFFSET = 0.0#np.deg2rad(52.0)
+YAW_GLOBAL_OFFSET = np.deg2rad(52.0)*0.0
 
 START_X = 0.2
 START_Y = 14.8
 
-YAW_OFFSET = 0.0 if SIMULATOR else 0.0
-
 GPS_DELAY = 0.45 # [s] delay for gps message to arrive
 ENCODER_POS_FREQ = 100.0 # [Hz] frequency of encoder position messages
-GPS_FREQ = 4.0 # [Hz] frequency of gps messages
+GPS_FREQ = 10.0 # [Hz] frequency of gps messages
 BUFFER_PAST_MEASUREMENTS_LENGTH = int(round(GPS_DELAY * ENCODER_POS_FREQ))
 
 # Vehicle driving parameters
@@ -135,9 +133,10 @@ class Automobile_Data():
         # CAR POSE ESTIMATION
         self.x_est = 0.0                        # [m]       EST:x EKF estimated global coordinate
         self.y_est = 0.0                        # [m]       EST:y EKF estimated global coordinate
-        self.yaw_est = 0.0                      # [rad]     EST:yaw EKF estimated
+        self.yaw_est = self.yaw_offset          # [rad]     EST:yaw EKF estimated
         self.gps_cnt = 0
         self.trust_gps = False                  # [bool]    EST:variable set to true if the EKF trust the GPS
+        self.buffer_gps_positions_still_car = []
         # LOCAL POSITION
         self.x_loc = 0.0                        # [m]       local:x local coordinate
         self.y_loc = 0.0                        # [m]       local:y local coordinate
@@ -181,15 +180,15 @@ class Automobile_Data():
         self.CAM_K = CAM_K
         # ESTIMATION PARAMETERS
         self.last_estimation_callback_time = None
-        self.est_init_state = np.array([EST_INIT_X, EST_INIT_Y, EST_INIT_YAW]).reshape(-1,1)
+        self.est_init_state = np.array([EST_INIT_X, EST_INIT_Y]).reshape(-1,1)
         self.ekf = AutomobileEKF(x0=self.est_init_state, WB=self.WB)
 
         self.past_encoder_distances = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
         self.past_yaws = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
-        self.past_gps_increments_x = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
-        self.past_gps_increments_y = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
-
+        # self.past_gps_increments_x = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
+        # self.past_gps_increments_y = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
         self.yaws_between_updates = deque(maxlen=int(round(ENCODER_POS_FREQ/GPS_FREQ)))
+
 
         # I/O interface
         rospy.init_node('automobile_data', anonymous=False)
@@ -269,13 +268,13 @@ class Automobile_Data():
         if (time.time() - self.last_gps_sample_time) > 0.8 and np.abs(self.filtered_encoder_velocity) > 0.1:
             self.trust_gps = False #too much time passed from previous gps pos
             self.gps_cnt = 0
-        yaw = self.yaw
-        dx = signed_L * np.cos(yaw)
-        dy = signed_L * np.sin(yaw) 
-        self.past_gps_increments_x.append(dx)  
-        self.past_gps_increments_y.append(dy)
-        self.x_est += dx
-        self.y_est += dy               
+        # yaw = self.yaw
+        # dx = signed_L * np.cos(yaw)
+        # dy = signed_L * np.sin(yaw) 
+        # self.past_gps_increments_x.append(dx)  
+        # self.past_gps_increments_y.append(dy)
+        # self.x_est += dx
+        # self.y_est += dy               
 
     def encoder_velocity_callback(self, data) -> None:
         """Callback when an encoder velocity message is received
@@ -306,28 +305,30 @@ class Automobile_Data():
             dist = curr_gps_dist - self.prev_gps_dist
             velocity = dist / DT
             self.prev_gps_dist = curr_gps_dist
+            # if velocity > 0.001: 
+            # # self.buffer_gps_positions_still_car = []
             # INPUT: [SPEED, STEER]
             u0 = velocity
-            # u1 = curr_yaw
-            u = np.array([u0]).reshape(-1,1)
+            u1 = curr_yaw
+            u = np.array([u0,u1]).reshape(-1,1)
             # OUTPUT: [GPS:x, GPS:y, IMU:yaw]
             zx = self.x
             zy = self.y 
-            zyaw = curr_yaw
-            z = np.array([zx, zy, zyaw]).reshape(-1,1)
+            z = np.array([zx, zy]).reshape(-1,1)
             # PREDICT and UPDATE STEPS
-            x_est, y_est, yaw_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
+            x_est, y_est = self.ekf.estimate_state(sampling_time=DT, input=u, output=z)
+            # else: #car is still
+            #     self.buffer_gps_positions_still_car.append(np.array([self.x, self.y]))
+            #     mean_pos = np.mean(self.buffer_gps_positions_still_car, axis=0)
+            #     x_est = mean_pos[0]
+            #     y_est = mean_pos[1]
             ## check if x_est and y_est are valid
-            #if the estimate is way off set the estimate to the current gps position
-            # curr_x_est = self.ekf.x[0,0]
-            # curr_y_est = self.ekf.x[1,0]
-            # p_ekf = np.array([curr_x_est, curr_y_est]) #estimate of the kalmann filter
             p_ekf = np.array([x_est, y_est]) #estimate of the kalmann filter
             p_gps = np.array([self.x, self.y])       #current gps position
             #distances
             ekf_gps_diff =  np.linalg.norm(p_ekf - p_gps)
             #checks
-            if ekf_gps_diff > 0.5:
+            if ekf_gps_diff > 0.9:#0.5:
                 #-> use gps
                 self.ekf.x[0,0] = p_gps[0]
                 self.ekf.x[1,0] = p_gps[1]
@@ -339,10 +340,10 @@ class Automobile_Data():
                     self.trust_gps = True
             #update the estimated state, if gps is trusted
             if self.trust_gps:
-                tot_delta_x = np.sum(self.past_gps_increments_x)
-                tot_delta_y = np.sum(self.past_gps_increments_y)
-                self.x_est = x_est + tot_delta_x
-                self.y_est = y_est + tot_delta_y
+                # tot_delta_x = np.sum(self.past_gps_increments_x)
+                # tot_delta_y = np.sum(self.past_gps_increments_y)
+                self.x_est = x_est# + tot_delta_x
+                self.y_est = y_est# + tot_delta_y
 
             
 

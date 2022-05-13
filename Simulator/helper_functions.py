@@ -37,15 +37,15 @@ def pix2mR(pix): #pixel to meters (right frame)
 
 #function to draw the car on the map
 def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
-    car_length = 0.45-0.11 #m
+    car_length = 0.45-0.22 #m
     car_width = 0.2 #m
     #match angle with map frame of reference
     # angle = yaw2world(angle)
     #find 4 corners not rotated car_width
-    corners = np.array([[-0.11, car_width/2],
+    corners = np.array([[-0.22, car_width/2],
                         [car_length, car_width/2],
                         [car_length, -car_width/2],
-                        [-0.11, -car_width/2]])
+                        [-0.22, -car_width/2]])
     #rotate corners
     rot_matrix = np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])
     corners = corners @ rot_matrix.T

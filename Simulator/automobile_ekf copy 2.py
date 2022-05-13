@@ -9,7 +9,7 @@ DEBUG = False
 # EKF estimation parameters
 SIGMA_X         = 0.1                   # [m] deviation of GPS:x measurement
 SIGMA_Y         = 0.1                   # [m] deviation of GPS:y measurement
-SIGMA_H         =  np.deg2rad(0.01)     # [rad] deviation of GPS:yaw measurement
+SIGMA_H         =  np.deg2rad(0.1)     # [rad] deviation of GPS:yaw measurement
 SIGMA_SPEED     = 0.01                  # [m/s] deviation of SPEED action
 SIGMA_STEER     =  np.deg2rad(0.1)      # [rad] deviation of STEER action
 
@@ -24,31 +24,31 @@ class AutomobileEKF(EKF):
         """        
         dim_xx = 2      # xx = [x, y, yaw]^T
         dim_zz = 2      # zz = [GPS:x, GPS:y, IMU:yaw]^T
-        dim_uu = 2      # uu = [speed, steer]^T
+        dim_uu = 1     # uu = [speed]^T
 
         EKF.__init__(self, dim_x=dim_xx, dim_z=dim_zz, dim_u=dim_uu)
         assert np.shape(x0) == (dim_xx,1)
         self.x = np.copy(x0)
 
         # Measurement uncertainty
-        self.R = np.diag([SIGMA_X**2, SIGMA_Y**2])
+        self.R = np.diag([SIGMA_X**2, SIGMA_Y**2, SIGMA_H**2])
 
         # Analytical model
         self.xx = MX.sym('x',dim_xx)
         self.uu = MX.sym('u',dim_uu)
         x = self.xx[0]      # [m]   GPS:x
         y = self.xx[1]      # [m]   GPS:y
+        yaw = self.xx[2]      # [m]   GPS:y
 
         # Input: [speed, steering angle]
         v = self.uu[0]      # [m/s] SPEED
-        psi = self.uu[1]    # [rad] YAW
 
         # *******************************************
         # Useful parameters
         lr = WB/2                       # [m]   dist from rear wheel to CoM
         # *******************************************
         # ODE integration
-        self.rhs = vertcat(v*cos(psi), v*sin(psi))
+        self.rhs = vertcat(v*cos(yaw), v*sin(yaw), 0)
         self.model = {}              # ODE declaration
         self.model['x']   = self.xx  # states
         self.model['p']   = self.uu  # inputs (as parameters)
@@ -65,7 +65,7 @@ class AutomobileEKF(EKF):
 
         if DEBUG:
             print('*****************************')
-            print('this is the kinematic bicycle model\n',self.rhs)
+            print('this is the model\n',self.rhs)
             print('*****************************')
             print('this is df/dx\n',F_x)
             print('*****************************')
@@ -92,8 +92,8 @@ class AutomobileEKF(EKF):
 
         # *******************************************
         # Error covariance prediction
-        # *******************************************
-        self.Q = np.diag([0.001, 0.001])
+        # *******************************************uu
+        self.Q = np.diag([0.001, 0.001, 0.1])
         self.P = self.gammaP * F @ self.P @ F.T + self.Q * self.gammaQ
 
         # *******************************************
@@ -125,27 +125,35 @@ class AutomobileEKF(EKF):
         x_est = xxEst[0,0]
         # y: CoM
         y_est = xxEst[1,0]
+        # yaw: YAW
+        yaw_est = xxEst[2,0]
 
-        return x_est, y_est
+        return x_est, y_est, yaw_est
     
 def residual(a,b):
     """ compute residual between two measurement.
     """
-    return a - b
+    c = np.zeros_like(a)
+    c[0] = a[0] - b[0]
+    c[1] = a[1] - b[1]
+    c[2] = diff_angle(a[2],b[2])
+    return c
 
 def diff_angle(angle1, angle2):
     return np.arctan2(np.sin(angle1-angle2), np.cos(angle1-angle2))
 
 def HJacobian(x):
     ''' compute Jacobian of the output map h(x) '''
-    H = np.array([[1,0],
-                [0,1]])
+    H = np.array([[1,0,0],
+                [0,1,0],
+                [0,0,1]])
     return H
 
 
 def Hx(x):
     ''' compute output given current state '''
-    H = np.array([[1,0],
-                [0,1]])
+    H = np.array([[1,0,0],
+                [0,1,0],
+                [0,0,1]])
     z = np.matmul(H,x)
     return z

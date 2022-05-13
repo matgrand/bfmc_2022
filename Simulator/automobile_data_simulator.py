@@ -47,6 +47,10 @@ class AutomobileDataSimulator(Automobile_Data):
         self.time_last_steer_command = time()
         self.target_dist = 0.0
         self.arrived_at_dist = True
+        self.yaw_true = 0.0
+
+        self.x_buffer = collections.deque(maxlen=5)
+        self.y_buffer = collections.deque(maxlen=5)
 
         # PUBLISHERS AND SUBSCRIBERS
         if trig_control:
@@ -95,11 +99,27 @@ class AutomobileDataSimulator(Automobile_Data):
         """Receive and store global coordinates from GPS
         :acts on: self.x, self.y
         """        
+        # pL = np.array([data.posA, data.posB])
+        # pR = mL2mR(pL)
+        # self.x = pR[0]
+        # self.y = pR[1]
+        # self.x = pR[0] - self.WB/2*np.cos(self.yaw)
+        # self.y = pR[1] - self.WB/2*np.sin(self.yaw)
+        # self.update_estimated_state()
         pL = np.array([data.posA, data.posB])
         pR = mL2mR(pL)
-        self.x = pR[0] - self.WB/2*np.cos(self.yaw)
-        self.y = pR[1] - self.WB/2*np.sin(self.yaw)
-        self.update_estimated_state()
+        # print(f'PL = {pL}')
+        # print(f'PR = {pR}')
+        # self.x = pR[0]
+        # self.y = pR[1]
+        tmp_x = pR[0] - self.WB/2*np.cos(self.yaw)
+        tmp_y = pR[1] - self.WB/2*np.sin(self.yaw)
+        self.x_buffer.append(tmp_x)
+        self.y_buffer.append(tmp_y)
+        self.x = np.mean(self.x_buffer)
+        self.y = np.mean(self.y_buffer)
+        self.x_est = self.x
+        self.y_est = self.y
 
     def imu_callback(self, data) -> None:
         """Receive and store rotation from IMU 
@@ -110,14 +130,15 @@ class AutomobileDataSimulator(Automobile_Data):
         self.roll_deg = np.rad2deg(self.roll)    
         self.pitch = float(data.pitch)
         self.pitch_deg = np.rad2deg(self.pitch)
-        self.yaw = float(data.yaw)
+        self.yaw_true = float(data.yaw)
+        self.yaw = float(data.yaw) + self.yaw_offset
         self.yaw_deg = np.rad2deg(self.yaw)
         #true position, not in real car
         true_posL = np.array([data.posx, data.posy])
         true_posR = mL2mR(true_posL)
         # center x_true on the rear axis
-        self.x_true = true_posR[0] - self.WB/2*np.cos(self.yaw)  
-        self.y_true = true_posR[1] - self.WB/2*np.sin(self.yaw)
+        self.x_true = true_posR[0] - self.WB/2*np.cos(self.yaw_true)  
+        self.y_true = true_posR[1] - self.WB/2*np.sin(self.yaw_true)
 
         self.timestamp = float(data.timestamp)
         #NOTE: in the simulator we don't have neither acceleromter or gyroscope (yet)
@@ -137,7 +158,7 @@ class AutomobileDataSimulator(Automobile_Data):
         delta = np.hypot(curr_x - prev_x, curr_y - prev_y)
         #get the direction of the movement: + or -
         motion_yaw = + np.arctan2(curr_y - prev_y, curr_x - prev_x)
-        abs_yaw_diff = np.abs(diff_angle(motion_yaw, self.yaw))
+        abs_yaw_diff = np.abs(diff_angle(motion_yaw, self.yaw_true))
         sign = 1.0 if abs_yaw_diff < np.pi/2 else -1.0
         dt = curr_time - prev_time
         if dt > 0.0:

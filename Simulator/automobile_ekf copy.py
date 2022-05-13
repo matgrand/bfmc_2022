@@ -48,7 +48,7 @@ class AutomobileEKF(EKF):
         lr = WB/2                       # [m]   dist from rear wheel to CoM
         # *******************************************
         # ODE integration
-        self.rhs = vertcat(v*cos(psi), v*sin(psi))
+        self.rhs = vertcat(0.0*v*cos(psi), 0.0*v*sin(psi))
         self.model = {}              # ODE declaration
         self.model['x']   = self.xx  # states
         self.model['p']   = self.uu  # inputs (as parameters)

@@ -50,10 +50,10 @@ obstacles_dict = {
 }
 
 distance_dict = {
-    '20': [(94, 60),(227, 160)],
-    '30': [(103, 45),(217, 131)],
-    '40': [(116, 43),(205, 110)],
-    '50': [(120, 40),(200, 100)]
+    '20': [(94, 40),(227, 140)],
+    '30': [(103, 25),(217, 111)],
+    '40': [(116, 23),(205, 90)],
+    '50': [(120, 20),(200, 80)]
 }
 
 class Detection:
@@ -506,7 +506,7 @@ class Detection:
                 cv.imshow('ROI', img)
                 cv.imwrite(f'sd/sd_{int(time()*1000)}.png', img)
                 cv.waitKey(1)
-
+            img = cv.GaussianBlur(img, (3,3) ,0)
             kp, des = self.sift.detectAndCompute(img, None) #des = descriptors
             if des is not None and len(des) >= 15:
                 if show_kp:
