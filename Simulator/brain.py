@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = False
-SHOW_IMGS = False
+SIMULATOR_FLAG = True
+SHOW_IMGS = True
 
 import numpy as np
 import cv2 as cv
@@ -24,7 +24,7 @@ from helper_functions import *
 
 # CHECKPOINTS = [299,275] #roundabout
 # CHECKPOINTS = [86,99,116] #left right left right
-CHECKPOINTS = [86,141,346,85] #complete track#[86,430,193,141,346,85] #complete track
+CHECKPOINTS = [86,430,238,346,85] #complete track#[86,430,193,141,346,85] #complete track
 SPEED_CHALLENGE = False
 
 class State():
@@ -100,7 +100,7 @@ ACHIEVEMENTS = {
 #signs
 SIGN_DIST_THRESHOLD = 0.5
 #sempahores
-SEMAPHORE_IS_ALWAYS_GREEN = False
+SEMAPHORE_IS_ALWAYS_GREEN = True
 
 DEQUE_OF_PAST_FRAMES_LENGTH = 50
 DISTANCES_BETWEEN_FRAMES = 0.03
@@ -126,7 +126,7 @@ WHEEL_LEN = 0.03
 
 #STOPLINES
 USE_ADVANCED_NETWORK_FOR_STOPLINES = True
-STOP_LINE_APPROACH_DISTANCE = 0.4 if USE_ADVANCED_NETWORK_FOR_STOPLINES else 0.4
+STOP_LINE_APPROACH_DISTANCE = 0.8 if USE_ADVANCED_NETWORK_FOR_STOPLINES else 0.4
 STOP_LINE_STOP_DISTANCE = 0.1 if not SPEED_CHALLENGE else 0.1 #0.05
 GPS_STOPLINE_APPROACH_DISTANCE = 0.7
 GPS_STOPLINE_STOP_DISTANCE = 0.5 if not SPEED_CHALLENGE else 0.5 #0.55
@@ -214,8 +214,8 @@ OT_STATIC_LANE_FOLLOW = 0.3
 #overtake moving car
 OVERTAKE_MOVING_CAR_SPEED = 0.2  #[m/s]
 OT_MOVING_SWITCH_1 = 0.3
-OT_MOVING_LANE_FOLLOW = 0.45
-OT_MOVING_SWITCH_2 = 0.5
+OT_MOVING_LANE_FOLLOW = 1.2
+OT_MOVING_SWITCH_2 = 0.3
 #roadblock
 RB_NODES_LEFT_LANE = ['16','138','137','136','135','134','7']
 RB_NODES_RIGHT_LANE = ['15','143','142','141','140','139','8']
@@ -369,7 +369,7 @@ class Brain:
             curr_pos = np.array([self.car.x_est, self.car.y_est])
             closest_node, distance = self.path_planner.get_closest_node(curr_pos)
             print(f'GPS converged, starting from node: {closest_node}, distance: {distance:.2f}')
-            sleep(3.0)
+            # sleep(3.0)
             self.checkpoints[self.checkpoint_idx] = closest_node
             if distance > 0.8: 
                 self.error('ERROR: REROUTING: GPS converged, but distance is too large, we are too far from the lane')
@@ -572,7 +572,7 @@ class Brain:
 
         distance_to_stop = self.curr_state.var1
         if self.car.encoder_distance < distance_to_stop: 
-            self.car.drive(speed=self.desired_speed, angle=5.0)
+            self.car.drive(speed=self.desired_speed, angle=3.0)
         else: #end of the maneuver
             self.switch_to_state(LANE_FOLLOWING)
             self.go_to_next_event()
@@ -926,8 +926,11 @@ class Brain:
             dist_to_drive = dist - TAILING_DISTANCE
             self.car.drive_distance(dist_to_drive)
             if self.conditions[CAN_OVERTAKE]:
-                if -0.05 < dist_to_drive < 0.05:
-                    self.switch_to_state(OVERTAKING_STATIC_CAR)
+                if self.conditions[HIGHWAY]:
+                    self.switch_to_state(OVERTAKING_MOVING_CAR)
+                else:
+                    if -0.05 < dist_to_drive < 0.05:
+                        self.switch_to_state(OVERTAKING_STATIC_CAR)
 
     def avoiding_roadblock(self):
         self.activate_routines([])
@@ -1406,6 +1409,7 @@ class Brain:
             distances = [OBSTACLE_IMGS_CAPTURE_STOP_DISTANCE + DISTANCES_BETWEEN_FRAMES*(len(frames)-i) for i in range(len(frames))]
             # obstacle, conf = self.detect.classify_frontal_obstacle2(frames, distances, show_ROI=SHOW_IMGS or True, show_kp=SHOW_IMGS)
             #forcing the classification
+            obstacle = None
             if self.conditions[CAN_OVERTAKE]:
                 obstacle = CAR
             elif self.conditions[BUMPY_ROAD]:
@@ -1414,14 +1418,13 @@ class Brain:
                 obstacle = PEDESTRIAN
 
             #check for roadblock 
-            closeest_node, _ = self.path_planner.get_closest_node(np.array(self.car.x_est, self.car.y_est))
-            if closeest_node in RB_NODES_LEFT_LANE or closeest_node in RB_NODES_RIGHT_LANE:
+            closest_node, _ = self.path_planner.get_closest_node(np.array(self.car.x_est, self.car.y_est))
+            print(f'Closest node: {closest_node}')
+            if closest_node in RB_NODES_LEFT_LANE or closest_node in RB_NODES_RIGHT_LANE:
                 obstacle = ROADBLOCK
 
-
-            
             print(f'Obstacle: {obstacle}')
-            sleep(1) #TODO remove it
+            sleep(10) #TODO remove it
             if OBSTACLE_IS_ALWAYS_CAR: obstacle = CAR
             if OBSTACLE_IS_ALWAYS_PEDESTRIAN: obstacle = PEDESTRIAN
             if OBSTACLE_IS_ALWAYS_ROADBLOCK: obstacle = ROADBLOCK

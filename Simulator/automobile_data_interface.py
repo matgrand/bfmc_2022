@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-SIMULATOR = False#True
+SIMULATOR = True#True
 
 
 # Functional libraries
