@@ -47,8 +47,8 @@ class AutomobileDataPi(Automobile_Data):
         self.estimation_last_encoder_distance = 0.0
         self.estimation_last_yaw_est = 0.0
 
-        self.x_buffer = collections.deque(maxlen=3)
-        self.y_buffer = collections.deque(maxlen=3)
+        self.x_buffer = collections.deque(maxlen=5)
+        self.y_buffer = collections.deque(maxlen=5)
 
         # PUBLISHERS AND SUBSCRIBERS
         if trig_control:

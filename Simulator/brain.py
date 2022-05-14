@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = True
-SHOW_IMGS = True
+SIMULATOR_FLAG = False
+SHOW_IMGS = False
 
 import numpy as np
 import cv2 as cv
@@ -26,8 +26,8 @@ END_NODE = 85
 # CHECKPOINTS = [299,275] #roundabout
 # CHECKPOINTS = [86,99,116] #left right left right
 CHECKPOINTS = [86,430,238,116,346,END_NODE] #complete track#[86,430,193,141,346,85] #complete track
-CHECKPOINTS = [86,339,233,END_NODE]
-SPEED_CHALLENGE = True
+# CHECKPOINTS = [86,339,233,END_NODE]
+SPEED_CHALLENGE = False
 
 class State():
     def __init__(self, name=None, method=None, activated=False):
@@ -102,7 +102,7 @@ ACHIEVEMENTS = {
 #signs
 SIGN_DIST_THRESHOLD = 0.5
 #sempahores
-SEMAPHORE_IS_ALWAYS_GREEN = True
+SEMAPHORE_IS_ALWAYS_GREEN = False
 
 DEQUE_OF_PAST_FRAMES_LENGTH = 50
 DISTANCES_BETWEEN_FRAMES = 0.03
