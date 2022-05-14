@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = False
-SHOW_IMGS = False
+SIMULATOR_FLAG = True
+SHOW_IMGS = True
 
 import numpy as np
 import cv2 as cv
@@ -25,9 +25,11 @@ from helper_functions import *
 END_NODE = 85
 # CHECKPOINTS = [299,275] #roundabout
 # CHECKPOINTS = [86,99,116] #left right left right
-CHECKPOINTS = [86,430,238,116,346,END_NODE] #complete track#[86,430,193,141,346,85] #complete track
-# CHECKPOINTS = [86,339,233,END_NODE]
+CHECKPOINTS = [86,255,110,346,END_NODE] #complete track#[86,430,193,141,346,85] #complete track
+# CHECKPOINTS = [86,235,END_NODE]
 SPEED_CHALLENGE = False
+
+ALWAYS_USE_VISION_FOR_STOPLINES = True
 
 class State():
     def __init__(self, name=None, method=None, activated=False):
@@ -102,7 +104,7 @@ ACHIEVEMENTS = {
 #signs
 SIGN_DIST_THRESHOLD = 0.5
 #sempahores
-SEMAPHORE_IS_ALWAYS_GREEN = False
+SEMAPHORE_IS_ALWAYS_GREEN = False if not SIMULATOR_FLAG else True
 
 DEQUE_OF_PAST_FRAMES_LENGTH = 50
 DISTANCES_BETWEEN_FRAMES = 0.03
@@ -128,9 +130,9 @@ WHEEL_LEN = 0.03
 
 #STOPLINES
 USE_ADVANCED_NETWORK_FOR_STOPLINES = True
-STOP_LINE_APPROACH_DISTANCE = 0.8 if USE_ADVANCED_NETWORK_FOR_STOPLINES else 0.4
+STOP_LINE_APPROACH_DISTANCE = 0.4 if USE_ADVANCED_NETWORK_FOR_STOPLINES else 0.4
 STOP_LINE_STOP_DISTANCE = 0.1 
-GPS_STOPLINE_APPROACH_DISTANCE = 0.7
+GPS_STOPLINE_APPROACH_DISTANCE = 0.8
 GPS_STOPLINE_STOP_DISTANCE = 0.5 
 assert STOP_LINE_STOP_DISTANCE <= STOP_LINE_APPROACH_DISTANCE
 assert GPS_STOPLINE_STOP_DISTANCE <= GPS_STOPLINE_APPROACH_DISTANCE
@@ -142,7 +144,7 @@ STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which 
 POINT_AHEAD_DISTANCE_LOCAL_TRACKING = 0.3 #0.3
 
 #speed control
-ACCELERATION_CONST = 1.5 #multiplier for desired speed, used to regulate highway speed
+ACCELERATION_CONST = 1.2 #multiplier for desired speed, used to regulate highway speed
 SLOW_DOWN_CONST = 0.3 
 
 #highway exit
@@ -216,7 +218,7 @@ OT_STATIC_LANE_FOLLOW = 0.3
 #overtake moving car
 OVERTAKE_MOVING_CAR_SPEED = 0.5  #[m/s]
 OT_MOVING_SWITCH_1 = 0.3 #[m]
-OT_MOVING_LANE_FOLLOW = 1.69 #[m]
+OT_MOVING_LANE_FOLLOW = 1.420 #[m]
 OT_MOVING_SWITCH_2 = 0.3 #[m]
 #roadblock
 RB_NODES_LEFT_LANE = ['16','138','137','136','135','134','7']
@@ -411,6 +413,9 @@ class Brain:
             #draw the path 
             self.path_planner.draw_path()
             print('Starting...')
+            if self.next_event.name == PARKING_EVENT:
+                print('Skipping parking if its the first event')
+                self.go_to_next_event()
             self.conditions[REROUTING] = False
             self.sign_seen = np.zeros_like(self.sign_seen) #reset the signs seen
             if end_node == END_NODE and SPEED_CHALLENGE:
@@ -497,7 +502,7 @@ class Brain:
         if self.curr_state.just_switched:
             cv.imwrite(f'asl/asl_{int(time() * 1000)}.png', self.car.frame)
             self.curr_state.just_switched = False
-        if self.conditions[TRUST_GPS]:
+        if self.conditions[TRUST_GPS] and not ALWAYS_USE_VISION_FOR_STOPLINES:
             dist_to_stopline = self.next_event.dist - self.car_dist_on_path
             if GPS_STOPLINE_APPROACH_DISTANCE <= dist_to_stopline:
                 print(f'Switching to lane following')
@@ -591,7 +596,7 @@ class Brain:
             stop_line_yaw = self.next_event.yaw_stopline
             local_path_slf_rot = self.next_event.path_ahead #local path in the stop line frame
     
-            if self.conditions[TRUST_GPS]:
+            if self.conditions[TRUST_GPS] and not ALWAYS_USE_VISION_FOR_STOPLINES:
                 USE_PRECISE_LOCATION_AND_YAW = False
                 point_car_est = np.array([self.car.x_est, self.car.y_est])
                 point_car_path = self.path_planner.path[int(round(self.car_dist_on_path*100))]

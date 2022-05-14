@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
-SIMULATOR = False#True
+from brain import SIMULATOR_FLAG
+SIMULATOR = SIMULATOR_FLAG#True
 
 
 # Functional libraries

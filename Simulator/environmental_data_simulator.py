@@ -30,9 +30,9 @@ else:
 VEHICLE_CLOSE_RADIUS = 0.5  # [m]
 
 SEMAPHORE_POSITIONS = {
-                MASTER:     np.array([2.01,4.16]), 
+                ANTIMASTER:     np.array([2.01,4.16]), 
                 SLAVE:      np.array([3.69,4.54]), 
-                ANTIMASTER: np.array([3.06,3.5]),
+                MASTER: np.array([3.06,3.5]),
                 START:      np.array([0.84,0.64])
                 } 
 
