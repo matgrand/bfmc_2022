@@ -131,7 +131,7 @@ WHEEL_LEN = 0.03
 #STOPLINES
 USE_ADVANCED_NETWORK_FOR_STOPLINES = True
 STOP_LINE_APPROACH_DISTANCE = 0.4 if USE_ADVANCED_NETWORK_FOR_STOPLINES else 0.4
-STOP_LINE_STOP_DISTANCE = 0.1 
+STOP_LINE_STOP_DISTANCE = 0.15 #0.1 #in the true map 
 GPS_STOPLINE_APPROACH_DISTANCE = 0.8
 GPS_STOPLINE_STOP_DISTANCE = 0.5 
 assert STOP_LINE_STOP_DISTANCE <= STOP_LINE_APPROACH_DISTANCE
@@ -1473,20 +1473,22 @@ class Brain:
 
     #=============== ROUTINES ===============#
     def follow_lane(self):
-        e2, e3, _ = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
-        #NOTE 
-        # e3 = -e3 if not SIMULATOR_FLAG else e3 
+        e2, e3, point_ahead = self.detect.detect_lane(self.car.frame, SHOW_IMGS)
+        if SHOW_IMGS:
+            img = self.car.frame.copy()
+            img, proj = project_onto_frame(img, self.car, point_ahead, align_to_car=False, color=(255,0,255), thickness=3)
+            img = cv.line(img, (int(proj[0]), int(proj[1])), (int(img.shape[1]/2), int(img.shape[0])), (255,0,255), 2)
+            cv.imshow('brain_debug', img)
+            cv.waitKey(1)
         speed, angle_ref = self.controller.get_control(e2, e3, 0, self.desired_speed)
         angle_ref = np.rad2deg(angle_ref)
-        # if self.car.speed < 0.1: #inverse driving in reverse
-        #     angle_ref = -angle_ref
         self.car.drive_angle(angle_ref) 
 
     def detect_stop_line(self):
         #update the variable self.detect.est_dist_to_stop_line
         if USE_ADVANCED_NETWORK_FOR_STOPLINES:
             stopline_x, _, _ = self.detect.detect_stop_line2(self.car.frame, show_ROI=SHOW_IMGS)
-            dist = stopline_x
+            dist = stopline_x + 0.05
         else:
             dist = self.detect.detect_stop_line(self.car.frame, show_ROI=SHOW_IMGS)
  
