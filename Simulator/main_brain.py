@@ -38,6 +38,7 @@ k1 = 0.0 #0.0 gain error parallel to direction (speed)
 k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
 k3 = 0.7 #1.0 yaw error gain .8 with ff 
 k3D = 0.08 #0.08 derivative gain of yaw error
+dist_point_ahead= 0.35 #distance of the point ahead in m
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
@@ -90,7 +91,7 @@ if __name__ == '__main__':
     env = EnvironmentalData(trig_v2v=True, trig_v2x=True, trig_semaphore=True)
 
     # init controller
-    controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, ff=ff_curvature)
+    controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, dist_point_ahead=dist_point_ahead, ff=ff_curvature)
     controller_sp = ControllerSpeed(desired_speed=SP_SPEED, curve_speed=CURVE_SPEED)
 
     #initiliaze all the neural networks for detection and lane following

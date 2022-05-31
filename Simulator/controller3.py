@@ -6,7 +6,7 @@ import os
 from helper_functions import *
 from time import sleep, time
 
-POINT_AHEAD_CM = 35#60#35 #distance of the point ahead in cm
+# POINT_AHEAD_CM = 35#60#35 #distance of the point ahead in cm
 SEQ_POINTS_INTERVAL = 20 #interval between points in the sequence in cm 
 NUM_POINTS = 5 #number of points in the sequence
 L = 0.4  #length of the car, matched with lane_detection
@@ -15,7 +15,7 @@ NOISE_RESET_MEAN = 10 #avg frames after which the noise is reset
 NOISE_RESET_STD = 8 #frames max "deviation"
 
 class Controller():
-    def __init__(self, k1=1.0,k2=1.0,k3=1.0, k3D=0.08, ff=1.0, cm_ahead=35, folder='training_imgs',
+    def __init__(self, k1=1.0,k2=1.0,k3=1.0, k3D=0.08, dist_point_ahead=0.35, ff=1.0, cm_ahead=35, folder='training_imgs',
                     training=False, noise_std=np.deg2rad(20)):
         
         #controller paramters
@@ -23,6 +23,7 @@ class Controller():
         self.k2 = k2
         self.k3 = k3
         self.k3D = k3D 
+        self.dist_point_ahead = dist_point_ahead
         self.ff = ff
         self.e1 = 0.0
         self.e2 = 0.0
@@ -86,7 +87,7 @@ class Controller():
             k1, k2, k3, k3D = gains
 
         # yaw error (e3), proportional term
-        d = POINT_AHEAD_CM/100.0 #distance point ahead, matched with lane_detection
+        d = self.dist_point_ahead#POINT_AHEAD_CM/100.0 #distance point ahead, matched with lane_detection
         delta = np.arctan((2*L*np.sin(alpha))/d)
         proportional_term = k3 * delta
         # print(f'proportional term: {np.rad2deg(proportional_term):.2f}')
@@ -120,8 +121,8 @@ class Controller():
         e2 = ex * np.cos(car.yaw) + ey * np.sin(car.yaw) #y error in the body frame
 
         #get point ahead
-        assert len(path_ahead) > max(NUM_POINTS * SEQ_POINTS_INTERVAL, POINT_AHEAD_CM), f"path_ahead is not long enough, len: {len(path_ahead)}"
-        point_ahead = path_ahead[min(POINT_AHEAD_CM, len(path_ahead)-1),:]
+        assert len(path_ahead) > max(NUM_POINTS * SEQ_POINTS_INTERVAL, int(100*self.dist_point_ahead)), f"path_ahead is not long enough, len: {len(path_ahead)}"
+        point_ahead = path_ahead[min(int(100*self.dist_point_ahead), len(path_ahead)-1),:]
         #translate to car coordinates
         point_ahead = to_car_frame(point_ahead, car, return_size=2)
 

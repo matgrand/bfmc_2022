@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-from cmath import cos
 from automobile_data_interface import Automobile_Data
 from std_msgs.msg import String
 from utils.msg import IMU,localisation
@@ -7,7 +6,7 @@ from sensor_msgs.msg import Image, Range
 import rospy, json, collections
 from cv_bridge import CvBridge
 import numpy as np
-from time import time,sleep
+from time import time
 from helper_functions import *
 
 REALISTIC = False

@@ -1,15 +1,13 @@
 #!/usr/bin/python3
 
-from brain import SIMULATOR_FLAG
-SIMULATOR = SIMULATOR_FLAG#True
-
+from names_and_constants import SIMULATOR_FLAG
 
 # Functional libraries
 from cv2 import mean
 import rospy
 import numpy as np
 import os
-if SIMULATOR:
+if SIMULATOR_FLAG:
     from automobile_ekf import AutomobileEKF
     from helper_functions import *
 else:
@@ -20,7 +18,7 @@ from collections import deque
 
 # from estimation import EKFCar
 
-YAW_GLOBAL_OFFSET = np.deg2rad(-5)
+YAW_GLOBAL_OFFSET = 0.0#np.deg2rad(-5)
 
 START_X = 0.2
 START_Y = 14.8

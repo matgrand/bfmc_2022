@@ -1,14 +1,17 @@
 #!/usr/bin/python3
-SIMULATOR = True # True: run simulator, False: run real car
+# from brain import SIMULATOR_FLAG, SHOW_IMGS
+SIMULATOR_FLAG = True # True: run simulator, False: run real car
 
 import os, signal
 import cv2 as cv
 import rospy
 import numpy as np
 from time import sleep, time
+from shutil import get_terminal_size
+
 os.system('clear')
 print('Main simulator starting...')
-if SIMULATOR:
+if SIMULATOR_FLAG:
     from automobile_data_simulator import AutomobileDataSimulator
     from helper_functions import *
 else: #PI
@@ -36,7 +39,7 @@ PATH_NODES = [86, 116,115,116,453,466,465,466,465,466,465,466,465,466,465,466,46
                 87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
 PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,466,249] #,273,136,321,262]
-
+PATH_NODES = [86, 110, 464, 145, 278]
 if training and folder == 'training_imgs':
     print('WARNING, WE ARE ABOUT TO OVERWRITE THE TRAINING DATA! ARE U SURE TO CONTINUE?')
     sleep(5)
@@ -54,29 +57,32 @@ FPS_TARGET = 30.0
 
 # PARAMETERS
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.15# [m/s]
+DESIRED_SPEED = 0.6#0.15# [m/s]
 path_step_length = 0.01 # [m]
 # CONTROLLER
 k1 = 0.0 #0.0 gain error parallel to direction (speed)
 k2 = 0.0 #0.0 perpenddicular error gain   #pure paralllel k2 = 10 is very good at remaining in the center of the lane
 k3 = 1.2 #1.0 yaw error gain .8 with ff 
+DISTANCE_AHEAD_PURE_PURSUIT = 0.6 #[m]
 
 #dt_ahead = 0.5 # [s] how far into the future the curvature is estimated, feedforwarded to yaw controller
 ff_curvature = 0.0 # feedforward gain
-noise_std = np.deg2rad(27.0) # [rad] noise in the steering angle
+noise_std = np.deg2rad(15.0) #np.deg2rad(27.0) # [rad] noise in the steering angle
 
 
 if __name__ == '__main__':
 
     #init windows
-    cv.namedWindow("2D-MAP", cv.WINDOW_NORMAL) if SIMULATOR else None
-    cv.resizeWindow("2D-MAP", 800, 800) if SIMULATOR else None
+    cv.namedWindow("2D-MAP", cv.WINDOW_NORMAL) if SIMULATOR_FLAG else None
+    cv.resizeWindow("2D-MAP", 800, 800) if SIMULATOR_FLAG else None
+    cv.namedWindow("Frame preview", cv.WINDOW_NORMAL) if SIMULATOR_FLAG else None
+    cv.resizeWindow("Frame preview", 640, 480) if SIMULATOR_FLAG else None
 
     # cv.namedWindow('Detection', cv.WINDOW_NORMAL)
     
     # init the car data
-    os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR else None
-    if SIMULATOR:
+    os.system('rosservice call /gazebo/reset_simulation') if SIMULATOR_FLAG else None
+    if SIMULATOR_FLAG:
         car = AutomobileDataSimulator(trig_cam=True, trig_gps=True, trig_bno=True, 
                                trig_enc=True, trig_control=True, trig_estimation=False, trig_sonar=True)
     else:
@@ -89,7 +95,7 @@ if __name__ == '__main__':
     def handler(signum, frame):
         print("Exiting ...")
         car.stop()
-        os.system('rosservice call gazebo/pause_physics') if SIMULATOR else None 
+        os.system('rosservice call gazebo/pause_physics') if SIMULATOR_FLAG else None 
         cv.destroyAllWindows()
         sleep(.99)
         exit()
@@ -99,7 +105,7 @@ if __name__ == '__main__':
     path = PathPlanning(map) 
 
     # init controller
-    controller = Controller(k1=k1, k2=k2, k3=k3, ff=ff_curvature, folder=folder, 
+    controller = Controller(k1=k1, k2=k2, k3=k3, dist_point_ahead=DISTANCE_AHEAD_PURE_PURSUIT, ff=ff_curvature, folder=folder, 
                                     training=training, noise_std=noise_std)
 
     #initiliaze all the neural networks for detection and lane following
@@ -115,7 +121,7 @@ if __name__ == '__main__':
             path.draw_path()
             path.print_path_info()
 
-        os.system('rosservice call gazebo/unpause_physics') if SIMULATOR else None 
+        os.system('rosservice call gazebo/unpause_physics') if SIMULATOR_FLAG else None 
 
         car.drive_speed(DESIRED_SPEED)
 
@@ -174,7 +180,7 @@ if __name__ == '__main__':
                 if finished:
                     print("Reached end of trajectory")
                     car.stop()
-                    os.system('rosservice call gazebo/pause_physics') if SIMULATOR else None 
+                    os.system('rosservice call gazebo/pause_physics') if SIMULATOR_FLAG else None 
                     sleep(1.8)
                     break
                 #draw refrence car
@@ -256,7 +262,9 @@ if __name__ == '__main__':
             # radius = project_curvature(frame, car, curv)
 
             ## DEBUG INFO
-            os.system('cls' if os.name=='nt' else 'clear')
+            # os.system('cls' if os.name=='nt' else 'clear')
+            print('\n' * get_terminal_size().lines, end='')
+            print('\033[F' * get_terminal_size().lines, end='')
             if dist is None: dist=10
             # print(f'Stop line distance: {dist:.2f}, Angle: {np.rad2deg(angle_to_stopline):.2f}') #if not training else None
             print(f'Curvature: {curv:.2f}')
@@ -271,7 +279,6 @@ if __name__ == '__main__':
             print(f'Net out:\n {lane_info}') if not training else None
             print(f'e_yaw: {e3:.2f} [rad] \ncurv: {100*curv}') if not training else None
             # print(f'Curvature radius = {radius:.2f}')
-            print(f'FPS = {1/(time()-loop_start_time):.0f}, capped at: {FPS_TARGET:.0f}')
             print(f'Lane detection time = {detect.avg_lane_detection_time:.1f} [ms]')
 
             cv.imshow("Frame preview", frame)
@@ -280,8 +287,8 @@ if __name__ == '__main__':
             cv.imshow("Stopline", frame)
             # cv.imshow('SIGNS ROI', signs_roi)
             # cv.imshow('FRONT ROI', front_obstacle_roi)
-            cv.imshow("2D-MAP", tmp) if SIMULATOR else None
-            cv.imwrite(f'test_imgs/map{int(loop_start_time*1000)}.png', tmp)
+            cv.imshow("2D-MAP", tmp) if SIMULATOR_FLAG else None
+            # cv.imwrite(f'test_imgs/map{int(loop_start_time*1000)}.png', tmp) #very heavy
             key = cv.waitKey(1)
             if key == 27:
                 car.stop()
@@ -292,9 +299,10 @@ if __name__ == '__main__':
             # sleep(LOOP_DELAY)
             curr_time = time()
             loop_time = curr_time - loop_start_time
+            print(f'FPS = {1/(time()-loop_start_time):.0f}, capped at: {FPS_TARGET:.0f}')
             if loop_time < 1/FPS_TARGET:
+                print(f'time to sleep: {1000*(1/FPS_TARGET - loop_time):.3f} [ms]')
                 sleep(1/FPS_TARGET - loop_time)
-
 
     except KeyboardInterrupt:
         print("Shutting down")

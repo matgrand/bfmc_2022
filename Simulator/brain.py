@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-SIMULATOR_FLAG = True
+from names_and_constants import SIMULATOR_FLAG 
 SHOW_IMGS = True
 
 import numpy as np
@@ -137,7 +137,7 @@ GPS_STOPLINE_STOP_DISTANCE = 0.5
 assert STOP_LINE_STOP_DISTANCE <= STOP_LINE_APPROACH_DISTANCE
 assert GPS_STOPLINE_STOP_DISTANCE <= GPS_STOPLINE_APPROACH_DISTANCE
 
-STOP_WAIT_TIME = 3.0 if not SPEED_CHALLENGE else 0.0 #3.0
+STOP_WAIT_TIME = 0.001*3.0 if not SPEED_CHALLENGE else 0.0 #3.0
 #local tracking
 OPEN_LOOP_PERCENTAGE_OF_PATH_AHEAD = 0.6 #0.6
 STOP_LINE_DISTANCE_THRESHOLD = 0.2 #distance from previous stop_line from which is possible to start detecting a stop line again
@@ -524,7 +524,7 @@ class Brain:
                 return
             if self.stop_line_distance_median is not None: #we have a median, => we have an accurate position for the stopline
                 print('Driving towards stop line... at distance: ', self.stop_line_distance_median)
-                self.activate_routines([SLOW_DOWN]) #FOLLOW_LANE, SLOW_DOWN#deactivate detect stop line
+                self.activate_routines([FOLLOW_LANE,SLOW_DOWN]) #SLOW_DOWN
                 dist_to_drive = self.stop_line_distance_median - self.car.encoder_distance
                 self.car.drive_distance(dist_to_drive)
                 if dist_to_drive < STOP_LINE_STOP_DISTANCE: 
