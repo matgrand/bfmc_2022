@@ -18,7 +18,6 @@ from PathPlanning4 import PathPlanning
 from controller3 import Controller
 from controllerSP import ControllerSpeed
 from detection import Detection
-from environmental_data_simulator import EnvironmentalData
 
 from helper_functions import *
 
@@ -235,7 +234,7 @@ MAX_ERROR_ON_LOCAL_DIST = 0.05 #[m] max error on the local distance
 #=========================== BRAIN ============================
 #==============================================================
 class Brain:
-    def __init__(self, car, controller, controller_sp, env, detection, path_planner, checkpoints=None, desired_speed=0.3, debug=True):
+    def __init__(self, car=None, controller=None, controller_sp=None, env=None, detection=None, path_planner=None, checkpoints=None, desired_speed=0.3, debug=True):
         print("Initialize brain")
         self.car = Automobile_Data() #not needed, just to import he methods in visual studio
         self.car = car
@@ -251,10 +250,8 @@ class Brain:
         self.path_planner = PathPlanning(None)
         self.path_planner = path_planner
         assert isinstance(self.path_planner, PathPlanning)
-        self.env = EnvironmentalData() #again, not needed
         self.env = env
 
-        
         #navigation instruction is a list of tuples:
         # ()
         self.navigation_instructions = []
@@ -335,8 +332,8 @@ class Brain:
         }
         self.active_routines_names = []
 
-        self.sign_points = np.load('data/sign_points.npy')
-        self.sign_types = np.load('data/sign_types.npy').astype(int)
+        self.sign_points = np.load('Simulator/data/sign_points.npy')
+        self.sign_types = np.load('Simulator/data/sign_types.npy').astype(int)
         assert len(self.sign_points) == len(self.sign_types)
         self.sign_seen = np.zeros(len(self.sign_types))
         self.curr_sign = NO_SIGN
@@ -346,15 +343,7 @@ class Brain:
         self.last_run_call = time()
 
         print('Brain initialized')
-        print('Waiting for start semaphore...')
-        sleep(3.0)
-        while True:
-            semaphore_start_state = self.env.get_semaphore_state(START)
-            if SEMAPHORE_IS_ALWAYS_GREEN:
-                semaphore_start_state = GREEN
-            if semaphore_start_state == GREEN:
-                break
-            sleep(0.1)
+        sleep(.3)
 
         # self.switch_to_state(DOING_NOTHING)
         self.switch_to_state(START_STATE)
@@ -808,16 +797,7 @@ class Brain:
                 self.switch_to_state(LANE_FOLLOWING) #NOTE
             
     def waiting_for_green(self):
-        semaphore, tl_state = self.env.get_closest_semaphore_state(np.array([self.car.x_est, self.car.y_est]))
-        print(f'Waiting at semaphore: {semaphore}, state: {tl_state}')
-        if self.curr_state.just_switched:
-            self.activate_routines([])
-            if tl_state != GREEN: self.car.drive_speed(0.0)
-            #publish traffic light
-            self.env.publish_obstacle(TRAFFIC_LIGHT, self.car.x_est, self.car.y_est)
-            self.curr_state.just_switched = False
-        if tl_state == GREEN or SEMAPHORE_IS_ALWAYS_GREEN:
-            self.switch_to_state(INTERSECTION_NAVIGATION)
+        self.switch_to_state(INTERSECTION_NAVIGATION)
 
     def waiting_at_stopline(self):
         self.activate_routines([]) #no routines
@@ -841,7 +821,6 @@ class Brain:
         if self.curr_state.just_switched:
             self.curr_state.var1 = (OT_SWITCHING_LANE, True)
             self.curr_state.var2 = self.car.encoder_distance
-            self.env.publish_obstacle(STATIC_CAR_ON_ROAD, self.car.x_est, self.car.y_est)
             self.curr_state.just_switched = False
         sub_state, just_sub_switched = self.curr_state.var1
         dist_prev_manouver = self.curr_state.var2
@@ -890,7 +869,6 @@ class Brain:
         if self.curr_state.just_switched:
             self.curr_state.var1 = (OT_SWITCHING_LANE, True)
             self.curr_state.var2 = self.car.encoder_distance
-            # self.env.publish_obstacle(STATIC_CAR_ON_ROAD, self.car.x_est, self.car.y_est) #NO need to publish a moving car
             self.curr_state.just_switched = False
         sub_state, just_sub_switched = self.curr_state.var1
         dist_prev_manouver = self.curr_state.var2
@@ -961,7 +939,6 @@ class Brain:
             curr_time = time()
             if self.conditions[TRUST_GPS]:
                 curr_pos = np.array([self.car.x_est, self.car.y_est])
-                self.env.publish_obstacle(ROADBLOCK, self.car.x_est, self.car.y_est)
                 self.curr_state.var3 = (AR_SWITCHING_LANE, True)
                 closest_node, distance = self.path_planner.get_closest_node(curr_pos)
                 print(f'GPS converged, node: {closest_node}, distance: {distance:.2f}')
@@ -1154,7 +1131,6 @@ class Brain:
                 checked1 = True
                 if lateral_sonar_dist < 0.5:
                     print('Car in spot 1')
-                    self.env.publish_obstacle(STATIC_CAR_PARKING, self.car.x_est, self.car.y_est)
                     car_in_spot1 = True
                 self.car.drive_speed(PARK_MANOUVER_SPEED)
             elif (dist_first_spot+dist_spots < curr_dist < (dist_first_spot+dist_spots+0.1)) and not checked2:
@@ -1165,7 +1141,6 @@ class Brain:
                 checked2 = True
                 if lateral_sonar_dist < 0.5:
                     print('Car in spot 2')
-                    self.env.publish_obstacle(STATIC_CAR_PARKING, self.car.x_est, self.car.y_est)
                     car_in_spot2 = True
                 self.car.drive_speed(PARK_MANOUVER_SPEED)
             elif dist_first_spot+dist_spots+further_dist < curr_dist:
@@ -1456,7 +1431,6 @@ class Brain:
                 self.switch_to_state(TAILING_CAR)
             elif obstacle == PEDESTRIAN:
                 pedestrian_obstacle = PEDESTRIAN_ON_CROSSWALK if self.next_event.name == CROSSWALK_EVENT else PEDESTRIAN_ON_ROAD
-                self.env.publish_obstacle(pedestrian_obstacle, self.car.x_est, self.car.y_est)
                 self.switch_to_state(WAITING_FOR_PEDESTRIAN)
             elif obstacle == ROADBLOCK:
                 self.switch_to_state(AVOIDING_ROADBLOCK)
@@ -1521,35 +1495,8 @@ class Brain:
             self.car.drive_speed(ACCELERATION_CONST*self.desired_speed)
 
     def control_for_signs(self):
-        # return #debug TODO remove this
-        if SPEED_CHALLENGE: return
-        prev_sign = self.curr_sign
-        if not self.conditions[REROUTING]:
-            if self.conditions[TRUST_GPS]:
-                car_pos_on_path = self.path_planner.path[min(int(round(self.car_dist_on_path*100)), len(self.path_planner.path-1))]
-                distances = norm(self.sign_points-car_pos_on_path, axis=1)
-                
-                print(f'MIN DISTANCE = {np.min(distances)}')
-                idx_close_signs = np.where(distances < SIGN_DIST_THRESHOLD)[0]
-                if len(idx_close_signs) > 0:
-                    for i in idx_close_signs:
-                        if self.sign_seen[i] == 0:
-                            self.sign_seen[i] = 1
-                            print(f'SEEN SIGN {SIGN_NAMES[self.sign_types[i]]}, at pos {self.sign_points[i]}')
-                            self.curr_sign = SIGN_NAMES[self.sign_types[i]]
-                else:
-                    self.curr_sign = NO_SIGN
+        return 
 
-            else: #Use signs
-                return # TODO remove it and use better detection
-                sign, _ = self.detect.detect_sign(self.car.frame, show_ROI=SHOW_IMGS, show_kp=SHOW_IMGS)
-                if sign != NO_SIGN and sign !=self.curr_sign:
-                    self.curr_sign = sign
-
-            #publish sign
-            if self.curr_sign != prev_sign and self.curr_sign != NO_SIGN:
-                self.env.publish_obstacle(self.curr_sign, self.car.x_est, self.car.y_est)
-                    
     def control_for_obstacles(self):
         #check for obstacles
         if not SPEED_CHALLENGE:
@@ -1605,8 +1552,6 @@ class Brain:
             #BUMPY_ROAD
             was_bumpy = self.conditions[BUMPY_ROAD]
             self.conditions[BUMPY_ROAD] = closest_node in self.path_planner.bumpy_road_nodes
-            if self.conditions[BUMPY_ROAD] and not was_bumpy:
-                self.env.publish_obstacle(BUMPY_ROAD, self.car.x_est, self.car.y_est)
 
             #REROUTING updated in start state
 

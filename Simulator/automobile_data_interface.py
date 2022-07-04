@@ -8,10 +8,8 @@ import rospy
 import numpy as np
 import os
 if SIMULATOR_FLAG:
-    from automobile_ekf import AutomobileEKF
     from helper_functions import *
 else:
-    from control.automobile_ekf import AutomobileEKF
     from control.helper_functions import *
 import time
 from collections import deque
@@ -177,10 +175,7 @@ class Automobile_Data():
         self.CAM_YAW = CAM_YAW
         self.CAM_FOV = CAM_FOV
         self.CAM_K = CAM_K
-        # ESTIMATION PARAMETERS
-        self.last_estimation_callback_time = None
-        self.est_init_state = np.array([EST_INIT_X, EST_INIT_Y]).reshape(-1,1)
-        self.ekf = AutomobileEKF(x0=self.est_init_state, WB=self.WB)
+
 
         self.past_encoder_distances = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)
         self.past_yaws = deque(maxlen=BUFFER_PAST_MEASUREMENTS_LENGTH)

@@ -21,15 +21,14 @@ from controller3 import Controller
 from controllerSP import ControllerSpeed
 from detection import Detection
 from brain import Brain
-from environmental_data_simulator import EnvironmentalData
 from shutil import get_terminal_size
 
-map = cv.imread('data/2021_VerySmall.png')
+map = cv.imread('Simulator/data/2021_VerySmall.png')
 
 # PARAMETERS
 TARGET_FPS = 30.0
 sample_time = 0.01 # [s]
-DESIRED_SPEED = 0.35# [m/s]
+DESIRED_SPEED = 0.5# [m/s]
 SP_SPEED = 0.8 # [m/s]
 CURVE_SPEED = 0.6# [m/s]
 path_step_length = 0.01 # [m]
@@ -87,9 +86,6 @@ if __name__ == '__main__':
     # init trajectory
     path_planner = PathPlanning(map) 
 
-    # init env
-    env = EnvironmentalData(trig_v2v=True, trig_v2x=True, trig_semaphore=True)
-
     # init controller
     controller = Controller(k1=k1, k2=k2, k3=k3, k3D=k3D, dist_point_ahead=dist_point_ahead, ff=ff_curvature)
     controller_sp = ControllerSpeed(desired_speed=SP_SPEED, curve_speed=CURVE_SPEED)
@@ -98,7 +94,7 @@ if __name__ == '__main__':
     detect = Detection()
 
     #initiliaze the brain
-    brain = Brain(car=car, controller=controller, controller_sp=controller_sp, detection=detect, env=env, path_planner=path_planner, desired_speed=DESIRED_SPEED)
+    brain = Brain(car=car, controller=controller, controller_sp=controller_sp, detection=detect, path_planner=path_planner, desired_speed=DESIRED_SPEED)
 
     if SHOW_IMGS:
         map1 = map.copy()

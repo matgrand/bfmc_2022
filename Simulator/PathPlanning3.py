@@ -26,7 +26,7 @@ class PathPlanning():
         self.prev_index = 0
 
         # read graph
-        self.G = nx.read_graphml('data/Competition_track.graphml')
+        self.G = nx.read_graphml('Simulator/data/Competition_track.graphml')
         # initialize route subgraph and list for interpolation
         self.route_graph = nx.DiGraph()
         self.route_list = []
@@ -65,7 +65,7 @@ class PathPlanning():
         self.junctions = [str(i) for i in self.junctions]
 
         #stop points
-        self.stop_points = np.load('data/stop_line_points.npy')
+        self.stop_points = np.load('Simulator/data/stop_line_points.npy')
         self.stop_points_on_path = []
 
         # import nodes and edges

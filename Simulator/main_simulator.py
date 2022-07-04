@@ -22,9 +22,9 @@ from PathPlanning3 import PathPlanning
 from controller3 import Controller
 from detection import Detection
 
-map = cv.imread('src/models_pkg/track/materials/textures/2021_VerySmall.png')
+map = cv.imread('Simulator/src/models_pkg/track/materials/textures/2021_VerySmall.png')
 class_list = []
-with open("data/classes.txt", "r") as f:
+with open("Simulator/data/classes.txt", "r") as f:
     class_list = [cname.strip() for cname in f.readlines()] 
 
 # MAIN CONTROLS
@@ -39,7 +39,7 @@ PATH_NODES = [86, 116,115,116,453,466,465,466,465,466,465,466,465,466,465,466,46
                 87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
 PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,466,249] #,273,136,321,262]
-PATH_NODES = [86, 110, 464, 145, 278]
+# PATH_NODES = [86, 110, 464, 145, 278]
 if training and folder == 'training_imgs':
     print('WARNING, WE ARE ABOUT TO OVERWRITE THE TRAINING DATA! ARE U SURE TO CONTINUE?')
     sleep(5)
@@ -262,7 +262,6 @@ if __name__ == '__main__':
             # radius = project_curvature(frame, car, curv)
 
             ## DEBUG INFO
-            # os.system('cls' if os.name=='nt' else 'clear')
             print('\n' * get_terminal_size().lines, end='')
             print('\033[F' * get_terminal_size().lines, end='')
             if dist is None: dist=10

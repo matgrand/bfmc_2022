@@ -27,7 +27,7 @@ class PathPlanning():
         self.prev_index = 0
 
         # read graph
-        self.G = nx.read_graphml('data/Competition_track.graphml')
+        self.G = nx.read_graphml('Simulator/data/Competition_track.graphml')
         # initialize route subgraph and list for interpolation
         self.route_graph = nx.DiGraph()
         self.route_list = []
@@ -76,8 +76,8 @@ class PathPlanning():
         # self.near_crosswalk_nodes = [str(i) for i in [67,95,80,92,96,295,296,276,277,]]
 
         #event points
-        self.event_points = np.load('data/event_points.npy') #created in R coord
-        self.event_types = np.load('data/event_types.npy')
+        self.event_points = np.load('Simulator/data/event_points.npy') #created in R coord
+        self.event_types = np.load('Simulator/data/event_types.npy')
         assert len(self.event_points) == len(self.event_types), "event points and types are not the same length"
         event_type_names = EVENT_TYPES
         self.event_types = [event_type_names[int(i)] for i in self.event_types]
