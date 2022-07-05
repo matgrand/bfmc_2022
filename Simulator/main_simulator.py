@@ -23,9 +23,6 @@ from controller3 import Controller
 from detection import Detection
 
 map = cv.imread('Simulator/src/models_pkg/track/materials/textures/2021_VerySmall.png')
-class_list = []
-with open("Simulator/data/classes.txt", "r") as f:
-    class_list = [cname.strip() for cname in f.readlines()] 
 
 # MAIN CONTROLS
 training = True
@@ -40,6 +37,7 @@ PATH_NODES = [86, 116,115,116,453,466,465,466,465,466,465,466,465,466,465,466,46
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
 PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,466,249] #,273,136,321,262]
 # PATH_NODES = [86, 110, 464, 145, 278]
+PATH_NODES = [86,255,110,346,85]
 if training and folder == 'training_imgs':
     print('WARNING, WE ARE ABOUT TO OVERWRITE THE TRAINING DATA! ARE U SURE TO CONTINUE?')
     sleep(5)
