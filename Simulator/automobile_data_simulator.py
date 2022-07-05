@@ -255,6 +255,7 @@ class AutomobileDataSimulator(Automobile_Data):
 
     def pub_steer(self, angle):
         data = {}
+        self.steer = angle
         data['action']        =  '2'
         data['steerAngle']    =  float(angle)
         reference = json.dumps(data)

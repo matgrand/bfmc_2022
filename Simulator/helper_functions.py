@@ -191,6 +191,26 @@ def get_curvature(points, v_des=0.0):
     return curv * COMPENSATION_FACTOR
 
 
+# semi random generator 
+class MyRandomGenerator:
+    def __init__(self, value_mean, value_std, frame_change_mean, frame_change_std) -> None:
+        self.cnt = 0
+        self.noise_value = 0.0
+        self.next_reset = 0
+
+        self.value_mean = value_mean
+        self.value_std = value_std
+        self.frame_change_mean = frame_change_mean
+        self.frame_change_std = frame_change_std
+    
+    def get_noise(self):
+        if self.cnt == self.next_reset:
+            self.cnt = 0
+            self.noise_value = np.random.normal(self.value_mean, self.value_std)
+            self.next_reset = np.random.randint(self.frame_change_mean - self.frame_change_std, self.frame_change_mean + self.frame_change_std)
+        self.cnt += 1
+        return self.noise_value
+
 
 #detection functions
 def wrap_detection(output_data):

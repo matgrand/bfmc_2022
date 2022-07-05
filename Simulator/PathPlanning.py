@@ -8,11 +8,11 @@ from pyclothoids import Clothoid
 from names_and_constants import *
 from helper_functions import *
 
-SHOW_IMGS = True
+SHOW_IMGS = False
 STEP_LENGTH = 0.01
 
 class PathPlanning(): 
-    def __init__(self, map_img):
+    def __init__(self):
         # start and end nodes
         self.source = str(86)
         self.target = str(300)
@@ -34,7 +34,6 @@ class PathPlanning():
 
         self.nodes_data = self.G.nodes.data()
         self.edges_data = self.G.edges.data()
-
 
         # define intersection central nodes
         #self.intersection_cen = ['347', '37', '39', '38', '11', '29', '30', '28', '371', '84', '9', '20', '20', '82', '75', '74', '83', '312', '315', '65', '468', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
@@ -106,7 +105,7 @@ class PathPlanning():
         self.bumpy_road_nodes = [str(i) for i in [*range(427,466)]]
 
         # import map to plot trajectory and car
-        self.map = map_img
+        self.map = cv.imread('Simulator/src/models_pkg/track/materials/textures/2021_VerySmall.png')
 
     def roundabout_navigation(self, prev_node, curr_node, next_node):
         while next_node in self.ra:
@@ -421,56 +420,50 @@ class PathPlanning():
         assert index < len(self.path) and index >= 0
         return np.array(self.path[index:min(index + look_ahead, len(self.path)-1), :])
 
-    def get_reference(self, car, v_des, limit_search_to=160, look_ahead=0): 
+    def get_reference(self, car, dist_point_ahead): 
         '''
-        Returns the reference point, i.e., the point on the path nearest to the vehicle, 
-        returns
-        x desired
-        y desired
-        yaw desired
-        TODO current curvature
-        finished=True when the end of the path is reached
-        path paramters ahead
+        returns:
+        - the heading error
+        - the point ahead
+        - the sequence of yaws of the points ahead
+        - the sequence of points ahead
+        - boolean indicating if the car has reached the end of the path
+        In the future it may also return something related to the state of the road
         '''
-        finished = False
-
-        #limit the search in a neighborhood of limit_search_to points around the current point
-        max_index = min(self.prev_index + limit_search_to, len(self.path)-2)
-        if max_index >= len(self.path)-10:
-            finished = True
+        LIMIT_SEARCH_TO = 150
+        #limit the search in a neighborhood of LIMIT_SEARCH_TO points around the current point
+        max_index = min(self.prev_index + LIMIT_SEARCH_TO, len(self.path)-2)
         min_index = max(self.prev_index, 0)
         path_to_analyze = self.path[min_index:max_index+1, :]
         #get current car position
         curr_pos = np.array([car.x_true, car.y_true])
-        #calculate the norm difference of each point to the current point
-        diff = path_to_analyze - curr_pos
-        diff_norms = np.linalg.norm(diff, axis=1)
-        #find the index of the point closest to the current point
-        closest_index = np.argmin(diff_norms)
+        #find the index of the point of the path closest to the current car position
+        closest_index = np.argmin(np.linalg.norm(path_to_analyze - curr_pos, axis=1))
+        #check if we arrived at the end of the path
+        finished = True if closest_index + min_index >= len(self.path)-10 else False
         #check if it's last element
         if closest_index == len(path_to_analyze)-1:
-            closest_index = closest_index - (2+look_ahead)
-        closest_index = closest_index + look_ahead
-        closest_point = path_to_analyze[closest_index]
-        #get path ahead
-        x_des = closest_point[0]
-        y_des = closest_point[1]
-        #calculate yaw angle
-        next_x = path_to_analyze[closest_index+1, 0]
-        next_y = path_to_analyze[closest_index+1, 1]
-        yaw_des = np.arctan2(next_y - y_des, next_x - x_des)
+            closest_index = closest_index - 2
+
+        #get point ahead
+        path_ahead = path_to_analyze[closest_index:, :]
+        idx_point_ahead = np.argmin(np.abs(np.linalg.norm(path_ahead - curr_pos, axis=1) - dist_point_ahead))
+        # idx_point_ahead = min(closest_index + int(dist_point_ahead*100), len(path_to_analyze)-1) #inaccurate, but smoother
+        point_ahead = path_to_analyze[idx_point_ahead]
+        #translate into car frame
+        point_ahead = to_car_frame(point_ahead, car, return_size=2)
+        #calculate heading error
+        heading_error = np.arctan2(point_ahead[1], point_ahead[0]+0.4/2) 
+
         #update prev_index
-        self.prev_index = min_index + closest_index - (1+look_ahead)
+        self.prev_index = min_index + closest_index - 1
 
-        path_ahead = self.get_path_ahead(min_index+closest_index, limit_search_to)
+        # sequence of points ahead
+        path_ahead = self.get_path_ahead(min_index+closest_index, LIMIT_SEARCH_TO)
+        seq_heading_errors, seq_points_ahead = None, None # TODO: implement this
 
-        path_ahead_curv = path_ahead[0:min(30, len(path_ahead))]
-        
-        avg_curv = get_curvature(path_ahead_curv, v_des)
+        return heading_error, point_ahead, seq_heading_errors, seq_points_ahead, path_ahead, finished
 
-        info = None #self.path_data[min_index+closest_index]
-
-        return x_des, y_des, yaw_des, avg_curv, finished, path_ahead, info
 
     def get_closest_stop_line(self, nx, ny, draw=False):
         """
