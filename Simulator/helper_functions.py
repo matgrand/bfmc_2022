@@ -56,6 +56,18 @@ def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
         cv.polylines(map, [mR2pix(corners)], True, color, 3, cv.LINE_AA) 
     return map
 
+def draw_angle(frame, angle, color=(0,0,255)):
+    l = frame.shape[0]/3
+    angle = angle*3
+    #get bottom center of the frame
+    xc,yc = frame.shape[1]/2, frame.shape[0]
+    if -np.pi/2 < angle < np.pi/2:
+        x = xc - l*np.sin(angle)
+        y = yc - l*np.cos(angle)
+        assert x > 0 and y > 0, f'x: {x}, y: {y}'
+        frame = cv.line(frame, (int(xc), int(yc)), (int(x), int(y)), color, 2)
+    return frame
+
 def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255), thickness=2):
     #check if its a single point
     single_dim = False
@@ -193,10 +205,15 @@ def get_curvature(points, v_des=0.0):
 
 # semi random generator 
 class MyRandomGenerator:
-    def __init__(self, value_mean, value_std, frame_change_mean, frame_change_std) -> None:
+    def __init__(self, value_mean, value_std, frame_change_mean, frame_change_std, rand_func=np.random.normal) -> None:
+        """
+        Note: if using np.ranodm.normal, the mean and std are the mean and std of the distribution
+        if using np.random.uniform, the mean and std are the lower and upper bound of the uniform distribution
+        """
         self.cnt = 0
         self.noise_value = 0.0
         self.next_reset = 0
+        self.random_func = rand_func
 
         self.value_mean = value_mean
         self.value_std = value_std
@@ -206,7 +223,7 @@ class MyRandomGenerator:
     def get_noise(self):
         if self.cnt == self.next_reset:
             self.cnt = 0
-            self.noise_value = np.random.normal(self.value_mean, self.value_std)
+            self.noise_value = self.random_func(self.value_mean, self.value_std)
             self.next_reset = np.random.randint(self.frame_change_mean - self.frame_change_std, self.frame_change_mean + self.frame_change_std)
         self.cnt += 1
         return self.noise_value

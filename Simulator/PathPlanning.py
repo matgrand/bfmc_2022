@@ -447,8 +447,8 @@ class PathPlanning():
 
         #get point ahead
         path_ahead = path_to_analyze[closest_index:, :]
-        idx_point_ahead = np.argmin(np.abs(np.linalg.norm(path_ahead - curr_pos, axis=1) - dist_point_ahead))
-        # idx_point_ahead = min(closest_index + int(dist_point_ahead*100), len(path_to_analyze)-1) #inaccurate, but smoother
+        # idx_point_ahead = np.argmin(np.abs(np.linalg.norm(path_ahead - curr_pos, axis=1) - dist_point_ahead)) #maybe more precise, but less smooth
+        idx_point_ahead = min(closest_index + int(dist_point_ahead*100), len(path_to_analyze)-1) #inaccurate, but smoother
         point_ahead = path_to_analyze[idx_point_ahead]
         #translate into car frame
         point_ahead = to_car_frame(point_ahead, car, return_size=2)
