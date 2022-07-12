@@ -420,19 +420,18 @@ class PathPlanning():
         assert index < len(self.path) and index >= 0
         return np.array(self.path[index:min(index + look_ahead, len(self.path)-1), :])
 
-    def get_reference(self, car, dist_point_ahead): 
+    def get_reference(self, car, dist_point_ahead, path_ahead_distances): 
         '''
         returns:
         - the heading error
         - the point ahead
         - the sequence of yaws of the points ahead
-        - the sequence of points ahead
         - boolean indicating if the car has reached the end of the path
         In the future it may also return something related to the state of the road
         '''
-        LIMIT_SEARCH_TO = 150
-        #limit the search in a neighborhood of LIMIT_SEARCH_TO points around the current point
-        max_index = min(self.prev_index + LIMIT_SEARCH_TO, len(self.path)-2)
+        #limit the search in a neighborhood of max_idx_ahead points around the current point
+        max_idx_ahead = int(100*(path_ahead_distances[-1] + 0.1))
+        max_index = min(self.prev_index + max_idx_ahead, len(self.path)-2)
         min_index = max(self.prev_index, 0)
         path_to_analyze = self.path[min_index:max_index+1, :]
         #get current car position
@@ -440,7 +439,7 @@ class PathPlanning():
         #find the index of the point of the path closest to the current car position
         closest_index = np.argmin(np.linalg.norm(path_to_analyze - curr_pos, axis=1))
         #check if we arrived at the end of the path
-        finished = True if closest_index + min_index >= len(self.path)-10 else False
+        finished = True if closest_index + min_index >= len(self.path)-max_idx_ahead-5 else False
         #check if it's last element
         if closest_index == len(path_to_analyze)-1:
             closest_index = closest_index - 2
@@ -459,10 +458,16 @@ class PathPlanning():
         self.prev_index = min_index + closest_index - 1
 
         # sequence of points ahead
-        path_ahead = self.get_path_ahead(min_index+closest_index, LIMIT_SEARCH_TO)
-        seq_heading_errors, seq_points_ahead = None, None # TODO: implement this
+        path_ahead_distances = np.asarray(path_ahead_distances)
+        seq_indeces = (100*path_ahead_distances).astype(int) 
+        seq_points = path_to_analyze[seq_indeces]
+        seq_points = to_car_frame(seq_points, car, return_size=2)
+        seq_heading_errors = np.arctan2(seq_points[:,1], seq_points[:,0]+0.4/2)
 
-        return heading_error, point_ahead, seq_heading_errors, seq_points_ahead, path_ahead, finished
+        pts = np.concatenate((np.array([[0,0]]), seq_points), axis=0)
+        diffs = pts[1:] - pts[:-1]
+        seq_relative_angles = np.arctan2(diffs[:,1], diffs[:,0])
+        return heading_error, point_ahead, seq_heading_errors, seq_relative_angles, path_ahead, finished
 
 
     def get_closest_stop_line(self, nx, ny, draw=False):

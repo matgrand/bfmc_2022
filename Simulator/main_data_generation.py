@@ -12,13 +12,15 @@ from PathPlanning import PathPlanning
 from data_generation_controller import Controller
 from detection import Detection
 
+SHOW_PLOTS = False
+
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 FPS_TARGET = 30.0
 
 ## FOLDERS
-# FOLDER = 'training_imgs' 
-FOLDER = 'test_imgs'
+FOLDER = 'Simulator/training_imgs' 
+# FOLDER = 'Simulator/test_imgs'
 if FOLDER == 'training_imgs':
     print('WARNING, WE ARE ABOUT TO OVERWRITE THE TRAINING DATA! ARE U SURE TO CONTINUE?')
     sleep(5)
@@ -49,8 +51,13 @@ PATH.draw_path()
 PATH.print_path_info()
 
 #############################################################################################################################################################
-## CONTROLLER
+## DATA GENERATION
 DISTANCE_AHEAD_PURE_PURSUIT = 0.6#0.6 #[m]
+PATH_AHEAD_DISTANCES = [.4, .6, .8, 1.0, 1.2, 1.4] #[m] must be in increasing order
+speed_log, steer_log, he_log, seq_he_log, seq_rel_angles_log = [], [], [], [], []
+
+#############################################################################################################################################################
+## CONTROLLER
 K = 1.2 #1.0 yaw error gain .8 with ff 
 CONTROLLER = Controller(K)
 STEER_NOISE_STD = np.deg2rad(5.0) #np.deg2rad(15.0) # [rad] noise in the steering angle
@@ -69,18 +76,19 @@ DETECTION = Detection()
 
 #############################################################################################################################################################
 ## PLOTS
-heading_errors = np.zeros(int(FPS_TARGET*3), dtype=np.float32)
-est_heading_errors = np.zeros(int(FPS_TARGET*3), dtype=np.float32)
-fig, ax = plt.subplots()
-ax.cla()
-he_line, = ax.plot(heading_errors, 'b-')
-ehe_line, = ax.plot(est_heading_errors, 'r-')
-ax.set_ylim(-np.deg2rad(30), np.deg2rad(30))
-ax.set_xlabel('Time [s]')
-ax.set_ylabel('Heading error [rad]')
-ax.grid(True)
-plt.show(block=False)
-plt.pause(0.001)
+if SHOW_PLOTS:
+    heading_errors = np.zeros(int(FPS_TARGET*3), dtype=np.float32)
+    est_heading_errors = np.zeros(int(FPS_TARGET*3), dtype=np.float32)
+    fig, ax = plt.subplots()
+    ax.cla()
+    he_line, = ax.plot(heading_errors, 'b-')
+    ehe_line, = ax.plot(est_heading_errors, 'r-')
+    ax.set_ylim(-np.deg2rad(30), np.deg2rad(30))
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Heading error [rad]')
+    ax.grid(True)
+    plt.show(block=False)
+    plt.pause(0.001)
 
 if __name__ == '__main__':
     #init windows
@@ -112,19 +120,25 @@ if __name__ == '__main__':
 
         #############################################################################################################################################################
         ## FRAME 
-        tmp = np.copy(PATH.map)
+        tmap = np.copy(PATH.map)
         # Get the image from the camera
         frame = CAR.frame.copy()
         sleep(VISION_DELAY)
 
         #############################################################################################################################################################
         ## REFERENCE TRAJECTORY
-        reference = PATH.get_reference(CAR, DISTANCE_AHEAD_PURE_PURSUIT)
-        heading_error, point_ahead, seq_heading_errors, seq_points_ahead, path_ahead, finished = reference
-
+        reference = PATH.get_reference(CAR, DISTANCE_AHEAD_PURE_PURSUIT, PATH_AHEAD_DISTANCES)
+        heading_error, point_ahead, seq_heading_errors, seq_relative_angles, path_ahead, finished = reference
+        #logging for data saving
+        he_log.append(heading_error)
+        seq_he_log.append(seq_heading_errors)
+        seq_rel_angles_log.append(seq_relative_angles)
+        speed_log.append(CAR.speed)
+        steer_log.append(CAR.steer)
+        
         #############################################################################################################################################################
         ## NEURAL NETWORK ESTIMATE
-        nn_estimate = DETECTION.detect_lane_ahead(frame)
+        # nn_estimate = DETECTION.detect_lane_ahead(frame)
         nn_estimate = DETECTION.detect_lane(frame)
         est_heading_error, est_point_ahead = nn_estimate
 
@@ -145,13 +159,15 @@ if __name__ == '__main__':
             print("Reached end of trajectory")
             CAR.stop()
             os.system('rosservice call gazebo/pause_physics') 
-            sleep(.8)
+            sleep(.2)
+            #saving data
+            np.save(FOLDER, [speed_log, steer_log, he_log, seq_he_log, seq_rel_angles_log])
             exit()
 
         #############################################################################################################################################################
         ## VISUALIZATIONS
         #draw true CAR position
-        draw_car(tmp, CAR.x_true, CAR.y_true, CAR.yaw, color=(0, 255, 0))
+        draw_car(tmap, CAR.x_true, CAR.y_true, CAR.yaw, color=(0, 255, 0))
 
         #project PATH ahead
         frame, proj = project_onto_frame(frame, CAR, path_ahead, color=(0,0,100))
@@ -163,33 +179,27 @@ if __name__ == '__main__':
             #convert proj to cv2 point
             proj = (int(proj[0]), int(proj[1]))
             est_proj = (int(est_proj[0]), int(est_proj[1]))
-
             draw_angle(frame, heading_error, color=(200-50, 200-50, 100-50))
             draw_angle(frame, est_heading_error, color=(200-50, 100-50, 200-50))
 
-            # #draw line from bottmo half to proj
-            # cv.line(frame, (320//2,479//2), proj, (200, 200, 100), 2)
-            # cv.line(frame, (320//2,479//2), est_proj, (200, 100, 200), 2)
-
         #project seq of points ahead
-        # frame, proj = project_onto_frame(frame, CAR, np.array(CONTROLLER.seq_points_ahead), False, color=(100, 200, 100))
+        frame = draw_seq_points_ahead(frame, CAR, seq_relative_angles, PATH_AHEAD_DISTANCES, color=(0,0,255))
 
         #############################################################################################################################################################
         ## PLOTS
-        #plot heading error and estimate
-        if loop_cnt % 1 == 0:
-            heading_errors = np.roll(heading_errors, -1)
-            heading_errors[-1] = heading_error
-            est_heading_errors = np.roll(est_heading_errors, -1)
-            est_heading_errors[-1] = est_heading_error
-        
-        if loop_cnt % 10 == 0:
-            #update plot data
-            he_line.set_ydata(heading_errors)
-            ehe_line.set_ydata(est_heading_errors)
-            plt.pause(0.001)
-            plt.draw()
-
+        if SHOW_PLOTS:
+            if loop_cnt % 3 == 0:
+                heading_errors = np.roll(heading_errors, -1)
+                heading_errors[-1] = heading_error
+                est_heading_errors = np.roll(est_heading_errors, -1)
+                est_heading_errors[-1] = est_heading_error
+            
+            if loop_cnt % 15 == 0:
+                #update plot data
+                he_line.set_ydata(heading_errors)
+                ehe_line.set_ydata(est_heading_errors)
+                plt.pause(0.001)
+                plt.draw()
 
         #############################################################################################################################################################
         ## DEBUG INFO
@@ -200,11 +210,12 @@ if __name__ == '__main__':
         print(f'total distance travelled: {CAR.encoder_distance:.2f} [m]')
         print(f'point_ahead:     {point_ahead}, heading_error:     {np.rad2deg(heading_error):.3f} [deg]')
         print(f'est_point_ahead: {est_point_ahead}, est_heading_error: {np.rad2deg(est_heading_error):.3f} [deg]')
+        print(f'seq_heading_errors: {seq_heading_errors}')
         print(f'loop_cnt = {loop_cnt}')
 
         # show imgs
         cv.imshow("Frame preview", frame)
-        cv.imshow("2D-MAP", tmp) 
+        cv.imshow("2D-MAP", tmap) 
         cv.waitKey(1)
 
         curr_time = time()

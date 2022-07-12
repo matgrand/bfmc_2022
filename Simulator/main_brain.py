@@ -102,7 +102,6 @@ if __name__ == '__main__':
         cv.imshow('Map', map1)
         cv.waitKey(1)
 
-
     try:
         car.stop()
         fps_avg = 0.0

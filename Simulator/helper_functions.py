@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 # HELPER FUNCTIONS
+from math import dist
 import numpy as np
 import cv2 as cv
 
@@ -66,6 +67,27 @@ def draw_angle(frame, angle, color=(0,0,255)):
         y = yc - l*np.cos(angle)
         assert x > 0 and y > 0, f'x: {x}, y: {y}'
         frame = cv.line(frame, (int(xc), int(yc)), (int(x), int(y)), color, 2)
+    return frame
+
+def draw_seq_points_ahead(frame, car, seq_relative_angles, path_ahead_distances, color=(0,0,255)):
+    assert len(seq_relative_angles) == len(path_ahead_distances)
+    #create numpy array of the heading errors adding a zero at the beginning
+    rel_angles = np.array(seq_relative_angles)
+    # add a zero at the beginning
+    dists = np.concatenate(([0], path_ahead_distances))
+    rel_dists = dists[1:] - dists[:-1]
+    pts = np.zeros((len(rel_angles),2))
+    p = np.array([0,0])
+    for i in range(len(rel_angles)):
+        p = p + rel_dists[i]*np.array([np.cos(rel_angles[i]), np.sin(rel_angles[i])])
+        pts[i] = p
+    #draw the points
+    frame, proj = project_onto_frame(frame, car, pts, align_to_car=False, color=color)
+    if proj is not None and len(proj)>1:
+        for i in range(len(proj)-1):
+            p1 = (int(proj[i][0]), int(proj[i][1]))
+            p2 = (int(proj[i+1][0]), int(proj[i+1][1]))
+            frame = cv.line(frame, p1, p2, color, 2)
     return frame
 
 def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255), thickness=2):
@@ -202,7 +224,6 @@ def get_curvature(points, v_des=0.0):
     COMPENSATION_FACTOR = 0.855072 
     return curv * COMPENSATION_FACTOR
 
-
 # semi random generator 
 class MyRandomGenerator:
     def __init__(self, value_mean, value_std, frame_change_mean, frame_change_std, rand_func=np.random.normal) -> None:
@@ -227,7 +248,6 @@ class MyRandomGenerator:
             self.next_reset = np.random.randint(self.frame_change_mean - self.frame_change_std, self.frame_change_mean + self.frame_change_std)
         self.cnt += 1
         return self.noise_value
-
 
 #detection functions
 def wrap_detection(output_data):
