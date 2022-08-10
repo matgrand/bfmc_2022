@@ -134,7 +134,7 @@ if __name__ == '__main__':
         # Get the image from the camera
         frame = CAR.frame.copy()
         frames.append(cv.cvtColor(frame, cv.COLOR_BGR2GRAY))
-        # # get the frame from a video file
+        # get the frame from a video file
         # ret, video_frame = cap.read()
         # if not ret:
         #     print("No frame")
