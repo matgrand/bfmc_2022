@@ -7,7 +7,6 @@ from time import time, sleep
 from names_and_constants import *
 
 from helper_functions import *
-from stopline import StopLine, detect_angle
 
 LANE_KEEPER_PATH = "Simulator/models/lane_keeper_small.onnx"
 DISTANCE_POINT_AHEAD = 0.35

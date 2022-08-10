@@ -12,15 +12,18 @@ from PathPlanning import PathPlanning
 from data_generation_controller import Controller
 from detection import Detection
 
-SHOW_PLOTS = False
+EVAL_MODE = True
+# EVAL_MODE = False
+
+SHOW_PLOTS = EVAL_MODE #and False
 
 ACTUATION_DELAY = 0.0#0.15
 VISION_DELAY = 0.0#0.08
 FPS_TARGET = 30.0
 
 ## FOLDERS
-FOLDER = 'Simulator/training_imgs' 
-# FOLDER = 'Simulator/test_imgs'
+FOLDER = 'Simulator/training/' 
+# FOLDER = 'Simulator/test/'
 if FOLDER == 'training_imgs':
     print('WARNING, WE ARE ABOUT TO OVERWRITE THE TRAINING DATA! ARE U SURE TO CONTINUE?')
     sleep(5)
@@ -44,6 +47,7 @@ PATH_NODES = [86, 116,115,116,453,466,465,466,465,466,465,466,465,466,465,466,46
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
 PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,466,249] #,273,136,321,262]
 PATH_NODES = [86,427,257,110,348,85]
+# PATH_NODES = [86,127]
 PATH = PathPlanning() 
 #generate path
 PATH.generate_path_passing_through(PATH_NODES)
@@ -54,18 +58,19 @@ PATH.print_path_info()
 ## DATA GENERATION
 DISTANCE_AHEAD_PURE_PURSUIT = 0.6#0.6 #[m]
 PATH_AHEAD_DISTANCES = [.4, .6, .8, 1.0, 1.2, 1.4] #[m] must be in increasing order
-speed_log, steer_log, he_log, seq_he_log, seq_rel_angles_log = [], [], [], [], []
+speed_log, steer_log, he_log, seq_he_log, seq_rel_angles_log = [], [], [], [], [] # empty lists for data storing
+frames = [] #all frames
 
 #############################################################################################################################################################
 ## CONTROLLER
 K = 1.2 #1.0 yaw error gain .8 with ff 
 CONTROLLER = Controller(K)
-STEER_NOISE_STD = np.deg2rad(5.0) #np.deg2rad(15.0) # [rad] noise in the steering angle
+STEER_NOISE_STD = np.deg2rad(18.0) if not EVAL_MODE else np.deg2rad(5.0) # [rad] noise in the steering angle
 STEER_FRAME_CHAMGE_MEAN = 10 #avg frames after which the steering noise is changed
 STEER_FRAME_CHAMGE_STD = 8 #frames max "deviation"
 STEER_NOISE = MyRandomGenerator(0.0, STEER_NOISE_STD, STEER_FRAME_CHAMGE_MEAN, STEER_FRAME_CHAMGE_STD)
 DESIRED_SPEED = .6#0.15# [m/s]
-SPEED_NOISE_STD = 0*0.5 #[m/s] noise in the speed
+SPEED_NOISE_STD = 0.5 if not EVAL_MODE else 0.0 #[m/s] noise in the speed
 SPEED_FRAME_CHAMGE_MEAN = 30 #avg frames after which the speed noise is changed
 SPEED_FRAME_CHAMGE_STD = 20 #frames max "deviation"
 SPEED_NOISE = MyRandomGenerator(-SPEED_NOISE_STD, SPEED_NOISE_STD, SPEED_FRAME_CHAMGE_MEAN, SPEED_FRAME_CHAMGE_STD, np.random.uniform)
@@ -89,6 +94,11 @@ if SHOW_PLOTS:
     ax.grid(True)
     plt.show(block=False)
     plt.pause(0.001)
+
+
+#############################################################################################################################################################
+## TESTS
+cap = cv.VideoCapture('Simulator/data/real_road.mp4')
 
 if __name__ == '__main__':
     #init windows
@@ -123,6 +133,19 @@ if __name__ == '__main__':
         tmap = np.copy(PATH.map)
         # Get the image from the camera
         frame = CAR.frame.copy()
+        frames.append(cv.cvtColor(frame, cv.COLOR_BGR2GRAY))
+        # # get the frame from a video file
+        # ret, video_frame = cap.read()
+        # if not ret:
+        #     print("No frame")
+        #     continue
+        # else:
+        #     frame = video_frame
+        #     frame = frame[-360:-50, 200:1080,:]
+        #     # frame = cv.flip(frame, 1)
+        #     frame = cv.resize(frame, (640, 480))
+
+
         sleep(VISION_DELAY)
 
         #############################################################################################################################################################
@@ -138,8 +161,8 @@ if __name__ == '__main__':
         
         #############################################################################################################################################################
         ## NEURAL NETWORK ESTIMATE
-        # nn_estimate = DETECTION.detect_lane_ahead(frame)
-        nn_estimate = DETECTION.detect_lane(frame)
+        nn_estimate = DETECTION.detect_lane_ahead(frame)
+        # nn_estimate = DETECTION.detect_lane(frame)
         est_heading_error, est_point_ahead = nn_estimate
 
         #############################################################################################################################################################
@@ -160,8 +183,18 @@ if __name__ == '__main__':
             CAR.stop()
             os.system('rosservice call gazebo/pause_physics') 
             sleep(.2)
-            #saving data
-            np.save(FOLDER, [speed_log, steer_log, he_log, seq_he_log, seq_rel_angles_log])
+            if not EVAL_MODE:
+                #saving data
+                np.save(FOLDER+'speed_log', speed_log)
+                np.save(FOLDER+'steer_log', steer_log)
+                np.save(FOLDER+'he_log', he_log)
+                np.save(FOLDER+'seq_he_log', seq_he_log)
+                np.save(FOLDER+'seq_rel_angles_log', seq_rel_angles_log)
+                # np.savez_compressed(FOLDER+'frames', frames)
+                np.save(FOLDER+'frames', frames)
+                print("Data saved")
+            else: 
+                print('Evaluation mode, not saving any datapoints')
             exit()
 
         #############################################################################################################################################################
