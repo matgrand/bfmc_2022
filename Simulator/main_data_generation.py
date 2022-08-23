@@ -45,7 +45,7 @@ PATH_NODES = [86, 116,115,116,453,466,465,466,465,466,465,466,465,466,465,466,46
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355,
                 87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
-PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,466,249] #,273,136,321,262]
+# PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,466,249] #,273,136,321,262]
 PATH_NODES = [86,427,257,110,348,85]
 # PATH_NODES = [86,127]
 PATH = PathPlanning() 
@@ -96,9 +96,6 @@ if SHOW_PLOTS:
     plt.pause(0.001)
 
 
-#############################################################################################################################################################
-## TESTS
-# cap = cv.VideoCapture('Simulator/data/real_road.mp4') #
 
 if __name__ == '__main__':
     #init windows
@@ -137,16 +134,6 @@ if __name__ == '__main__':
         frame = cv.blur(frame, (2,2))
         frame = cv.resize(frame, (320, 240), interpolation=cv.INTER_AREA)
         frames.append(cv.cvtColor(frame, cv.COLOR_BGR2GRAY))
-        # get the frame from a video file
-        # ret, video_frame = cap.read()
-        # if not ret:
-        #     print("No frame")
-        #     continue
-        # else:
-        #     frame = video_frame
-        #     frame = frame[-360:-50, 200:1080,:]
-        #     # frame = cv.flip(frame, 1)
-        #     frame = cv.resize(frame, (640, 480))
 
 
         sleep(VISION_DELAY)
@@ -194,7 +181,7 @@ if __name__ == '__main__':
                 np.save(FOLDER+'seq_he_log', seq_he_log)
                 np.save(FOLDER+'seq_rel_angles_log', seq_rel_angles_log)
                 # np.savez_compressed(FOLDER+'frames', frames)
-                np.save(FOLDER+'frames', frames)
+                np.save(FOLDER+'frames', frames) 
                 print("Data saved")
             else: 
                 print('Evaluation mode, not saving any datapoints')
