@@ -98,7 +98,7 @@ if SHOW_PLOTS:
 
 #############################################################################################################################################################
 ## TESTS
-cap = cv.VideoCapture('Simulator/data/real_road.mp4')
+# cap = cv.VideoCapture('Simulator/data/real_road.mp4')
 
 if __name__ == '__main__':
     #init windows
@@ -133,6 +133,9 @@ if __name__ == '__main__':
         tmap = np.copy(PATH.map)
         # Get the image from the camera
         frame = CAR.frame.copy()
+        #blur
+        frame = cv.blur(frame, (2,2))
+        frame = cv.resize(frame, (320, 240), interpolation=cv.INTER_AREA)
         frames.append(cv.cvtColor(frame, cv.COLOR_BGR2GRAY))
         # get the frame from a video file
         # ret, video_frame = cap.read()
