@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-from automobile_data_interface import Automobile_Data
+from src.automobile_data_interface import Automobile_Data
 from std_msgs.msg import String
 from utils.msg import IMU,localisation
 from sensor_msgs.msg import Image, Range
@@ -7,7 +7,7 @@ import rospy, json, collections
 from cv_bridge import CvBridge
 import numpy as np
 from time import time
-from helper_functions import *
+from src.helper_functions import *
 
 REALISTIC = False
 

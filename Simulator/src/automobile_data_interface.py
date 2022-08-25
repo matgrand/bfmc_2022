@@ -1,16 +1,10 @@
 #!/usr/bin/python3
-
-from names_and_constants import SIMULATOR_FLAG
-
 # Functional libraries
 from cv2 import mean
 import rospy
 import numpy as np
 import os
-if SIMULATOR_FLAG:
-    from helper_functions import *
-else:
-    from control.helper_functions import *
+from src.helper_functions import *
 import time
 from collections import deque
 

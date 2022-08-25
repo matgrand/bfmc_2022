@@ -1,13 +1,190 @@
 #!/usr/bin/python3
-from re import I
-from time import time, sleep
-import networkx as nx
 import numpy as np
 import cv2 as cv
+from time import time
+import networkx as nx
 from pyclothoids import Clothoid
-from names_and_constants import *
-from helper_functions import *
+from src.helper_functions import *
 
+LANE_KEEPER_PATH = "Simulator/models/lane_keeper_small.onnx"
+DISTANCE_POINT_AHEAD = 0.35
+CAR_LENGTH = 0.4
+
+LANE_KEEPER_AHEAD_PATH = "Simulator/models/lane_keeper_ahead.onnx"
+DISTANCE_POINT_AHEAD_AHEAD = 0.6
+
+class Detection:
+    #init 
+    def __init__(self) -> None:
+        #lane following
+        self.lane_keeper = cv.dnn.readNetFromONNX(LANE_KEEPER_PATH)
+        self.lane_cnt = 0
+        self.avg_lane_detection_time = 0
+
+        #speed challenge
+        self.lane_keeper_ahead = cv.dnn.readNetFromONNX(LANE_KEEPER_AHEAD_PATH)
+        self.lane_ahead_cnt = 0
+        self.avg_lane_ahead_detection_time = 0
+ 
+    def detect_lane(self, frame, show_ROI=True, faster=False):
+        """
+        Estimates:
+        - the lateral error wrt the center of the lane (e2), 
+        - the angular error around the yaw axis wrt a fixed point ahead (e3),
+        - the ditance from the next stop line (1/dist)
+        """
+        start_time = time()
+        IMG_SIZE = (32,32) #match with trainer
+        #convert to gray
+        frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        frame = frame[int(frame.shape[0]/3):,:] #/3
+        #keep the bottom 2/3 of the image
+        #blur
+        # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
+        frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
+        frame = cv.Canny(frame, 100, 200)
+        frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
+        frame = cv.resize(frame, IMG_SIZE)
+
+
+        # # add noise 1.5 ms 
+        # std = 50
+        # # std = np.random.randint(1, std)
+        # noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.subtract(frame, noisem)
+        # noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.add(frame, noisep)
+        
+        
+        images = frame
+
+        if faster:
+            blob = cv.dnn.blobFromImage(images, 1.0, IMG_SIZE, 0, swapRB=True, crop=False) 
+        else:
+            frame_flip = cv.flip(frame, 1) 
+            #stack the 2 images
+            images = np.stack((frame, frame_flip), axis=0) 
+            blob = cv.dnn.blobFromImages(images, 1.0, IMG_SIZE, 0, swapRB=True, crop=False) 
+        # assert blob.shape == (2, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
+        self.lane_keeper.setInput(blob)
+        out = -self.lane_keeper.forward() #### NOTE: MINUS SIGN IF OLD NET
+        output = out[0]
+        output_flipped = out[1] if not faster else None
+
+        e2 = output[0]
+        e3 = output[1]
+
+        if not faster:
+            e2_flipped = output_flipped[0]
+            e3_flipped = output_flipped[1]
+
+            e2 = (e2 - e2_flipped) / 2
+            e3 = (e3 - e3_flipped) / 2
+
+        #calculate estimated of thr point ahead to get visual feedback
+        d = DISTANCE_POINT_AHEAD
+        est_point_ahead = np.array([np.cos(e3)*d+0.2, np.sin(e3)*d])
+        print(f"est_point_ahead: {est_point_ahead}")
+        
+        # print(f"lane_detection: {1000*(time()-start_time):.2f} ms")
+        lane_detection_time = 1000*(time()-start_time)
+        self.avg_lane_detection_time = (self.avg_lane_detection_time*self.lane_cnt + lane_detection_time)/(self.lane_cnt+1)
+        self.lane_cnt += 1
+        if show_ROI:
+            #edge
+            # frame = cv.Canny(frame, 150, 180)
+            cv.imshow('lane_detection', frame)
+            cv.waitKey(1)
+        return e3, est_point_ahead #e2, e3, est_point_ahead
+
+    def detect_lane_ahead(self, frame, show_ROI=True, faster=False):
+        """
+        Estimates:
+        - the lateral error wrt the center of the lane (e2), 
+        - the angular error around the yaw axis wrt a fixed point ahead (e3),
+        - the ditance from the next stop line (1/dist)
+        """
+        start_time = time()
+        IMG_SIZE = (32,32) #match with trainer
+        #convert to gray
+        frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        frame = frame[int(frame.shape[0]/3):,:] #/3
+        #keep the bottom 2/3 of the image
+        #blur
+        # frame = cv.blur(frame, (15,15), 0) #worse than blur after 11,11 #with 15,15 is 1ms
+        frame = cv.resize(frame, (2*IMG_SIZE[0], 2*IMG_SIZE[1]))
+        frame = cv.Canny(frame, 100, 200)
+        frame = cv.blur(frame, (3,3), 0) #worse than blur after 11,11
+        frame = cv.resize(frame, IMG_SIZE)
+
+        # # add noise 1.5 ms 
+        # std = 50
+        # # std = np.random.randint(1, std)
+        # noisem = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.subtract(frame, noisem)
+        # noisep = np.random.randint(0, std, frame.shape, dtype=np.uint8)
+        # frame = cv.add(frame, noisep)
+        
+        images = frame
+
+        if faster:
+            blob = cv.dnn.blobFromImage(images, 1.0, IMG_SIZE, 0, swapRB=True, crop=False) 
+        else:
+            frame_flip = cv.flip(frame, 1) 
+            #stack the 2 images
+            images = np.stack((frame, frame_flip), axis=0) 
+            blob = cv.dnn.blobFromImages(images, 1.0, IMG_SIZE, 0, swapRB=True, crop=False) 
+        # assert blob.shape == (2, 1, IMG_SIZE[1], IMG_SIZE[0]), f"blob shape: {blob.shape}"
+        self.lane_keeper_ahead.setInput(blob)
+        out = self.lane_keeper_ahead.forward() #### NOTE: MINUS SIGN IF OLD NET
+        output = out[0]
+        output_flipped = out[1] if not faster else None
+
+        # e2 = output[0]
+        e3 = output[0]
+
+        if not faster:
+            # e2_flipped = output_flipped[0]
+            e3_flipped = output_flipped[0]
+
+            # e2 = (e2 - e2_flipped) / 2.0
+            e3 = (e3 - e3_flipped) / 2.0
+
+        #calculate estimated of thr point ahead to get visual feedback
+        d = DISTANCE_POINT_AHEAD_AHEAD
+        est_point_ahead = np.array([np.cos(e3)*d, np.sin(e3)*d])
+        
+        # print(f"lane_detection: {1000*(time()-start_time):.2f} ms")
+        lane_detection_time = 1000*(time()-start_time)
+        self.avg_lane_detection_time = (self.avg_lane_detection_time*self.lane_cnt + lane_detection_time)/(self.lane_cnt+1)
+        self.lane_cnt += 1
+        if show_ROI:
+            #edge
+            # frame = cv.Canny(frame, 150, 180)
+            cv.imshow('lane_detection', frame)
+            cv.waitKey(1)
+        return e3, est_point_ahead
+
+
+####################################################################################
+# CONTROLLER
+
+L = 0.4  #length of the car, matched with lane_detection
+class Controller():
+    def __init__(self, k=1.0, noise_std=np.deg2rad(20)):
+        #controller paramters
+        self.k = k
+        self.cnt = 0
+        self.noise = 0.0
+
+    def get_control(self, alpha, dist_point_ahead):
+        d = dist_point_ahead#POINT_AHEAD_CM/100.0 #distance point ahead, matched with lane_detection
+        delta = np.arctan((2*L*np.sin(alpha))/d)
+        return  - self.k * delta
+
+
+####################################################################################
+# PATH PLANNING
 SHOW_IMGS = False
 STEP_LENGTH = 0.01
 
@@ -36,23 +213,7 @@ class PathPlanning():
         self.edges_data = self.G.edges.data()
 
         # define intersection central nodes
-        #self.intersection_cen = ['347', '37', '39', '38', '11', '29', '30', '28', '371', '84', '9', '20', '20', '82', '75', '74', '83', '312', '315', '65', '468', '10', '64', '57', '56', '66', '73', '424', '48', '47', '46']
         self.intersection_cen = ['468','12','37', '39', '38', '11', '29', '30', '28', '84', '9','19', '20', '21', '82', '75', '74', '83', '312', '315', '65', '10', '64', '57', '56','55', '66', '73', '48', '47', '46']
-
-        # define intersecion entrance nodes
-        self.intersection_in = [77,45,54,50,41,79,374,52,43,81,36,4,68,2,34,70,6,32,72,59,15,16,27,14,25,18,61,23,63]
-        self.intersection_in = [str(i) for i in self.intersection_in]
-
-        # define intersecion exit nodes
-        self.intersection_out = [76,78,80,40,42,44,49,104,53,67,69,71,1,3,5,7,8,31,33,35,22,24,26,13,17,58,60,62]
-        self.intersection_out = [str(i) for i in self.intersection_out]
-
-        # define left turns tuples
-        #self.left_turns = [(45,42),(43,40),(54,51),(36,33),(34,31),(6,3),(2,7),(2,8),(4,1),(70,67),(72,69),(27,24),(25,22),(16,13),(61,58),(63,60)]
-
-        #define crosswalks 
-        self.crosswalk = [92,96,276,295,170,266,177,162] #note: parking spots are included too (177,162)
-        self.crosswalk = [str(i) for i in self.crosswalk]
 
         # define roundabout nodes
         self.ra = [267,268,269,270,271,302,303,304,305,306,307]
@@ -63,46 +224,10 @@ class PathPlanning():
 
         self.ra_exit = [272,231,343] # [271,304,306]
         self.ra_exit = [str(i) for i in self.ra_exit]
-
-        self.junctions = [467,314]
-        self.junctions = [str(i) for i in self.junctions]
-
-        self.forbidden_nodes = self.intersection_cen + self.intersection_in + self.intersection_out + self.crosswalk + self.ra + self.ra_enter + self.ra_exit + self.junctions
         
-        self.no_yaw_calibration_nodes = [str(i) for i in [340,341,342,464,465,466,467]]
-
-        # self.near_crosswalk_nodes = [str(i) for i in [67,95,80,92,96,295,296,276,277,]]
-
-        #event points
-        self.event_points = np.load('Simulator/data/event_points.npy') #created in R coord
-        self.event_types = np.load('Simulator/data/event_types.npy')
-        assert len(self.event_points) == len(self.event_types), "event points and types are not the same length"
-        event_type_names = EVENT_TYPES
-        self.event_types = [event_type_names[int(i)] for i in self.event_types]
-
         # import nodes and edges
         self.list_of_nodes = list(self.G.nodes)
         self.list_of_edges = list(self.G.edges)
-
-        #spossible starting positions
-        all_start_nodes = list(self.G.nodes)
-        self.all_start_nodes = []
-        print(all_start_nodes)
-        print(self.forbidden_nodes)
-        for n in all_start_nodes:
-            p = self.get_coord(n)
-            min_dist = np.min(np.linalg.norm(p - self.event_points, axis=1))
-            if n in self.forbidden_nodes or min_dist < 0.2:
-                print(n)
-            else:
-                self.all_start_nodes.append(n)
-        self.all_nodes_coords = np.array([self.get_coord(node) for node in self.all_start_nodes])
-
-        #highway nodes
-        self.highway_nodes = [str(i) for i in [*range(311,338), *range(375,398), *range(348,371), *range(400,424)]]
-
-        #bumpy road nodes
-        self.bumpy_road_nodes = [str(i) for i in [*range(427,466)]]
 
         # import map to plot trajectory and car
         self.map = cv.imread('Simulator/src/models_pkg/track/materials/textures/2021_VerySmall.png')
@@ -297,104 +422,6 @@ class PathPlanning():
         self.path = PathPlanning.interpolate_route(self.route_list)
 
         return self.path
-    
-    def augment_path(self, draw=True):
-        exit_points = self.intersection_out + self.ra_exit
-        exit_points = np.array([self.get_coord(x) for x in exit_points])
-        path_exit_points = []
-        path_exit_point_idx = []
-        #get all the points the path intersects with the exit_points
-        for i in range(len(exit_points)):
-            p = exit_points[i]
-            distances = np.linalg.norm(self.path - p, axis=1)
-            index_min_dist = np.argmin(distances)
-            min_dist = distances[index_min_dist]
-            if min_dist < 0.1:
-                p = self.path[index_min_dist]
-                path_exit_points.append(p)
-                path_exit_point_idx.append(index_min_dist)
-                if draw:
-                    cv.circle(self.map, mR2pix(p), 20, (0,150,0), 5)
-        path_exit_point_idx = np.array(path_exit_point_idx)
-        #reorder points by idx
-        exit_points = []
-        exit_points_idx = []
-
-        if len(path_exit_point_idx) > 0:
-            max_idx = max(path_exit_point_idx)
-            for i in range(len(path_exit_points)):
-                min_idx = np.argmin(path_exit_point_idx)
-                exit_points.append(path_exit_points[min_idx])
-                exit_points_idx.append(path_exit_point_idx[min_idx])
-                path_exit_point_idx[min_idx] = max_idx+1
-
-        #get all the points the path intersects with the stop_line_points
-        path_event_points = []
-        path_event_points_idx = []
-        path_event_types = []
-        for i in range(len(self.event_points)):
-            p = self.event_points[i]
-            distances = np.linalg.norm(self.path - p, axis=1)
-            index_min_dist = np.argmin(distances)
-            min_dist = distances[index_min_dist]
-            if min_dist < 0.05:
-                p = self.path[index_min_dist]
-                path_event_points.append(p)
-                path_event_points_idx.append(index_min_dist)
-                path_event_types.append(self.event_types[i])
-                if draw:
-                    cv.circle(self.map, mR2pix(p), 20, (0,255,0), 5)
-    
-        path_event_points_idx = np.array(path_event_points_idx)
-        #reorder
-        self.path_event_points = []
-        self.path_event_points_distances = []
-        self.path_event_points_idx = []
-        self.path_event_types = []
-        if len(path_event_points) > 0:
-            max_idx = np.max(path_event_points_idx)
-            for i in range(len(path_event_points)):
-                min_idx = np.argmin(path_event_points_idx)
-                self.path_event_points.append(path_event_points[min_idx])
-                self.path_event_points_idx.append(path_event_points_idx[min_idx])
-                self.path_event_points_distances.append(0.01*path_event_points_idx[min_idx])
-                self.path_event_types.append(path_event_types[min_idx])
-                path_event_points_idx[min_idx] = max_idx + 1
-
-        #add path ahead after intersections and roundabouts
-        path_event_path_ahead = []
-        local_idx = 0
-        for i in range(len(path_event_points)):
-            t = self.path_event_types[i]
-            if t.startswith('intersection') or t.startswith('roundabout'):
-                # print(f'local_idx = {local_idx} -- i = {i} -- {self.path_event_points_idx[i]} -- {exit_points_idx[local_idx]}')
-                assert len(self.path) > 0
-                end_idx = min(exit_points_idx[local_idx]+10, len(self.path))
-                path_ahead = self.path[self.path_event_points_idx[i]:end_idx]
-                local_idx += 1
-                path_event_path_ahead.append(path_ahead)
-                if draw:
-                    for p in path_ahead:
-                        cv.circle(self.map, mR2pix(p), 10, (200,150,0), 5)
-            elif t.startswith('junction') or t.startswith('highway'):
-                assert len(self.path) > 0
-                path_ahead = self.path[self.path_event_points_idx[i]:min(self.path_event_points_idx[i]+140, len(self.path))]
-                path_event_path_ahead.append(path_ahead)
-                if draw:
-                    for p in path_ahead:
-                        cv.circle(self.map, mR2pix(p), 10, (200,150,0), 5)
-        
-            else:
-                path_event_path_ahead.append(None)
-
-        # print(f'local_idx: {local_idx}')
-        print("path_event_points_idx: ", self.path_event_points_distances)
-        print("path_event_points: ", self.path_event_points)
-        print("path_event_types: ", self.path_event_types)
-        # sleep(5.0)
-
-        events = list(zip(self.path_event_types, self.path_event_points_distances, self.path_event_points, path_event_path_ahead))
-        return events
 
     def generate_path_passing_through(self, list_of_nodes):
         """
@@ -415,10 +442,6 @@ class PathPlanning():
             #we need to add the local path to the complete path
             complete_path = np.concatenate((complete_path, self.path))
         self.path = complete_path
-
-    def get_path_ahead(self, index, look_ahead=100):
-        assert index < len(self.path) and index >= 0
-        return np.array(self.path[index:min(index + look_ahead, len(self.path)-1), :])
 
     def get_reference(self, car, dist_point_ahead, path_ahead_distances): 
         '''
@@ -469,17 +492,6 @@ class PathPlanning():
         seq_relative_angles = np.arctan2(diffs[:,1], diffs[:,0])
         return heading_error, point_ahead, seq_heading_errors, seq_relative_angles, path_ahead, finished
 
-
-    def get_closest_stop_line(self, nx, ny, draw=False):
-        """
-        Returns the closest stop point to the given point
-        """
-        index_closest = np.argmin(np.hypot(nx - self.stop_points[:,0], ny - self.stop_points[:,1]))
-        print(f'Closest stop point is {self.stop_points[index_closest, :]}, Point is {nx, ny}')
-        #draw a circle around the closest stop point
-        if draw: cv.circle(self.map, mR2pix(self.stop_points[index_closest]), 8, (0, 255, 0), 4)
-        return self.stop_points[index_closest, 0], self.stop_points[index_closest, 1]
-
     def print_path_info(self):
         prev_state = None
         prev_next_state = None
@@ -508,13 +520,6 @@ class PathPlanning():
         p = np.array([x,y])
         p = mL2mR(p)
         return p
-    
-    def get_path(self):
-        return self.path
-    
-    def print_navigation_instructions(self):
-        for i,instruction in enumerate(self.navigator):
-            print(i+1,") ",instruction)
     
     def compute_path(xi, yi, thi, xf, yf, thf, step_length):
         clothoid_path = Clothoid.G1Hermite(xi, yi, thi, xf, yf, thf)
@@ -583,22 +588,3 @@ class PathPlanning():
             cv.imshow('2D-MAP', self.map)
             cv.waitKey(1)
 
-    def get_closest_node(self, p):
-        '''
-        Returns the closes node to the given point np.array([x,y])
-        '''
-        diff = self.all_nodes_coords - p
-        dist = np.linalg.norm(diff, axis=1)
-        index_closest = np.argmin(dist)
-        return self.all_start_nodes[index_closest], dist[index_closest]
-
-    def is_dotted(self, n):
-        """
-        Check if a node is close to a dotted line
-        """
-        #get edge of the node going out
-        edges = self.G.out_edges(n)
-        for e in edges:
-            if not self.G.get_edge_data(e[0],e[1])['dotted']:
-                return False
-        return True

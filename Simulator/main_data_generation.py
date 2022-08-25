@@ -6,11 +6,9 @@ import matplotlib.pyplot as plt
 from collections import deque
 from time import sleep, time
 from shutil import get_terminal_size
-from automobile_data_simulator import AutomobileDataSimulator
-from helper_functions import *
-from PathPlanning import PathPlanning
-from data_generation_controller import Controller
-from detection import Detection
+from src.automobile_data_simulator import AutomobileDataSimulator
+from src.helper_functions import *
+from path_nn_controller import PathPlanning, Controller, Detection
 
 EVAL_MODE = True
 # EVAL_MODE = False
@@ -23,13 +21,6 @@ FPS_TARGET = 30.0
 
 ## FOLDERS
 FOLDER = 'Simulator/training/' 
-# FOLDER = 'Simulator/test/'
-if FOLDER == 'training_imgs':
-    print('WARNING, WE ARE ABOUT TO OVERWRITE THE TRAINING DATA! ARE U SURE TO CONTINUE?')
-    sleep(5)
-    print('Starting in 1 sec...')
-    sleep(0.5)
-    sleep(0.1)
 
 #############################################################################################################################################################
 ## CAR
@@ -134,7 +125,6 @@ if __name__ == '__main__':
         frame = cv.blur(frame, (2,2))
         frame = cv.resize(frame, (320, 240), interpolation=cv.INTER_AREA)
         frames.append(cv.cvtColor(frame, cv.COLOR_BGR2GRAY))
-
 
         sleep(VISION_DELAY)
 
