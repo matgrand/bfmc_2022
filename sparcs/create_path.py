@@ -57,8 +57,6 @@ if __name__ == '__main__':
     diff = np.linalg.norm(g[1:]-g[:-1], axis=1)
     print(f'diff = {diff}')
 
-    
-
     #plots
     g = g.T
     plt.plot(g[0],g[1])
@@ -66,7 +64,6 @@ if __name__ == '__main__':
     plt.axis('equal')
     # plt.ylim([-0.01,0.02])
     plt.show()
-
 
     #save the path
     np.save('sparcs_path.npy',g)

@@ -158,12 +158,13 @@ if __name__ == '__main__':
         #############################################################################################################################################################
         ## CONTROL
         steer_angle = CONTROLLER.get_control(heading_error, DISTANCE_AHEAD_PURE_PURSUIT)
+        steer_angle = steer_angle + STEER_NOISE.get_noise()
 
         #############################################################################################################################################################
         ## ACTUATION
         sleep(ACTUATION_DELAY)
         # CAR.drive(speed=speed_ref, angle=np.rad2deg(steer_angle))
-        CAR.drive_angle(angle=np.rad2deg(steer_angle + STEER_NOISE.get_noise()))
+        CAR.drive_angle(angle=np.rad2deg(steer_angle))
         CAR.drive_speed(speed=DESIRED_SPEED + SPEED_NOISE.get_noise())
 
         #############################################################################################################################################################
