@@ -17,9 +17,12 @@ X0 = -1.3425
 Y0 = -2.35
 
 # general settings
-DIST_AHEAD = 0.35 #pure pursuit controller distance ahead
+DIST_AHEAD = 0.4 #pure pursuit controller distance ahead
 REVERSED_PATH = False #if True the path is Anti-clockwise
 TARGET_FPS = 30.0
+
+LAPS = 3
+LAP_Y_TRSH = 2.54
 
 ## CONTROLLER
 class Controller():
@@ -34,12 +37,12 @@ class Controller():
         return  - self.k * delta
 K = 1.0 #1.0 yaw error gain .8 with ff 
 CONTROLLER = Controller(K)
-STEER_NOISE_STD = np.deg2rad(10.0) # [rad] noise in the steering angle
+STEER_NOISE_STD = np.deg2rad(15.0) # [rad] noise in the steering angle
 STEER_FRAME_CHAMGE_MEAN = 10 #avg frames after which the steering noise is changed
 STEER_FRAME_CHAMGE_STD = 8 #frames max "deviation"
 STEER_NOISE = MyRandomGenerator(0.0, STEER_NOISE_STD, STEER_FRAME_CHAMGE_MEAN, STEER_FRAME_CHAMGE_STD)
-DESIRED_SPEED = .35#0.15# [m/s]
-SPEED_NOISE_STD = 0.2  #[m/s] noise in the speed
+DESIRED_SPEED = .5#0.15# [m/s]
+SPEED_NOISE_STD = 0.3  #[m/s] noise in the speed
 SPEED_FRAME_CHAMGE_MEAN = 30 #avg frames after which the speed noise is changed
 SPEED_FRAME_CHAMGE_STD = 20 #frames max "deviation"
 SPEED_NOISE = MyRandomGenerator(-SPEED_NOISE_STD, SPEED_NOISE_STD, SPEED_FRAME_CHAMGE_MEAN, SPEED_FRAME_CHAMGE_STD, np.random.uniform)
@@ -62,17 +65,18 @@ if __name__ == '__main__':
         exit()
     signal.signal(signal.SIGINT, handler)
 
+    lap = 0
+    prev_y = VI.y
+
     while not rospy.is_shutdown():
         loop_start_time = time()
 
         #get heading error
-        print(f'x: {VI.x} \ny: {VI.y} \nyaw: {np.rad2deg(VI.yaw)}\n')
         p = np.array([VI.x,VI.y]).T #current position of the car
         min_index = np.argmin(np.linalg.norm( path-p,axis=1)) #index of clostest point on path
         pa =  path[(min_index + int(100*DIST_AHEAD)) % len( path)] #point ahead
         yaw_ref = np.arctan2(pa[1]-p[1],pa[0]-p[0]) #yaw reference in world frame
         he = diff_angle(yaw_ref, VI.yaw) #heading error
-        print(f'x_a: {pa[0]} \ny_a: {pa[1]} \nhe: {np.rad2deg(he)}\n')
 
         #controller
         steer_angle = CONTROLLER.get_control(he, DIST_AHEAD) #get steering angle
@@ -80,9 +84,24 @@ if __name__ == '__main__':
         #noise
         steer_angle = steer_angle + STEER_NOISE.get_noise() #add noise to steer angle
         speed = DESIRED_SPEED + SPEED_NOISE.get_noise() #add noise to speed
+        print(f'x: {VI.x} \ny: {VI.y} \nyaw: {np.rad2deg(VI.yaw)}\nhe: {np.rad2deg(he)}\nlap: {lap+1}/{LAPS}\n')
 
         #actuation
         VI.drive(speed, steer_angle)
+
+        #laps
+        curr_y = p[1]
+        if (prev_y > LAP_Y_TRSH and curr_y < LAP_Y_TRSH and not REVERSED_PATH) or (prev_y < LAP_Y_TRSH and curr_y > LAP_Y_TRSH and REVERSED_PATH): #count lap
+            lap+=1
+            if lap>=LAPS:
+                #stop the car
+                print('Stopping')
+                VI.stop()
+                sleep(.3)
+                exit()
+
+
+        prev_y = p[1]
 
         # wait for next loop, to get the desired fps
         loop_time = time() - loop_start_time
