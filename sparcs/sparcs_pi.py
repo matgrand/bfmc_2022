@@ -9,6 +9,9 @@ from vicon import Vicon
 
 TARGET_FPS = 30.0
 
+imgs = []
+locs = []
+
 if __name__ == '__main__':
 
     #initialize ros node
@@ -21,19 +24,19 @@ if __name__ == '__main__':
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, 240)
     cap.set(cv.CAP_PROP_FPS, 30)
 
-    imgs = []
-    locs = []
-
     def handler(signum, frame):
         print('Stop request detected...')
         VI.stop()
         sleep(.3)
         print('Saving images and locations...')
+        global imgs, locs
         assert len(imgs) == len(locs), f'Number of images and locations do not match ({len(imgs)} != {len(locs)})'
         imgs = np.array(imgs)
         np.save('imgs.npy', imgs)
         locs = np.array(locs)
         np.save('locs.npy', locs)
+        sleep(.3)
+        print('Saved')
         exit()
     signal.signal(signal.SIGINT, handler)
 
@@ -45,7 +48,7 @@ if __name__ == '__main__':
         loop_start_time = time()
 
         #get heading error
-        locs.append(np.array[VI.x,VI.y,VI.yaw])
+        locs.append(np.array([VI.x,VI.y,VI.yaw]))
 
         #camera
         ret, img = cap.read()

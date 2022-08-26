@@ -17,9 +17,9 @@ X0 = -1.3425
 Y0 = -2.35
 
 # general settings
-DIST_AHEAD = 0.6 #pure pursuit controller distance ahead
-REVERSED_PATH = True #if True the path is Anti-clockwise
-TARGET_FPS = 5.0
+DIST_AHEAD = 0.35 #pure pursuit controller distance ahead
+REVERSED_PATH = False #if True the path is Anti-clockwise
+TARGET_FPS = 30.0
 
 ## CONTROLLER
 class Controller():
@@ -32,17 +32,19 @@ class Controller():
         d = dist_point_ahead#POINT_AHEAD_CM/100.0 #distance point ahead, matched with lane_detection
         delta = np.arctan((2*0.26*np.sin(alpha))/d)
         return  - self.k * delta
-K = 1.2 #1.0 yaw error gain .8 with ff 
+K = 1.0 #1.0 yaw error gain .8 with ff 
 CONTROLLER = Controller(K)
-STEER_NOISE_STD = np.deg2rad(18.0) # [rad] noise in the steering angle
+STEER_NOISE_STD = np.deg2rad(10.0) # [rad] noise in the steering angle
 STEER_FRAME_CHAMGE_MEAN = 10 #avg frames after which the steering noise is changed
 STEER_FRAME_CHAMGE_STD = 8 #frames max "deviation"
 STEER_NOISE = MyRandomGenerator(0.0, STEER_NOISE_STD, STEER_FRAME_CHAMGE_MEAN, STEER_FRAME_CHAMGE_STD)
-DESIRED_SPEED = .6#0.15# [m/s]
-SPEED_NOISE_STD = 0.5  #[m/s] noise in the speed
+DESIRED_SPEED = .35#0.15# [m/s]
+SPEED_NOISE_STD = 0.2  #[m/s] noise in the speed
 SPEED_FRAME_CHAMGE_MEAN = 30 #avg frames after which the speed noise is changed
 SPEED_FRAME_CHAMGE_STD = 20 #frames max "deviation"
 SPEED_NOISE = MyRandomGenerator(-SPEED_NOISE_STD, SPEED_NOISE_STD, SPEED_FRAME_CHAMGE_MEAN, SPEED_FRAME_CHAMGE_STD, np.random.uniform)
+
+VI = Vicon() #intialize vicon class, with publishers and subscribers
 
 if __name__ == '__main__':
     
@@ -52,7 +54,6 @@ if __name__ == '__main__':
     print(f'path: {path.shape}')
 
     rospy.init_node('pc_controller', anonymous=False) #initialize ros node
-    VI = Vicon() #intialize vicon class, with publishers and subscribers
 
     def handler(signum, frame):
         print("Exiting ...")

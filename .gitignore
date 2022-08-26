@@ -17,3 +17,7 @@ catkin_ws/src/midterm/__pycache__/*
 Simulator/training_imgs_8.zip
 test_imgs/*
 Simulator/training_imgs.npy
+sparcs/build/*
+sparcs/devel/*
+sparcs/__pycache__/*
+sparcs/saved_tests/*
