@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import rospy, os, signal
+import rospy
 import numpy as np
 import cv2 as cv
 from time import sleep, time
@@ -9,7 +9,6 @@ from vicon import Vicon
 
 TARGET_FPS = 30.0
 REVERSED_PATH = False
-
 
 LAPS = 3
 LAP_Y_TRSH = 2.54
@@ -28,21 +27,6 @@ if __name__ == '__main__':
     cap.set(cv.CAP_PROP_FRAME_WIDTH, 320) #320
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, 240) #240
     cap.set(cv.CAP_PROP_FPS, 30)
-
-    def handler(signum, frame):
-        print('Stop request detected...')
-        # VI.stop()
-        # sleep(.3)
-        # print('Saving images and locations...')
-        # global imgs, locs
-        # assert len(imgs) == len(locs), f'Number of images and locations do not match ({len(imgs)} != {len(locs)})'
-        # imgs = np.array(imgs)
-        # locs = np.array(locs)
-        # np.savez_compressed('sparcs_log.npz', imgs=imgs, locs=locs)
-        # sleep(.3)
-        # print('Saved')
-        exit()
-    signal.signal(signal.SIGINT, handler)
 
     lap = 0
     prev_y = VI.y

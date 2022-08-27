@@ -335,7 +335,15 @@ def get_yaw_closest_axis(angle):
     if int_angle == -2: int_angle = 2
     return int_angle*np.pi/2
 
-
+def get_heading_error(x,y,yaw,path,dist_ahead):
+    #check path shape
+    assert path.shape[1] == 2, f'path.shape: {path.shape}'
+    p = np.array([x,y]).T #current position of the car
+    min_index = np.argmin(np.linalg.norm( path-p,axis=1)) #index of clostest point on path
+    pa =  path[(min_index + int(100*dist_ahead)) % len( path)] #point ahead
+    yaw_ref = np.arctan2(pa[1]-p[1],pa[0]-p[0]) #yaw reference in world frame
+    he = diff_angle(yaw_ref, yaw) #heading error
+    return he
 
 
 
