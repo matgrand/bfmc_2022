@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from collections import deque
 from time import sleep, time
 from shutil import get_terminal_size
-from src.automobile_data_simulator import AutomobileDataSimulator
-from src.helper_functions import *
+from Simulator.src.automobile_data_simulator import AutomobileDataSimulator
+from Simulator.src.helper_functions import *
 from path_nn_controller import PathPlanning, Controller, Detection
 
 EVAL_MODE = True
@@ -141,7 +141,7 @@ if __name__ == '__main__':
         
         #############################################################################################################################################################
         ## NEURAL NETWORK ESTIMATE
-        nn_estimate = DETECTION.detect_lane_ahead(frame)
+        nn_estimate = DETECTION.estimate_he(frame)
         # nn_estimate = DETECTION.detect_lane(frame)
         est_heading_error, est_point_ahead = nn_estimate
 

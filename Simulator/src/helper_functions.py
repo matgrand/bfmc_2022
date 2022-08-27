@@ -335,15 +335,38 @@ def get_yaw_closest_axis(angle):
     if int_angle == -2: int_angle = 2
     return int_angle*np.pi/2
 
-def get_heading_error(x,y,yaw,path,dist_ahead):
+def get_heading_error(x,y,yaw,path,dist_ahead, tolerance=0.01):
     #check path shape
     assert path.shape[1] == 2, f'path.shape: {path.shape}'
     p = np.array([x,y]).T #current position of the car
     min_index = np.argmin(np.linalg.norm( path-p,axis=1)) #index of clostest point on path
-    pa =  path[(min_index + int(100*dist_ahead)) % len( path)] #point ahead
+
+    #roll path
+    path = np.roll(path, -min_index, axis=0)
+    
+    p_min = path[0]
+    #rotate p_min to car frame
+    p_min_car = np.array([p_min[0]-x, p_min[1]-y])
+    p_min_car = p_min_car @ np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
+    dist = p_min_car[0] #signed distance to closest point on path, approx
+
+    #calculate point ahead
+    path_ahead = path[0:int(path.shape[0]*0.5)]
+    dists = np.abs(np.linalg.norm(path_ahead-p,axis=1) - dist_ahead) #distances to all points on path
+    closest = np.argmin(dists) #index of closest point on path
+    min_dist = dists[closest] #distance to closest point on path
+    if min_dist > tolerance: # we are too far from the path
+        pa = path_ahead[closest] #point ahead = closest point on path
+        print(f'we are too far from the path, min_dist: {min_dist}')
+    else:
+        pa = path_ahead[np.max(np.where(dists < tolerance))] 
+
+    # pa =  path[(min_index + int(100*dist_ahead)) % len( path)] #point ahead
+
+    #calculate heading error
     yaw_ref = np.arctan2(pa[1]-p[1],pa[0]-p[0]) #yaw reference in world frame
     he = diff_angle(yaw_ref, yaw) #heading error
-    return he
+    return he, pa, dist
 
 
 

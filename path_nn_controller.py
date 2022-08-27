@@ -4,7 +4,7 @@ import cv2 as cv
 from time import time
 import networkx as nx
 from pyclothoids import Clothoid
-from src.helper_functions import *
+from Simulator.src.helper_functions import *
 
 CAR_LENGTH = 0.4
 
@@ -62,7 +62,7 @@ class Detection:
         #calculate estimated of thr point ahead to get visual feedback
         d = distance_point_ahead
         est_point_ahead = np.array([np.cos(e3)*d+0.2, np.sin(e3)*d])
-        print(f"est_point_ahead: {est_point_ahead}")
+        # print(f"est_point_ahead: {est_point_ahead}")
         
         # print(f"lane_detection: {1000*(time()-start_time):.2f} ms")
         lane_detection_time = 1000*(time()-start_time)

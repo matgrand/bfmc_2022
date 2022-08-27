@@ -8,9 +8,10 @@ R = 1.03#-0.37/2     # big radius
 r = 0.65#-0.37/2    # small radius
 L = 3.0    # horizontal distance
 
-d = 0.01    # distance between points
-
+d = 0.0001    # distance between points
 m = 0.25     # border from the edge of the map
+
+NAME = 'sparcs_path_precise.npy'
 
 assert r < R
 assert (R + L + r) <= 6.0 - 2*m 
@@ -63,10 +64,10 @@ if __name__ == '__main__':
     #plots
     g = g.T
     plt.plot(g[0],g[1])
-    g_ext = np.load('sparcs_path_ext.npy')
-    g_int = np.load('sparcs_path_int.npy')
-    plt.plot(g_ext[0],g_ext[1])
-    plt.plot(g_int[0],g_int[1])
+    # g_ext = np.load('sparcs_path_ext.npy')
+    # g_int = np.load('sparcs_path_int.npy')
+    # plt.plot(g_ext[0],g_ext[1])
+    # plt.plot(g_int[0],g_int[1])
     
     # plt.plot(diff)
     plt.axis('equal')
@@ -75,7 +76,7 @@ if __name__ == '__main__':
     plt.show()
 
     #save the path
-    np.save('sparcs_path.npy',g)
+    np.save(NAME,g)
     print('path saved... exiting.')
 
 
