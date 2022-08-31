@@ -184,10 +184,10 @@ if __name__ == '__main__':
         draw_car(tmap, CAR.x_true, CAR.y_true, CAR.yaw, color=(0, 255, 0))
 
         #project PATH ahead
-        frame, proj = project_onto_frame(frame, CAR, path_ahead, color=(0,0,100))
+        frame, proj = project_onto_frame2(frame, path_ahead, x=CAR.x_true, y=CAR.y_true, yaw=CAR.yaw,  color=(10,10,100))
 
         #project point ahead
-        frame, proj = project_onto_frame(frame, CAR, point_ahead, False, color=(200, 200, 100))
+        frame, proj = project_onto_frame2(frame, point_ahead, CAR.x_true, CAR.y_true, CAR.yaw, color=(200, 200, 100))
         frame, est_proj = project_onto_frame(frame, CAR, est_point_ahead, False, color=(200, 100, 200))
         if proj is not None:
             #convert proj to cv2 point

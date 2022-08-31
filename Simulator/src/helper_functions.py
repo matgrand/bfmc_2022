@@ -161,6 +161,80 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255),
         return frame, proj_points[0]
     return frame, proj_points
 
+def project_onto_frame2(frame, points, x,y,yaw, color=(0,255,255), thickness=2, CAM_Z=0.2, CAM_FOV=1.085594795, CAM_PITCH=np.deg2rad(20), CAM_ROLL=np.deg2rad(3)):
+    #check if its a single point
+    single_dim = False
+    if points.ndim == 1:
+        points = points[np.newaxis,:]
+        single_dim = True
+    num_points = points.shape[0]
+    #check shape
+    if points[0].shape == (2,):
+        #add 0 Z component
+        points = np.concatenate((points, -CAM_Z*np.ones((num_points,1))), axis=1)
+
+    points_cf = to_car_frame2(points, x,y,yaw)
+
+    angles = np.arctan2(points_cf[:,1], points_cf[:,0])
+    #calculate angle differences
+    diff_angles = diff_angle(angles, 0.0) #car.yaw
+    #get points in front of the car
+    rel_pos_points = []
+    for i, point in enumerate(points):
+        if np.abs(diff_angles[i]) < CAM_FOV/2:
+            # front_points.append(point)
+            rel_pos_points.append(points_cf[i])
+
+    #convert to numpy
+    rel_pos_points = np.array(rel_pos_points)
+
+    if len(rel_pos_points) == 0:
+        # return frame, proj
+        return frame, None
+
+    #add diffrence com to back wheels
+    rel_pos_points = rel_pos_points - np.array([0.18, 0.0, 0.0])
+
+    #rotate the points around the relative y axis, pitch
+    beta = -CAM_PITCH
+    rot_matrix = np.array([[np.cos(beta), 0, np.sin(beta)],
+                            [0, 1, 0],
+                            [-np.sin(beta), 0, np.cos(beta)]])
+    
+    rotated_points = rel_pos_points @ rot_matrix.T
+
+    #rotate the points around the relative x axis, roll
+    alpha = -CAM_ROLL
+    rot_matrix = np.array([[1, 0, 0], 
+                            [0, np.cos(alpha), -np.sin(alpha)],
+                            [0, np.sin(alpha), np.cos(alpha)]])
+    rotated_points = rotated_points @ rot_matrix.T
+
+    #project the points onto the camera frame
+    proj_points = np.array([[-p[1]/p[0], -p[2]/p[0]] for p in rotated_points])
+    #convert to pixel coordinates
+    # proj_points = 490*proj_points + np.array([320, 240]) #640x480
+    proj_points = 240*proj_points + np.array([320//2, 240//2]) #320x240
+    # draw the points
+    for i in range(proj_points.shape[0]):
+        p = proj_points[i]
+        assert p.shape == (2,), f"projection point has wrong shape: {p.shape}"
+        # print(f'p = {p}')
+        p1 = (int(round(p[0])), int(round(p[1])))
+        # print(f'p = {p}')
+        #check if the point is in the frame
+        if p1[0] >= 0 and p1[0] < 320 and p1[1] >= 0 and p1[1] < 240:
+            try:
+                cv.circle(frame, p1, thickness, color, -1)
+            except Exception as e:
+                print(f'Error drawing point {p}')
+                print(p1)
+                print(e)
+
+    if single_dim:
+        return frame, proj_points[0]
+    return frame, proj_points
+
 def to_car_frame(points, car, return_size=3):
     #check if its a single point
     single_dim = False
@@ -177,6 +251,31 @@ def to_car_frame(points, car, return_size=3):
         assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
     elif points.shape[1] == 2:
         points_cf = points - np.array([car.x_true, car.y_true]) 
+        rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma)],[np.sin(gamma), np.cos(gamma)]])
+        out = points_cf @ rot_matrix
+        if return_size == 3:
+            out = np.concatenate((out, np.zeros((out.shape[0],1))), axis=1)
+        assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
+    else: raise ValueError("points must be (2,), or (3,)")
+    if single_dim: return out[0]
+    else: return out
+
+def to_car_frame2(points, x,y,yaw, return_size=3):
+    #check if its a single point
+    single_dim = False
+    if points.ndim == 1:
+        points = points[np.newaxis,:]
+        single_dim = True
+    gamma = yaw
+    if points.shape[1] == 3:
+        points_cf = points - np.array([x, y, 0])
+        rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma), 0],[np.sin(gamma), np.cos(gamma), 0 ], [0,0,1]])
+        out = points_cf @ rot_matrix
+        if return_size == 2:
+            out = out[:,:2]
+        assert out.shape[1] == return_size, "wrong size, got {}".format(out.shape[1])
+    elif points.shape[1] == 2:
+        points_cf = points - np.array([x, y])
         rot_matrix = np.array([[np.cos(gamma), -np.sin(gamma)],[np.sin(gamma), np.cos(gamma)]])
         out = points_cf @ rot_matrix
         if return_size == 3:
