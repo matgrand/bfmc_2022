@@ -14,8 +14,11 @@ const_verysmall = 3541/15.0
 M_R2L = np.array([[ 1.0, 0.0], [ 0.0, -1.0]])
 T_R2L = np.array([0, 15.0])
 
-def mL2pix(ml): #meters to pixel (left frame)
-    return np.int32(ml*const_verysmall)
+def mL2pix(ml, use_medium=False): #meters to pixel (left frame)
+    if not use_medium:
+        return np.int32(ml*const_verysmall)
+    else:
+        return np.int32(ml*4*const_verysmall)
 
 def pix2mL(pix): #pixel to meters (left frame)
     return pix/const_verysmall
@@ -26,9 +29,9 @@ def mL2mR(m): # meters left frame to meters right frame
 def mR2mL(m): #meters right frame to meters left frame
     return (m - T_R2L) @ M_R2L 
 
-def mR2pix(mr): # meters to pixel (right frame), return directly a cv point
+def mR2pix(mr, use_medium=False): # meters to pixel (right frame), return directly a cv point
     if mr.size == 2:
-        pix =  mL2pix(mR2mL(mr))
+        pix =  mL2pix(mR2mL(mr), use_medium)
         return (pix[0], pix[1])
     else:
         return mL2pix(mR2mL(mr))

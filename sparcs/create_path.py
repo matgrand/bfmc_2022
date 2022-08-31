@@ -4,8 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 PI = np.pi
 
-R = 1.03#-0.37/2     # big radius
-r = 0.65#-0.37/2    # small radius
+R = 1.03#+0.37/2     # big radius
+r = 0.65#+0.37/2    # small radius
 L = 3.0    # horizontal distance
 
 d = 0.0001    # distance between points
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     g = np.hstack((g12,g23,g34,g45,g56,g61)).T
     print(f'g shape = {g.shape}') 
 
-    # g = g + np.array([0.0,0.37*0.5])
+    # g = g - np.array([0.0,0.37*0.5])
 
     diff = np.linalg.norm(g[1:]-g[:-1], axis=1)
     print(f'diff = {diff}')
@@ -64,8 +64,8 @@ if __name__ == '__main__':
     #plots
     g = g.T
     plt.plot(g[0],g[1])
-    # g_ext = np.load('sparcs_path_ext.npy')
-    # g_int = np.load('sparcs_path_int.npy')
+    # g_ext = np.load('sparcs_path_ext_precise.npy')
+    # g_int = np.load('sparcs_path_int_precise.npy')
     # plt.plot(g_ext[0],g_ext[1])
     # plt.plot(g_int[0],g_int[1])
     
