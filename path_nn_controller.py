@@ -50,13 +50,10 @@ class Detection:
         output = out[0]
         output_flipped = out[1] 
 
-        e2 = output[0]
-        e3 = output[1]
+        e3 = - output[0]
 
-        e2_flipped = output_flipped[0]
-        e3_flipped = output_flipped[1]
+        e3_flipped = - output_flipped[0]
 
-        e2 = (e2 - e2_flipped) / 2
         e3 = (e3 - e3_flipped) / 2
 
         #calculate estimated of thr point ahead to get visual feedback
