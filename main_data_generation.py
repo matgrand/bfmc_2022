@@ -11,7 +11,7 @@ from Simulator.src.helper_functions import *
 from path_nn_controller import PathPlanning, Controller, Detection
 
 EVAL_MODE = True
-# EVAL_MODE = False
+EVAL_MODE = False
 
 SHOW_PLOTS = EVAL_MODE #and False
 
@@ -37,7 +37,7 @@ PATH_NODES = [86, 116,115,116,453,466,465,466,465,466,465,466,465,466,465,466,46
                 87,428,273,136,321,262,105,350,94,168,136,321,262,373,451,265,145,160,353,94,127,91,99,
                 97,87,153,275,132,110,320,239,298,355,105,113,145,110,115,297,355]
 # PATH_NODES = [86,116,115,116,115,116,115,116,115,110,428,466,249] #,273,136,321,262]
-PATH_NODES = [86,427,257,110,348,85]
+# PATH_NODES = [86,427,257,110,348,85]
 # PATH_NODES = [86,127]
 PATH = PathPlanning() 
 #generate path
@@ -60,8 +60,8 @@ STEER_NOISE_STD = np.deg2rad(18.0) if not EVAL_MODE else np.deg2rad(5.0) # [rad]
 STEER_FRAME_CHAMGE_MEAN = 10 #avg frames after which the steering noise is changed
 STEER_FRAME_CHAMGE_STD = 8 #frames max "deviation"
 STEER_NOISE = MyRandomGenerator(0.0, STEER_NOISE_STD, STEER_FRAME_CHAMGE_MEAN, STEER_FRAME_CHAMGE_STD)
-DESIRED_SPEED = .6#0.15# [m/s]
-SPEED_NOISE_STD = 0.5 if not EVAL_MODE else 0.0 #[m/s] noise in the speed
+DESIRED_SPEED = .4#0.15# [m/s]
+SPEED_NOISE_STD = 0.3 if not EVAL_MODE else 0.0 #[m/s] noise in the speed
 SPEED_FRAME_CHAMGE_MEAN = 30 #avg frames after which the speed noise is changed
 SPEED_FRAME_CHAMGE_STD = 20 #frames max "deviation"
 SPEED_NOISE = MyRandomGenerator(-SPEED_NOISE_STD, SPEED_NOISE_STD, SPEED_FRAME_CHAMGE_MEAN, SPEED_FRAME_CHAMGE_STD, np.random.uniform)
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         steer_angle = CONTROLLER.get_control(heading_error, DISTANCE_AHEAD_PURE_PURSUIT)
         steer_angle = steer_angle + STEER_NOISE.get_noise()
 
-        steer_angle = CONTROLLER.get_control(est_heading_error, DISTANCE_AHEAD_PURE_PURSUIT) ## REMOVE!  REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE!
+        # steer_angle = CONTROLLER.get_control(est_heading_error, DISTANCE_AHEAD_PURE_PURSUIT) ## REMOVE!  REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE!
 
         #############################################################################################################################################################
         ## ACTUATION
@@ -189,7 +189,7 @@ if __name__ == '__main__':
         frame, proj = project_onto_frame2(frame, path_ahead, x=CAR.x_true, y=CAR.y_true, yaw=CAR.yaw,  color=(10,10,100))
 
         #project point ahead
-        frame, proj = project_onto_frame2(frame, point_ahead, CAR.x_true, CAR.y_true, CAR.yaw, color=(200, 200, 100))
+        frame, proj = project_onto_frame(frame, CAR, point_ahead, False, color=(200, 200, 100))
         frame, est_proj = project_onto_frame(frame, CAR, est_point_ahead, False, color=(200, 100, 200))
         if proj is not None:
             #convert proj to cv2 point

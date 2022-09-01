@@ -2,19 +2,18 @@
  
   <launch>
  
-<?ignore
     <node
           name  = "automobile"
     	    pkg   = "gazebo_ros"
     	    type  = "spawn_model"
 	    args  = "-file $(find models_pkg)/rcCar_assembly/model.sdf -model automobile -sdf -x 0.82 -y -14.91 -z 0.032939 -Y 1.570796"/>
-?>
  
-
+<?ignore
 <node
           name  = "automobile"
     	    pkg   = "gazebo_ros"
     	    type  = "spawn_model"
 	    args  = "-file $(find models_pkg)/rcCar_assembly/model.sdf -model automobile -sdf -x 5.03 -y -9.25 -z 0.032939 -Y 4.712389"/>
+	    ?>
 	   
   </launch>
