@@ -137,7 +137,8 @@ class PathPlanning():
         self.list_of_edges = list(self.G.edges)
 
         # import map to plot trajectory and car
-        self.map = cv.imread('Simulator/src/models_pkg/track/materials/textures/2021_VerySmall.png')
+        # self.map = cv.imread('Simulator/src/models_pkg/track/materials/textures/2021_VerySmall.png')
+        self.map = cv.imread('Simulator/src/models_pkg/track/materials/textures/test_VerySmall.png')
 
     def roundabout_navigation(self, prev_node, curr_node, next_node):
         while next_node in self.ra:
