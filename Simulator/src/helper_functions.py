@@ -39,6 +39,25 @@ def mR2pix(mr, use_medium=False): # meters to pixel (right frame), return direct
 def pix2mR(pix): #pixel to meters (right frame)
     return mL2mR(pix2mL(pix))
 
+def com2rear(x,y,yaw):
+    #x,y,yaw in meters and radians
+    #distance from center of mass to rear axle
+    l = 0.13 #meters
+    #compute rear axle position
+    x_r = x - l*np.cos(yaw)
+    y_r = y - l*np.sin(yaw)
+    return x_r, y_r, yaw
+
+def rear2com(x,y,yaw):
+    #x,y,yaw in meters and radians
+    #distance from center of mass to rear axle
+    l = 0.13 #meters
+    #compute rear axle position
+    x_c = x + l*np.cos(yaw)
+    y_c = y + l*np.sin(yaw)
+    return x_c, y_c, yaw
+
+
 #function to draw the car on the map
 def draw_car(map, x, y, angle, color=(0, 255, 0),  draw_body=True):
     car_length = 0.45-0.22 #m
