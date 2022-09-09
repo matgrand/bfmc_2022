@@ -215,7 +215,7 @@ def project_onto_frame2(frame, points, x,y,yaw, color=(0,255,255), thickness=2, 
         return frame, None
 
     #add diffrence com to back wheels
-    rel_pos_points = rel_pos_points - np.array([0.18, 0.0, 0.0])
+    rel_pos_points = rel_pos_points - np.array([0.20, 0.0, 0.0])
 
     #rotate the points around the relative y axis, pitch
     beta = -CAM_PITCH
