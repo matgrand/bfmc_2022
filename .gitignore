@@ -22,3 +22,5 @@ sparcs/devel/*
 sparcs/__pycache__/*
 sparcs/saved_tests/*
 saved_tests/*
+sparcs/new_tests_locs/*
+sparcs/__pycache__/*

@@ -6,6 +6,7 @@ from tf.transformations import euler_from_quaternion
 import numpy as np
 from time import sleep
 from std_msgs.msg import Float32
+from time import time
 
 # VICON settings
 VICON_CAR_TOPIC = '/vicon/bfmc_car/bfmc_car'
@@ -15,7 +16,7 @@ X0 = -1.3425
 Y0 = -2.35
 
 class Vicon():
-    def __init__(self, debug=False) -> None:
+    def __init__(self) -> None:
         self.time_stamp = None
         self.x          = 0
         self.y          = 0
@@ -33,13 +34,15 @@ class Vicon():
         self.pub_stop = rospy.Publisher('/automobile/command/stop', Float32, queue_size=1)
         sleep(0.3) # wait for publishers to initialize
         self.prev_speed = 0.0
-        # self.debug=debug
+        self.last_callback_time = time()
+        self.prev_x, self.prev_y = None, None
+        self.prev_yaw = None
 
     def vicon_car_callback(self, data) -> None:  
         self.euler = euler_from_quaternion([data.transform.rotation.x, data.transform.rotation.y, data.transform.rotation.z, data.transform.rotation.w]) 
         self.roll   = self.euler[0]
         self.pitch  = self.euler[1]
-        self.yaw    = self.euler[2]
+        yaw    = self.euler[2]
 
         # x = data.transform.translation.x
         # y = data.transform.translation.y
@@ -47,8 +50,22 @@ class Vicon():
         # self.x, self.y, self.z = self.vicon2world(x, y, z)
 
         self.time_stamp = data.header.stamp
-        
-        self.yaw = np.arctan2(np.sin(self.yaw-self.yaw0), np.cos(self.yaw-self.yaw0))
+
+        # curr_time = time()
+        # delta = curr_time-self.last_callback_time
+        # self.last_callback_time = curr_time
+        # print(f'vicon call time interval: {delta:.3f}, FREQ: {1/delta:.1f}')
+
+        if self.prev_yaw == None:
+            self.yaw = np.arctan2(np.sin(yaw-self.yaw0), np.cos(yaw-self.yaw0))
+            self.prev_yaw = self.yaw
+        else:
+            norm = np.arctan2(np.sin(self.yaw - self.prev_yaw), np.cos(self.yaw - self.prev_yaw))**2
+            if norm > np.deg2rad(5)**2:
+                print(f'skipping yaw: {norm}')
+            else:
+                self.yaw = np.arctan2(np.sin(yaw-self.yaw0), np.cos(yaw-self.yaw0))
+                self.prev_yaw = self.yaw
         # print(f'\nroll: {np.rad2deg(self.roll)}\npitch: {np.rad2deg(self.pitch)}\nyaw: {np.rad2deg(self.yaw)}\n\nx: {self.x}\ny: {self.y}\nz: {self.z}\n')
 
       
@@ -57,9 +74,25 @@ class Vicon():
         y = (data.markers[3].translation.y)*1e-3
         z = (data.markers[3].translation.z)*1e-3
         
-        self.x, self.y, self.z = self.vicon2world(x, y, z)
-        # if self.debug:
-            # print(f'marker: {data.markers[3].marker_name}') 
+        tmpx, tmpy, tmpz = self.vicon2world(x, y, z)
+
+        if self.prev_x == None:
+            self.prev_x, self.prev_y = tmpx, tmpy
+            self.x, self.y, self.z = tmpx, tmpy, tmpz
+        else:
+            #calculate norm 
+            norm = (self.prev_x-self.x)**2 + (self.prev_y-self.y)**2
+            if norm > 0.1**2:
+                print(f'Skipping sample')
+            else:
+                self.x, self.y, self.z = tmpx, tmpy, tmpz
+                self.prev_x, self.prev_y = tmpx, tmpy
+
+        
+        # curr_time = time()
+        # delta = curr_time-self.last_callback_time
+        # self.last_callback_time = curr_time
+        # print(f'vicon call time interval: {delta:.3f}, FREQ: {1/delta:.1f}')
         # print(f'\nx_rear: {self.x_rear}\ny_rear: {self.y_rear}\nz_rear: {self.z_rear}\n')
 
 
@@ -85,7 +118,7 @@ if __name__ == '__main__':
         vicon = Vicon()
         rospy.init_node('vicon_debug_node', anonymous=False)
         while not rospy.is_shutdown():
-            print(f'\nx_rear: {vicon.x:.3f}\ny_rear: {vicon.y:.3f}\nyaw: {np.rad2deg(vicon.yaw):.1f}\n')
+            # print(f'\nx_rear: {vicon.x:.3f}\ny_rear: {vicon.y:.3f}\nyaw: {np.rad2deg(vicon.yaw):.1f}\n')
             sleep(0.1)
     except rospy.ROSInterruptException:
         print('inside interrupt exeption')

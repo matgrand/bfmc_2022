@@ -21,9 +21,9 @@
 export ROS_MASTER_URI=http://192.168.135.200:11311 
 # Local computer IP Address
 #this the ip of this pc, find it with 'ip a'
-export ROS_HOSTNAME=192.168.135.50
+export ROS_HOSTNAME=192.168.135.200
 #same as before 
-export ROS_IP=192.168.135.50
+export ROS_IP=192.168.135.200
 echo "ROS_IP:           $ROS_IP"
 echo "ROS_MASTER_URI:   $ROS_MASTER_URI"
 echo "ROS_HOSTNAME:     $ROS_HOSTNAME"

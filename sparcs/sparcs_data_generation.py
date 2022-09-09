@@ -17,11 +17,10 @@ X0 = -1.3425
 Y0 = -2.35
 
 # general settings
-DIST_AHEAD = 0.4 #pure pursuit controller distance ahead
-REVERSED_PATH = False #if True the path is Anti-clockwise
+DIST_AHEAD = .35 #pure pursuit controller distance ahead
 TARGET_FPS = 30.0
 
-LAPS = 3
+LAPS = 9
 LAP_Y_TRSH = 2.54
 
 ## CONTROLLER
@@ -37,12 +36,19 @@ class Controller():
         return  - self.k * delta
 K = 1.0 #1.0 yaw error gain .8 with ff 
 CONTROLLER = Controller(K)
-STEER_NOISE_STD = np.deg2rad(15.0) # [rad] noise in the steering angle
+
+
+
+REVERSED_PATH = False #if True the path is Anti-clockwise
+STEER_NOISE_STD = np.deg2rad(18.0) # [rad] noise in the steering angle
+
+
+
 STEER_FRAME_CHAMGE_MEAN = 10 #avg frames after which the steering noise is changed
 STEER_FRAME_CHAMGE_STD = 8 #frames max "deviation"
 STEER_NOISE = MyRandomGenerator(0.0, STEER_NOISE_STD, STEER_FRAME_CHAMGE_MEAN, STEER_FRAME_CHAMGE_STD)
-DESIRED_SPEED = .5#0.15# [m/s]
-SPEED_NOISE_STD = 0.3  #[m/s] noise in the speed
+DESIRED_SPEED = .3#0.15# [m/s]
+SPEED_NOISE_STD = 0.0  #[m/s] noise in the speed
 SPEED_FRAME_CHAMGE_MEAN = 30 #avg frames after which the speed noise is changed
 SPEED_FRAME_CHAMGE_STD = 20 #frames max "deviation"
 SPEED_NOISE = MyRandomGenerator(-SPEED_NOISE_STD, SPEED_NOISE_STD, SPEED_FRAME_CHAMGE_MEAN, SPEED_FRAME_CHAMGE_STD, np.random.uniform)
@@ -68,6 +74,8 @@ if __name__ == '__main__':
     lap = 0
     prev_y = VI.y
 
+    pc_locs = []
+
     while not rospy.is_shutdown():
         loop_start_time = time()
 
@@ -77,6 +85,8 @@ if __name__ == '__main__':
         pa =  path[(min_index + int(100*DIST_AHEAD)) % len( path)] #point ahead
         yaw_ref = np.arctan2(pa[1]-p[1],pa[0]-p[0]) #yaw reference in world frame
         he = diff_angle(yaw_ref, VI.yaw) #heading error
+
+        pc_locs.append(np.array([VI.x,VI.y,VI.yaw]))
 
         #controller
         steer_angle = CONTROLLER.get_control(he, DIST_AHEAD) #get steering angle
@@ -94,6 +104,8 @@ if __name__ == '__main__':
         if (prev_y > LAP_Y_TRSH and curr_y < LAP_Y_TRSH and not REVERSED_PATH) or (prev_y < LAP_Y_TRSH and curr_y > LAP_Y_TRSH and REVERSED_PATH): #count lap
             lap+=1
             if lap>=LAPS:
+                # saving locations
+                np.savez_compressed('new_tests_locs/RENAME.npz', locs=np.array(pc_locs))
                 #stop the car
                 print('Stopping')
                 VI.stop()
