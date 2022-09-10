@@ -150,8 +150,6 @@ if __name__ == '__main__':
         steer_angle = CONTROLLER.get_control(heading_error, DISTANCE_AHEAD_PURE_PURSUIT)
         steer_angle = steer_angle + STEER_NOISE.get_noise()
 
-        steer_angle = CONTROLLER.get_control(est_heading_error, DISTANCE_AHEAD_PURE_PURSUIT) ## REMOVE!  REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE! REMOVE!
-
         #############################################################################################################################################################
         ## ACTUATION
         sleep(ACTUATION_DELAY)
