@@ -456,6 +456,39 @@ def get_yaw_closest_axis(angle):
     if int_angle == -2: int_angle = 2
     return int_angle*np.pi/2
 
+# def get_heading_error(x,y,yaw,path,dist_ahead, tolerance=0.01):
+#     #check path shape
+#     assert path.shape[1] == 2, f'path.shape: {path.shape}'
+#     p = np.array([x,y]).T #current position of the car
+#     min_index = np.argmin(np.linalg.norm( path-p,axis=1)) #index of clostest point on path
+
+#     #roll path
+#     path = np.roll(path, -min_index, axis=0)
+    
+#     p_min = path[0]
+#     #rotate p_min to car frame
+#     p_min_car = np.array([p_min[0]-x, p_min[1]-y])
+#     p_min_car = p_min_car @ np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
+#     dist = p_min_car[0] #signed distance to closest point on path, approx
+
+#     #calculate point ahead
+#     path_ahead = path[0:int(path.shape[0]*0.5)]
+#     dists = np.abs(np.linalg.norm(path_ahead-p,axis=1) - dist_ahead) #distances to all points on path
+#     closest = np.argmin(dists) #index of closest point on path
+#     min_dist = dists[closest] #distance to closest point on path
+#     if min_dist > tolerance: # we are too far from the path
+#         pa = path_ahead[closest] #point ahead = closest point on path
+#         print(f'we are too far from the path, min_dist: {min_dist}')
+#     else:
+#         pa = path_ahead[np.max(np.where(dists < tolerance))] 
+
+#     # pa =  path[(min_index + int(100*dist_ahead)) % len( path)] #point ahead
+
+#     #calculate heading error
+#     yaw_ref = np.arctan2(pa[1]-p[1],pa[0]-p[0]) #yaw reference in world frame
+#     he = diff_angle(yaw_ref, yaw) #heading error
+#     return he, pa, dist
+
 def get_heading_error(x,y,yaw,path,dist_ahead, tolerance=0.01):
     #check path shape
     assert path.shape[1] == 2, f'path.shape: {path.shape}'
@@ -472,24 +505,36 @@ def get_heading_error(x,y,yaw,path,dist_ahead, tolerance=0.01):
     dist = p_min_car[0] #signed distance to closest point on path, approx
 
     #calculate point ahead
-    path_ahead = path[0:int(path.shape[0]*0.5)]
-    dists = np.abs(np.linalg.norm(path_ahead-p,axis=1) - dist_ahead) #distances to all points on path
-    closest = np.argmin(dists) #index of closest point on path
-    min_dist = dists[closest] #distance to closest point on path
-    if min_dist > tolerance: # we are too far from the path
-        pa = path_ahead[closest] #point ahead = closest point on path
-        print(f'we are too far from the path, min_dist: {min_dist}')
+    k = dist_ahead / 10.0 + 0.01
+    path_ahead = path[0:int(path.shape[0]*k)]
+    path_behind = path[int(path.shape[0]*(1-k)):]
+    dists_a = np.abs(np.linalg.norm(path_ahead-p,axis=1) - dist_ahead) #distances to all points on path
+    dists_b = np.abs(np.linalg.norm(path_behind-p,axis=1) - dist_ahead) #distances to all points on path
+    closest_a = np.argmin(dists_a) #index of closest point on path
+    closest_b = np.argmin(dists_b) #index of closest point on path
+    min_dist_a = dists_a[closest_a] #distance to closest point on path
+    min_dist_b = dists_b[closest_b] #distance to closest point on path
+    if min_dist_a > tolerance or min_dist_b > tolerance: # we are too far from the path
+        pHE = path_ahead[closest_a] #point ahead = closest point on path
+        print(f'we are too far from the path, min_dist: {min_dist_a}')
     else:
-        pa = path_ahead[np.max(np.where(dists < tolerance))] 
+        pa = path_ahead[np.max(np.where(dists_a < tolerance))] 
+        pb = path_behind[np.max(np.where(dists_b < tolerance))]
 
-    # pa =  path[(min_index + int(100*dist_ahead)) % len( path)] #point ahead
+        #calculate the point going dist ahead from the car in the car yaw direction
+        pp = p + dist_ahead*np.array([np.cos(yaw), np.sin(yaw)])
+
+        #choose between pa and pb
+        if np.linalg.norm(pp-pa) < np.linalg.norm(pp-pb):
+            pHE = pa
+        else:
+            pHE = pb
+
 
     #calculate heading error
-    yaw_ref = np.arctan2(pa[1]-p[1],pa[0]-p[0]) #yaw reference in world frame
+    yaw_ref = np.arctan2(pHE[1]-p[1],pHE[0]-p[0]) #yaw reference in world frame
     he = diff_angle(yaw_ref, yaw) #heading error
-    return he, pa, dist
-
-
+    return he, p, dist
 
 
 
