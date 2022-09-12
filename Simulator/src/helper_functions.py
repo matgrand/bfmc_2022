@@ -534,7 +534,7 @@ def get_heading_error(x,y,yaw,path,dist_ahead, tolerance=0.01):
     #calculate heading error
     yaw_ref = np.arctan2(pHE[1]-p[1],pHE[0]-p[0]) #yaw reference in world frame
     he = diff_angle(yaw_ref, yaw) #heading error
-    return he, p, dist
+    return he, pHE, dist
 
 
 

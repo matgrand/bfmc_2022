@@ -1,6 +1,7 @@
-# %%
+
 from audioop import tomono
 import os, signal, rospy
+from turtle import color
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,16 +12,16 @@ from Simulator.src.automobile_data_simulator import AutomobileDataSimulator
 from Simulator.src.helper_functions import *
 from path_nn_controller import PathPlanning, Controller, Detection
 
-LAPS = 60
+LAPS = 50
 imgs = []
 locs = []
 
 REVERSED_PATH = False #if True the path is Anti-clockwise
-STEER_NOISE_STD = np.deg2rad(20.0) # [rad] noise in the steering angle
-STEER_FRAME_CHAMGE_MEAN = 10 #avg frames after which the steering noise is changed
-STEER_FRAME_CHAMGE_STD = 8 #frames max "deviation"
-CONTROLLER_DIST_AHEAD = .35 #pure pursuit controller distance ahead
-DESIRED_SPEED = .99# [m/s]
+STEER_NOISE_STD = np.deg2rad(28.0) # [rad] noise in the steering angle
+STEER_FRAME_CHAMGE_MEAN = 15 #avg frames after which the steering noise is changed
+STEER_FRAME_CHAMGE_STD = 13 #frames max "deviation"
+CONTROLLER_DIST_AHEAD = .5 #pure pursuit controller distance ahead
+DESIRED_SPEED = .4# [m/s]
 TARGET_FPS = 30.0
 
 path = np.load('sparcs/sparcs_path_precise.npy').T # load path from file
@@ -71,7 +72,7 @@ def save_data(imgs,locs):
 
 CONTROLLER = Controller(1.0)
 
-STEER_NOISE = MyRandomGenerator(0.0, STEER_NOISE_STD, STEER_FRAME_CHAMGE_MEAN, STEER_FRAME_CHAMGE_STD)
+STEER_NOISE = MyRandomGenerator(0.0, STEER_NOISE_STD, STEER_FRAME_CHAMGE_MEAN, STEER_FRAME_CHAMGE_STD )
 SPEED_NOISE_STD = 0.0  #[m/s] noise in the speed
 SPEED_FRAME_CHAMGE_MEAN = 30 #avg frames after which the speed noise is changed
 SPEED_FRAME_CHAMGE_STD = 20 #frames max "deviation"
@@ -123,6 +124,12 @@ while not rospy.is_shutdown():
     #move car
     CAR.drive(speed=DESIRED_SPEED, angle=np.rad2deg(steer_angle))
 
+
+    # he2, pa2, d2 = get_heading_error(x,y,yaw,path,0.8)
+    # pix_pa2 = mR2pix(pa2)
+    # tmp_map = cv.circle(tmp_map, pix_pa2, color=(0,0,255), radius=10, thickness=-1)
+    # tmp_frame = draw_angle(tmp_frame, he2)
+    # tmp_frame, _ = project_onto_frame2(tmp_frame, pa2,x,y,yaw, thickness=4)
     cv.imshow('frame', tmp_frame)
     draw_car(tmp_map,x,y,yaw)
     tmp_map = tmp_map[int(tmp_map.shape[0]/3):,:int(tmp_map.shape[1]*2/3)]

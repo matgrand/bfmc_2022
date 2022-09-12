@@ -8,7 +8,7 @@ R = 1.03#+0.37/2     # big radius
 r = 0.65#+0.37/2    # small radius
 L = 3.0    # horizontal distance
 
-d = 0.0001    # distance between points
+d = 0.001    # 0.0001 distance between points
 m = 0.25     # border from the edge of the map
 
 NAME = 'sparcs_path_precise.npy'
