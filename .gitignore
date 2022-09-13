@@ -25,3 +25,4 @@ saved_tests/*
 sparcs/new_tests_locs/*
 sparcs/__pycache__/*
 __pycache__/*
+tmp/*
