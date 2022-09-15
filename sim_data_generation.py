@@ -16,7 +16,7 @@ LAPS = 10
 imgs = []
 locs = []
 
-STEER_NOSIE_STDS_DEG = [0, 5, 10, 15, 20, 25, 30]
+STEER_NOSIE_STDS_DEG = [0, 3, 6, 9, 12]
 file_name = 'saved_tests/sim_ds_'
 
 SHOW_FRAMES = False

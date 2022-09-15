@@ -199,29 +199,32 @@ def prepare_ds(ds_params):
     
     name, steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size, ds_length = ds_params['name'], ds_params['steer_noise_level'], ds_params['he_distance'], ds_params['canny1'], ds_params['canny2'], ds_params['blur'], ds_params['img_noise'], ds_params['keep_bottom'], ds_params['img_size'], ds_params['ds_length']
     #check if dataset is already in tmp folder
-    if os.path.exists(f'tmp/{name}.npz'):
+    ds_path = f'tmp/dss/{name}.npz'
+    if os.path.exists(ds_path):
         return
     
     #check if steer_noise_level is already in tmp
-    if not os.path.exists(f'tmp/ds_{steer_noise_level}.npz'):
+    sn_path = f'tmp/dss/ds_{steer_noise_level}.npz'
+    if not os.path.exists(sn_path):
         #unzip and save the ds unzipped
         tmp_ds = np.load(f'saved_tests/sim_ds_{steer_noise_level}.npz', allow_pickle=True)
         imgs, locs = tmp_ds['imgs'], tmp_ds['locs']
-        np.savez(f'tmp/ds_{steer_noise_level}.npz', imgs=imgs, locs=locs)
+        np.savez(sn_path, imgs=imgs, locs=locs)
     
     #check if he_distance is already in tmp
-    if not os.path.exists(f'tmp/hes_{steer_noise_level}_{100*he_distance:.0f}.npz'):
+    hes_path = f'hes/hes_{steer_noise_level}_{100*he_distance:.0f}.npz'
+    if not os.path.exists(hes_path):
         #load the dataset
-        tmp_ds = np.load(f'tmp/ds_{steer_noise_level}.npz', allow_pickle=True)
+        tmp_ds = np.load(sn_path, allow_pickle=True)
         imgs, locs = tmp_ds['imgs'], tmp_ds['locs']
         #get the he
         hes = calculate_hes(locs, he_distance)
         #save the dataset
-        np.savez(f'tmp/hes_{steer_noise_level}_{100*he_distance:.0f}.npz', hes=hes, he_distance=he_distance, steer_noise_level=steer_noise_level)
+        np.savez(hes_path, hes=hes, he_distance=he_distance, steer_noise_level=steer_noise_level)
     
     #load required components
-    ds = np.load(f'tmp/ds_{steer_noise_level}.npz', allow_pickle=True)
-    hes = np.load(f'tmp/hes_{steer_noise_level}_{100*he_distance:.0f}.npz', allow_pickle=True)
+    ds = np.load(sn_path, allow_pickle=True)
+    hes = np.load(hes_path, allow_pickle=True)
     imgs, locs = ds['imgs'], ds['locs']
     hes = hes['hes']
     to_load = min(imgs.shape[0], ds_length)
@@ -236,7 +239,7 @@ def prepare_ds(ds_params):
         aug_imgs.append(aug_img)
     aug_imgs = np.array(aug_imgs)
     #save the dataset
-    np.savez(f'tmp/{name}.npz', imgs=aug_imgs, locs=locs, hes=hes, name=name, steer_noise_level=steer_noise_level, he_distance=he_distance, canny1=canny1, canny2=canny2, blur=blur, img_noise=img_noise, keep_bottom=keep_bottom, img_size=img_size)
+    np.savez(ds_path, imgs=aug_imgs, locs=locs, hes=hes, name=name, steer_noise_level=steer_noise_level, he_distance=he_distance, canny1=canny1, canny2=canny2, blur=blur, img_noise=img_noise, keep_bottom=keep_bottom, img_size=img_size)
 
 class MyDataset(Dataset):
     def __init__(self, ds_name, device='cpu'):
@@ -314,7 +317,8 @@ def train(params, device='cpu'):
     # print(f'Name: {name}')
 
     #check if the training has already been done
-    if os.path.exists(f'tmp/{name}.npz'):
+    comb_path = f'tmp/training_combinations/{name}.npz'
+    if os.path.exists(comb_path):
         return
 
     #create dataset
@@ -360,12 +364,12 @@ def train(params, device='cpu'):
 
     #export to onnx
     dummy_input = torch.randn(1, 1, ds.img_size, ds.img_size, device=device)
-    torch.onnx.export(net, dummy_input, f"tmp/{name}.onnx", verbose=False)
+    torch.onnx.export(net, dummy_input, f"tmp/models/{name}.onnx", verbose=False)
 
     #save losses
     # np.save(f'tmp/{name}_losses.npy', losses)
-    torch.save(best_model.state_dict(), f'tmp/{name}.pt')
-    np.savez(f'tmp/{name}.npz', losses=losses, net=net, name=name, ds_name=ds_name, 
+    torch.save(best_model.state_dict(), f'tmp/models/{name}.pt')
+    np.savez(comb_path, losses=losses, net=net, name=name, ds_name=ds_name, 
                 architecture=architecture, batch_size=batch_size, lr=lr, epochs=epochs, 
                 L1_lambda=L1_lambda, L2_lambda=L2_lambda, weight_decay=weight_decay, dropout=dropout,
                 best_epoch=best_epoch, best_val=best_val)
@@ -381,25 +385,23 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
     name = params['name']
 
     #check if the name exists
-    assert os.path.exists(f'tmp/{name}.npz'), f'Name {name} does not exist'
+    comb_path = f'tmp/training_combinations/{name}.npz'
+    assert os.path.exists(comb_path), f'Name {name} does not exist'
     #load model
-    npz = np.load(f'tmp/{name}.npz', allow_pickle=True)
+    npz = np.load(comb_path, allow_pickle=True)
     losses, net, name, ds_name, architecture, batch_size, lr, epochs, L1_lambda, L2_lambda, weight_decay, dropout, best_epoch, best_val = npz['losses'], npz['net'], npz['name'], npz['ds_name'], npz['architecture'], npz['batch_size'], npz['lr'], npz['epochs'], npz['L1_lambda'], npz['L2_lambda'], npz['weight_decay'], npz['dropout'], npz['best_epoch'], npz['best_val']
-    ds = np.load(f'tmp/{ds_name}.npz', allow_pickle=True)
+    ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
     train_imgs, train_locs, train_hes, train_steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size = ds['imgs'], ds['locs'], ds['hes'], ds['steer_noise_level'], ds['he_distance'], ds['canny1'], ds['canny2'], ds['blur'], ds['img_noise'], ds['keep_bottom'], ds['img_size']
-
-    # print(f'Net = {net}')
-    # print(f'net2 = {net2}')
-
     net = net.item()
 
     #load datasets
     to_save = []
 
     MSEs = []
-    if not os.path.exists(f'tmp/eval_{name}.npz'):
-        for ev_ds in eval_datasets:
-            ds_path = f'tmp/{ev_ds}.npz'
+    for ev_ds in eval_datasets:
+        ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{name}.npz'
+        if not os.path.exists(ds_train_combination_path):
+            ds_path = f'tmp/real_dss/{ev_ds}.npz'
             if not os.path.exists(ds_path):
                 tmp = np.load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
                 timgs, tlocs = tmp['imgs'], tmp['locs']
@@ -409,15 +411,16 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             imgs, locs = ds_npz['imgs'], ds_npz['locs']
 
             #create hes
-            if not os.path.exists(f'tmp/{ev_ds}_{he_distance*100:.0f}.npz'):
+            hes_path = f'tmp/hes/{ev_ds}_{he_distance*100:.0f}.npz'
+            if not os.path.exists(hes_path):
                 #get the he
                 hes = calculate_hes(locs, he_distance)
-                np.savez(f'tmp/{ev_ds}_{he_distance*100:.0f}.npz', hes=hes, he_distance=he_distance)
-                print(f'Generating {ev_ds}_{he_distance*100:.0f}')
-            hes = np.load(f'tmp/{ev_ds}_{he_distance*100:.0f}.npz', allow_pickle=True)['hes']
+                np.savez(hes_path, hes=hes, he_distance=he_distance)
+                print(f'Generating {hes_path}')
+            hes = np.load(hes_path, allow_pickle=True)['hes']
 
             #preprocess images
-            preproc_imgs_path = f'tmp/{ev_ds}_preproc_imgs_{img_size}_{canny1}_{canny2}_{blur}_{img_noise}_{100*keep_bottom:.0f}.npz'
+            preproc_imgs_path = f'tmp/real_dss/{ev_ds}_preproc_imgs_{img_size}_{canny1}_{canny2}_{blur}_{img_noise}_{100*keep_bottom:.0f}.npz'
             if not os.path.exists(preproc_imgs_path):
                 timgs = np.zeros((len(imgs), img_size, img_size), dtype=np.uint8)
                 for i, img in enumerate(imgs):
@@ -428,7 +431,6 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             imgs = torch.from_numpy(imgs[:,np.newaxis,:,:]).to(device)
 
             #run inference         
-            start_time = time()
             assert isinstance(net, HEstimator), f'Net is not an HEstimator, it is a {type(net)}'
             net.to(device)
             net.eval()
@@ -440,19 +442,28 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             to_save.append({'ev_ds': ev_ds, 'hes': hes, 'est_hes': est_hes, 'he_distance': he_distance, 'combination':params})  
 
             #calculate MSE
-            MSEs.append(np.mean(np.square(hes - est_hes)))
+            mse = np.mean(np.square(hes - est_hes))
 
-        #save
-        MSEs = np.array(MSEs)
-        np.savez(f'tmp/eval_{name}.npz', eval_datasets=eval_datasets, saved=to_save, MSEs=MSEs, comb_name=name)
-    #load
-    npz = np.load(f'tmp/eval_{name}.npz', allow_pickle=True)
-    MSEs = npz['MSEs']
-    to_save = npz['saved']
-    eval_datasets = npz['eval_datasets']
-    return MSEs
+            #save
+            np.savez(ds_train_combination_path, eval_datasets=eval_datasets, saved=to_save, mse=mse, comb_name=name)
+        #load
+        npz = np.load(ds_train_combination_path, allow_pickle=True)
+        MSEs.append(npz['mse'])
+        eval_datasets = npz['eval_datasets']
+    return np.mean(np.array(MSEs))
 
-
+def get_best_result(trainings_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
+    best_combination = None
+    best_MSE = np.inf
+    all_MSE = []
+    for comb in trainings_combinations:
+        MSEs = evaluate(comb, eval_datasets=eval_datasets, device=device)
+        MSE = np.mean(MSEs)
+        all_MSE.append(MSE)
+        if MSE < best_MSE:
+            best_MSE = MSE
+            best_combination = comb
+    return best_combination, best_MSE, all_MSE
 
 
 
