@@ -516,7 +516,7 @@ def get_heading_error(x,y,yaw,path,dist_ahead, tolerance=0.01):
     min_dist_b = dists_b[closest_b] #distance to closest point on path
     if min_dist_a > tolerance or min_dist_b > tolerance: # we are too far from the path
         pHE = path_ahead[closest_a] #point ahead = closest point on path
-        print(f'we are too far from the path, min_dist: {min_dist_a}')
+        # print(f'we are too far from the path, min_dist: {min_dist_a}')
     else:
         pa = path_ahead[np.max(np.where(dists_a < tolerance))] 
         pb = path_behind[np.max(np.where(dists_b < tolerance))]

@@ -1,6 +1,7 @@
 
 
 #Imports
+from tracemalloc import start
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -22,22 +23,21 @@ from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 import cv2 as cv
 import os
-import shutil
+import torch.onnx
+from copy import deepcopy
+import IPython
+from time import time, sleep
+
 
 from Simulator.src.helper_functions import *
-
-
 
 
 # DEFINITIONS
 IN, OUT, CONV_LAYERS, FC_LAYERS, DROPOUT = 'IN', 'OUT', 'CONV_LAYERS', 'FC_LAYERS', 'DROPOUT'
 
-
 MODEL_FOLDER = 'Simulator/models'
 model_name = MODEL_FOLDER + '/lane_keeper.pt'
 onnx_lane_keeper_path = MODEL_FOLDER + '/lane_keeper.onnx'
-
-
 
 # NETWORK ARCHITECTURE
 DROPOUT_PROB = 0.3
@@ -79,6 +79,8 @@ class HEstimator(nn.Module):
         x = self.lin(x)
         return x
 
+def create_net(architecture, img_size, dropout):
+    return  HEstimator() #TODO
 
 # IMAGE PREPROCESSING AND AUGMENTATION
 import cv2 as cv
@@ -91,6 +93,10 @@ def preprocess_image(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=20
     Preprocesses an image to be used as input for the network.
     Note: the function modifies the image in place
     """
+    if not img.shape == (4*size, 4*size):
+        img = cv.resize(img, (4*size, 4*size))
+
+
     #set associated parameters to None to skip the step
     skip_canny = canny1 == None or canny2 == None
     skip_blur = blur == None
@@ -115,7 +121,7 @@ def preprocess_image(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=20
     return img
 
 def augment_img(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=200, blur=3, 
-                max_tilt_fraction=0.1, noise_std=80):
+                noise_std=80, max_tilt_fraction=0.1):
     """
     Augments an image by applying random transformations
     Note: the function modifies the image in place
@@ -176,74 +182,93 @@ def augment_img(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=200, bl
     return img
 
 
+def calculate_hes(locs, he_dist):
+    path = np.load('sparcs/sparcs_path_precise.npy', allow_pickle=True).T
+    hes = []
+    for x,y,yaw in locs:
+        he, _, _ = get_heading_error(x,y,yaw, path, he_dist)
+        hes.append(he)
+    return np.array(hes)
+
+
 # DATASET
+def prepare_ds(ds_params):
+    #name = f'ds_sn{steer_noise_level:.0f}_he{100*he_distance:.0f}_canny{canny1}_{canny2}_blur{blur:.0f}_noise{img_noise:.0f}_keep{100*keep_bottom:.0f}_size{img_size:.0f}_length{ds_length:.0f}'
+    #params = {'name':name, 'steer_noise_level': steer_noise_level, 'he_distance': he_distance, 'canny1': canny1, 'canny2': canny2, 'blur': blur, 'img_noise': img_noise, 'keep_bottom': keep_bottom, 'img_size': img_size, 'ds_length': ds_length}
+    
+    
+    name, steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size, ds_length = ds_params['name'], ds_params['steer_noise_level'], ds_params['he_distance'], ds_params['canny1'], ds_params['canny2'], ds_params['blur'], ds_params['img_noise'], ds_params['keep_bottom'], ds_params['img_size'], ds_params['ds_length']
+    #check if dataset is already in tmp folder
+    if os.path.exists(f'tmp/{name}.npz'):
+        return
+    
+    #check if steer_noise_level is already in tmp
+    if not os.path.exists(f'tmp/ds_{steer_noise_level}.npz'):
+        #unzip and save the ds unzipped
+        tmp_ds = np.load(f'saved_tests/sim_ds_{steer_noise_level}.npz', allow_pickle=True)
+        imgs, locs = tmp_ds['imgs'], tmp_ds['locs']
+        np.savez(f'tmp/ds_{steer_noise_level}.npz', imgs=imgs, locs=locs)
+    
+    #check if he_distance is already in tmp
+    if not os.path.exists(f'tmp/hes_{steer_noise_level}_{100*he_distance:.0f}.npz'):
+        #load the dataset
+        tmp_ds = np.load(f'tmp/ds_{steer_noise_level}.npz', allow_pickle=True)
+        imgs, locs = tmp_ds['imgs'], tmp_ds['locs']
+        #get the he
+        hes = calculate_hes(locs, he_distance)
+        #save the dataset
+        np.savez(f'tmp/hes_{steer_noise_level}_{100*he_distance:.0f}.npz', hes=hes, he_distance=he_distance, steer_noise_level=steer_noise_level)
+    
+    #load required components
+    ds = np.load(f'tmp/ds_{steer_noise_level}.npz', allow_pickle=True)
+    hes = np.load(f'tmp/hes_{steer_noise_level}_{100*he_distance:.0f}.npz', allow_pickle=True)
+    imgs, locs = ds['imgs'], ds['locs']
+    hes = hes['hes']
+    to_load = min(imgs.shape[0], ds_length)
+    #choose to_load random indexes
+    indexes = np.random.choice(imgs.shape[0], to_load, replace=False)
+    imgs, locs, hes = imgs[indexes], locs[indexes], hes[indexes]
+
+    #augment the dataset
+    aug_imgs = []
+    for img in imgs:
+        aug_img = augment_img(img, img_size, keep_bottom, canny1, canny2, blur, img_noise)
+        aug_imgs.append(aug_img)
+    aug_imgs = np.array(aug_imgs)
+    #save the dataset
+    np.savez(f'tmp/{name}.npz', imgs=aug_imgs, locs=locs, hes=hes, name=name, steer_noise_level=steer_noise_level, he_distance=he_distance, canny1=canny1, canny2=canny2, blur=blur, img_noise=img_noise, keep_bottom=keep_bottom, img_size=img_size)
+
 class MyDataset(Dataset):
-    def __init__(self, dataset_file_path, he_distances=[0.5], size=32, keep_bottom=0.66666667, canny1=100, canny2=200, blur=3, 
-                max_tilt_fraction=0.1, noise_std=80, device='cpu'):
-
-        self.data = []
-        print('decompressing...')
-        path = path = np.load('sparcs/sparcs_path_precise.npy').T
-        log = np.load(f'{dataset_file_path}.npz')
-        imgs, locs = log['imgs'],log['locs']
-        assert len(imgs) == len(locs), f'Invalid dataset, imgs and locs have different lengths: {len(imgs)} != {len(locs)}'
-        assert locs.shape[1] == 3, f'Invalid dataset, locs must have shape (N,2), got {locs.shape}'
-        dataset_length = len(imgs)
-        print(f'Dataset: {dataset_file_path}\nDataset length: {dataset_length}')
-        self.imgs = torch.zeros((2*dataset_length, 1, size, size), dtype=torch.float32)
-        # cv.namedWindow('img', cv.WINDOW_NORMAL)
-        # cv.resizeWindow('img', 600, 600)
-        for i, (img, (x,y,yaw)) in tqdm(enumerate(zip(imgs,locs))):
-            hes = []
-            for d in he_distances:
-                he, _, _ = get_heading_error(x,y,yaw, path,d)
-                hes.append(he)
-            hes = np.array(hes)
-            self.data.append(hes)
-            self.data.append(-hes)
-            img = augment_img(img, size, keep_bottom, canny1, canny2, blur, max_tilt_fraction, noise_std)
-            fimg = cv.flip(img, 1)
-            img = img[:, :,np.newaxis]
-            fimg = fimg[:, :,np.newaxis]
-            #permute the axis (2, 0, 1)
-            img = np.transpose(img, (2, 0, 1))
-            fimg = np.transpose(fimg, (2, 0, 1))
-            #convert to float32
-            img = img.astype(np.float32)
-            fimg = fimg.astype(np.float32)
-            img = torch.from_numpy(img)
-            fimg = torch.from_numpy(fimg)
-
-            assert self.imgs[i].shape == img.shape, f'Invalid image shape: {img.shape} != {self.imgs[i].shape}'
-            self.imgs[2*i] = img
-            self.imgs[2*i+1] = fimg
-            # cv.imshow('img', self.imgs[i])
-            # if cv.waitKey(100) == 27:
-            #     cv.destroyAllWindows()  
-            #     break
-        self.data = torch.from_numpy(np.array(self.data, dtype=np.float32))
-        #put data on gpu
-        self.imgs = self.imgs.to(device)
-        self.data = self.data.to(device)
-
-        print(f'size in RAM: {self.imgs.size(0)*self.imgs.size(1)*self.imgs.size(2)*self.imgs.size(3)*4/1024/1024/1024} GB')
+    def __init__(self, ds_name, device='cpu'):
+        #load the dataset
+        ds = np.load(f'tmp/{ds_name}.npz', allow_pickle=True)
+        self.img_size = ds['img_size']
+        self.imgs, self.hes = ds['imgs'], ds['hes']
+        assert len(self.imgs) == len(self.hes)
+        self.imgs = self.imgs.astype(np.float32)
+        self.imgs = self.imgs[:, np.newaxis, :, :]
+        self.hes = self.hes.astype(np.float32)
+        self.hes = self.hes[:, np.newaxis]
+        #convert to tensors
+        self.imgs = torch.from_numpy(self.imgs).to(device)
+        self.hes = torch.from_numpy(self.hes).to(device)
 
     def __len__(self):
         # The length of the dataset is simply the length of the self.data list
-        return len(self.data)
+        return len(self.hes)
 
     def __getitem__(self, idx):
-        return self.imgs[idx], self.data[idx]
+        return self.imgs[idx], self.hes[idx]
 
 
-# TRAINING FUNCTION
+# TRAINING 
 def train_epoch(net, dataloader, regr_loss_fn, optimizer, L1_lambda=0.0, L2_lambda=0.0):
     # Set the net to training mode
     net.train() #train
     # Initialize the loss
     he_losses = []
     # Loop over the training batches
-    for (input, regr_label) in tqdm(dataloader):
+    for (input, regr_label) in dataloader:
         # Zero the gradients
         optimizer.zero_grad()
         # Compute the output
@@ -271,11 +296,10 @@ def train_epoch(net, dataloader, regr_loss_fn, optimizer, L1_lambda=0.0, L2_lamb
     he_loss = np.mean(he_losses)
     return he_loss
 
-    # VALIDATION FUNCTION
 def val_epoch(net, val_dataloader, regr_loss_fn):
     net.eval()
     he_losses = []
-    for (input, regr_label) in tqdm(val_dataloader):
+    for (input, regr_label) in val_dataloader:
         output = net(input)
         regr_out = output
         he = regr_out[:, 0]
@@ -283,3 +307,178 @@ def val_epoch(net, val_dataloader, regr_loss_fn):
         he_loss = 1.0*regr_loss_fn(he, he_label)
         he_losses.append(he_loss.detach().cpu().numpy())
     return np.mean(he_losses)
+
+def train(params, device='cpu'):
+    name, ds_name, architecture, batch_size, lr, epochs, L1_lambda, L2_lambda, weight_decay, dropout = params['name'], params['ds_name'], params['architecture'], params['batch_size'], params['lr'], params['epochs'], params['L1_lambda'], params['L2_lambda'], params['weight_decay'], params['dropout']
+    
+    # print(f'Name: {name}')
+
+    #check if the training has already been done
+    if os.path.exists(f'tmp/{name}.npz'):
+        return
+
+    #create dataset
+    ds = MyDataset(ds_name, device)
+    
+    #create model
+    net = create_net(architecture, ds.img_size, dropout)
+    net.to(device)
+
+    #create dataloader
+    train_size = int(0.8 * len(ds))
+    val_size = len(ds) - train_size
+    train_ds, val_ds = torch.utils.data.random_split(ds, [train_size, val_size])
+
+    train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+
+    optimizer = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+    regr_loss_fn1 = nn.MSELoss() #before epochs/2
+    regr_loss_fn2 = nn.MSELoss() #after epochs/2 for finetuning
+
+    #train
+    best_val = np.inf
+    best_epoch = 0
+    best_model = None
+    losses = np.zeros((epochs, 2))
+    for epoch in range(epochs):
+        regr_loss_fn = regr_loss_fn1 if epoch < epochs//2 else regr_loss_fn2
+        he_loss = train_epoch(net, train_dataloader, regr_loss_fn, optimizer, L1_lambda, L2_lambda)
+        val_he_loss = val_epoch(net, val_dataloader, regr_loss_fn)
+        losses[epoch, 0] = he_loss
+        losses[epoch, 1] = val_he_loss
+        if val_he_loss < best_val:
+            best_val = val_he_loss
+            best_epoch = epoch
+            best_model = deepcopy(net)
+            # torch.save(net.state_dict(), f'tmp/{name}.pt')
+    
+    # EVALUATE ON TEST SET (UNSEEN DATA)
+    # net.load_state_dict(torch.load(f'tmp/{name}.pt'))
+    net = best_model
+    he_loss = val_epoch(net, val_dataloader, regr_loss_fn)
+
+    #export to onnx
+    dummy_input = torch.randn(1, 1, ds.img_size, ds.img_size, device=device)
+    torch.onnx.export(net, dummy_input, f"tmp/{name}.onnx", verbose=False)
+
+    #save losses
+    # np.save(f'tmp/{name}_losses.npy', losses)
+    torch.save(best_model.state_dict(), f'tmp/{name}.pt')
+    np.savez(f'tmp/{name}.npz', losses=losses, net=net, name=name, ds_name=ds_name, 
+                architecture=architecture, batch_size=batch_size, lr=lr, epochs=epochs, 
+                L1_lambda=L1_lambda, L2_lambda=L2_lambda, weight_decay=weight_decay, dropout=dropout,
+                best_epoch=best_epoch, best_val=best_val)
+
+# EVALUATION
+
+REAL_EVALUATION_DATASETS = ['acw0', 'acw2', 'acw4', 'acw6', 'acw8', 'acw10', 'acw12', 'acw14', 'cw0', 'cw2', 'cw4', 'cw6', 'cw8', 'cw10', 'cw12', 'cw14']
+SIM_EVALUATION_DATASETS = ['acw0_SIM', 'acw2_SIM', 'acw4_SIM', 'acw6_SIM', 'acw8_SIM', 'acw10_SIM', 'acw12_SIM', 'acw14_SIM', 'cw0_SIM', 'cw2_SIM', 'cw4_SIM', 'cw6_SIM', 'cw8_SIM', 'cw10_SIM', 'cw12_SIM', 'cw14_SIM']
+ALL_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
+DEFAULT_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS
+
+def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
+    name = params['name']
+
+    #check if the name exists
+    assert os.path.exists(f'tmp/{name}.npz'), f'Name {name} does not exist'
+    #load model
+    npz = np.load(f'tmp/{name}.npz', allow_pickle=True)
+    losses, net, name, ds_name, architecture, batch_size, lr, epochs, L1_lambda, L2_lambda, weight_decay, dropout, best_epoch, best_val = npz['losses'], npz['net'], npz['name'], npz['ds_name'], npz['architecture'], npz['batch_size'], npz['lr'], npz['epochs'], npz['L1_lambda'], npz['L2_lambda'], npz['weight_decay'], npz['dropout'], npz['best_epoch'], npz['best_val']
+    ds = np.load(f'tmp/{ds_name}.npz', allow_pickle=True)
+    train_imgs, train_locs, train_hes, train_steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size = ds['imgs'], ds['locs'], ds['hes'], ds['steer_noise_level'], ds['he_distance'], ds['canny1'], ds['canny2'], ds['blur'], ds['img_noise'], ds['keep_bottom'], ds['img_size']
+
+    # print(f'Net = {net}')
+    # print(f'net2 = {net2}')
+
+    net = net.item()
+
+    #load datasets
+    to_save = []
+
+    MSEs = []
+    if not os.path.exists(f'tmp/eval_{name}.npz'):
+        for ev_ds in eval_datasets:
+            ds_path = f'tmp/{ev_ds}.npz'
+            if not os.path.exists(ds_path):
+                tmp = np.load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
+                timgs, tlocs = tmp['imgs'], tmp['locs']
+                np.savez(ds_path, imgs=timgs, locs=tlocs)
+                print(f'Generating {ev_ds}')
+            ds_npz = np.load(ds_path, allow_pickle=True)
+            imgs, locs = ds_npz['imgs'], ds_npz['locs']
+
+            #create hes
+            if not os.path.exists(f'tmp/{ev_ds}_{he_distance*100:.0f}.npz'):
+                #get the he
+                hes = calculate_hes(locs, he_distance)
+                np.savez(f'tmp/{ev_ds}_{he_distance*100:.0f}.npz', hes=hes, he_distance=he_distance)
+                print(f'Generating {ev_ds}_{he_distance*100:.0f}')
+            hes = np.load(f'tmp/{ev_ds}_{he_distance*100:.0f}.npz', allow_pickle=True)['hes']
+
+            #preprocess images
+            preproc_imgs_path = f'tmp/{ev_ds}_preproc_imgs_{img_size}_{canny1}_{canny2}_{blur}_{img_noise}_{100*keep_bottom:.0f}.npz'
+            if not os.path.exists(preproc_imgs_path):
+                timgs = np.zeros((len(imgs), img_size, img_size), dtype=np.uint8)
+                for i, img in enumerate(imgs):
+                    timgs[i] = preprocess_image(img=img,size=int(img_size), keep_bottom=float(keep_bottom), canny1=int(canny1), canny2=int(canny2), blur=int(blur))
+                np.savez(preproc_imgs_path, imgs=timgs)
+                print(f'Generating {preproc_imgs_path}')
+            imgs = np.load(preproc_imgs_path, allow_pickle=True)['imgs'].astype(np.float32)
+            imgs = torch.from_numpy(imgs[:,np.newaxis,:,:]).to(device)
+
+            #run inference         
+            start_time = time()
+            assert isinstance(net, HEstimator), f'Net is not an HEstimator, it is a {type(net)}'
+            net.to(device)
+            net.eval()
+            est_hes = np.zeros_like(hes)
+            with torch.no_grad():
+                est_hes = net(imgs).cpu().numpy()
+            
+            #save
+            to_save.append({'ev_ds': ev_ds, 'hes': hes, 'est_hes': est_hes, 'he_distance': he_distance, 'combination':params})  
+
+            #calculate MSE
+            MSEs.append(np.mean(np.square(hes - est_hes)))
+
+        #save
+        MSEs = np.array(MSEs)
+        np.savez(f'tmp/eval_{name}.npz', eval_datasets=eval_datasets, saved=to_save, MSEs=MSEs, comb_name=name)
+    #load
+    npz = np.load(f'tmp/eval_{name}.npz', allow_pickle=True)
+    MSEs = npz['MSEs']
+    to_save = npz['saved']
+    eval_datasets = npz['eval_datasets']
+    return MSEs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
