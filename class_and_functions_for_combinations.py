@@ -244,7 +244,7 @@ def prepare_ds(ds_params):
 class MyDataset(Dataset):
     def __init__(self, ds_name, device='cpu'):
         #load the dataset
-        ds = np.load(f'tmp/{ds_name}.npz', allow_pickle=True)
+        ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
         self.img_size = ds['img_size']
         self.imgs, self.hes = ds['imgs'], ds['hes']
         assert len(self.imgs) == len(self.hes)
