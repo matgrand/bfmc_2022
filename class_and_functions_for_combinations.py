@@ -1,16 +1,11 @@
 
 
 #Imports
-from tracemalloc import start
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import plotly.express as px # this is another plotting library for interactive plot
 
 from sklearn.model_selection import train_test_split
-from sklearn import metrics, manifold # we will use the metrics and manifold learning modules from scikit-learn
-from pathlib import Path # to interact with file paths
-from PIL import Image # to interact with images
 from tqdm import tqdm # progress bar
 from pprint import pprint # pretty print (useful for a more readable print of objects like lists or dictionaries)
 from IPython.display import clear_output # to clear the output of the notebook
@@ -25,7 +20,6 @@ import cv2 as cv
 import os
 import torch.onnx
 from copy import deepcopy
-import IPython
 from time import time, sleep
 
 
@@ -120,6 +114,19 @@ def preprocess_image(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=20
     img = cv.resize(img, (size, size))
     return img
 
+def get_est_heading_error(img, onnx_model, size=32, keep_bottom=0.66666667, canny1=100, canny2=200, blur=3):
+    img = preprocess_image(img, size, keep_bottom, canny1, canny2, blur)
+    img_flipped = cv.flip(img, 1) 
+    #stack the 2 images
+    images = np.stack((img, img_flipped), axis=0) 
+    blob = cv.dnn.blobFromImages(images, 1.0, (size, size), 0, swapRB=True, crop=False) 
+    onnx_model.setInput(blob)
+    out = onnx_model.forward()
+    output = out[0]
+    output_flipped = out[1] 
+    est_he = (output - output_flipped)/2
+    return est_he
+
 def augment_img(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=200, blur=3, 
                 noise_std=80, max_tilt_fraction=0.1):
     """
@@ -210,9 +217,10 @@ def prepare_ds(ds_params):
         tmp_ds = np.load(f'saved_tests/sim_ds_{steer_noise_level}.npz', allow_pickle=True)
         imgs, locs = tmp_ds['imgs'], tmp_ds['locs']
         np.savez(sn_path, imgs=imgs, locs=locs)
+        print(f'Unzipped and saved {ds_path}')
     
     #check if he_distance is already in tmp
-    hes_path = f'hes/hes_{steer_noise_level}_{100*he_distance:.0f}.npz'
+    hes_path = f'tmp/hes/hes_{steer_noise_level}_{100*he_distance:.0f}.npz'
     if not os.path.exists(hes_path):
         #load the dataset
         tmp_ds = np.load(sn_path, allow_pickle=True)
@@ -221,6 +229,7 @@ def prepare_ds(ds_params):
         hes = calculate_hes(locs, he_distance)
         #save the dataset
         np.savez(hes_path, hes=hes, he_distance=he_distance, steer_noise_level=steer_noise_level)
+        print(f'Calculated and saved {hes_path}')
     
     #load required components
     ds = np.load(sn_path, allow_pickle=True)
@@ -379,7 +388,7 @@ def train(params, device='cpu'):
 REAL_EVALUATION_DATASETS = ['acw0', 'acw2', 'acw4', 'acw6', 'acw8', 'acw10', 'acw12', 'acw14', 'cw0', 'cw2', 'cw4', 'cw6', 'cw8', 'cw10', 'cw12', 'cw14']
 SIM_EVALUATION_DATASETS = ['acw0_SIM', 'acw2_SIM', 'acw4_SIM', 'acw6_SIM', 'acw8_SIM', 'acw10_SIM', 'acw12_SIM', 'acw14_SIM', 'cw0_SIM', 'cw2_SIM', 'cw4_SIM', 'cw6_SIM', 'cw8_SIM', 'cw10_SIM', 'cw12_SIM', 'cw14_SIM']
 ALL_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
-DEFAULT_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS
+DEFAULT_EVALUATION_DATASETS = ALL_EVALUATION_DATASETS
 
 def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
     name = params['name']
