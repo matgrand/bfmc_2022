@@ -24,7 +24,7 @@ from time import time, sleep
 
 
 from Simulator.src.helper_functions import *
-
+import sys
 
 # DEFINITIONS
 IN, OUT, CONV_LAYERS, FC_LAYERS, DROPOUT = 'IN', 'OUT', 'CONV_LAYERS', 'FC_LAYERS', 'DROPOUT'
@@ -404,24 +404,24 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
     net = net.item()
 
     #load datasets
-    to_save = []
 
     MSEs = []
     for ev_ds in eval_datasets:
+        to_save = []
         ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{name}.npz'
         if not os.path.exists(ds_train_combination_path):
-            ds_path = f'tmp/real_dss/{ev_ds}.npz'
-            if not os.path.exists(ds_path):
-                tmp = np.load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
-                timgs, tlocs = tmp['imgs'], tmp['locs']
-                np.savez(ds_path, imgs=timgs, locs=tlocs)
-                print(f'Generating {ev_ds}')
-            ds_npz = np.load(ds_path, allow_pickle=True)
-            imgs, locs = ds_npz['imgs'], ds_npz['locs']
-
             #create hes
             hes_path = f'tmp/hes/{ev_ds}_{he_distance*100:.0f}.npz'
             if not os.path.exists(hes_path):
+                #
+                ds_path = f'tmp/real_dss/{ev_ds}.npz'
+                if not os.path.exists(ds_path):
+                    tmp = np.load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
+                    timgs, tlocs = tmp['imgs'], tmp['locs']
+                    np.savez(ds_path, imgs=timgs, locs=tlocs)
+                    print(f'Generating {ev_ds}')
+                locs = np.load(ds_path, allow_pickle=True) ['locs']
+                #
                 #get the he
                 hes = calculate_hes(locs, he_distance)
                 np.savez(hes_path, hes=hes, he_distance=he_distance)
@@ -431,6 +431,15 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             #preprocess images
             preproc_imgs_path = f'tmp/real_dss/{ev_ds}_preproc_imgs_{img_size}_{canny1}_{canny2}_{blur}_{img_noise}_{100*keep_bottom:.0f}.npz'
             if not os.path.exists(preproc_imgs_path):
+                #
+                ds_path = f'tmp/real_dss/{ev_ds}.npz'
+                if not os.path.exists(ds_path):
+                    tmp = np.load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
+                    timgs, tlocs = tmp['imgs'], tmp['locs']
+                    np.savez(ds_path, imgs=timgs, locs=tlocs)
+                    print(f'Generating {ev_ds}')
+                imgs = np.load(ds_path, allow_pickle=True)['imgs']
+                #
                 timgs = np.zeros((len(imgs), img_size, img_size), dtype=np.uint8)
                 for i, img in enumerate(imgs):
                     timgs[i] = preprocess_image(img=img,size=int(img_size), keep_bottom=float(keep_bottom), canny1=int(canny1), canny2=int(canny2), blur=int(blur))
@@ -448,24 +457,24 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
                 est_hes = net(imgs).cpu().numpy()
             
             #save
-            to_save.append({'ev_ds': ev_ds, 'hes': hes, 'est_hes': est_hes, 'he_distance': he_distance, 'combination':params})  
+            to_save.append({'ev_ds': ev_ds, 'hes': hes, 'est_hes': est_hes, 'he_distance': he_distance, 'combination':params})
 
             #calculate MSE
             mse = np.mean(np.square(hes - est_hes))
 
             #save
-            np.savez(ds_train_combination_path, eval_datasets=eval_datasets, saved=to_save, mse=mse, comb_name=name)
+            np.savez(ds_train_combination_path, ev_ds=ev_ds, saved=to_save, mse=mse, comb_name=name)
+
         #load
         npz = np.load(ds_train_combination_path, allow_pickle=True)
         MSEs.append(npz['mse'])
-        eval_datasets = npz['eval_datasets']
     return np.mean(np.array(MSEs))
 
 def get_best_result(trainings_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
     best_combination = None
     best_MSE = np.inf
     all_MSE = []
-    for comb in trainings_combinations:
+    for comb in tqdm(trainings_combinations):
         MSEs = evaluate(comb, eval_datasets=eval_datasets, device=device)
         MSE = np.mean(MSEs)
         all_MSE.append(MSE)
