@@ -464,9 +464,9 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             #save
             np.savez(ds_train_combination_path, ev_ds=ev_ds, saved=to_save, mse=mse, comb_name=name)
 
-def get_best_result(trainings_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
-    all_mses = np.zeros((len(trainings_combinations), len(eval_datasets)))
-    for i, comb in tqdm(enumerate(trainings_combinations)):
+def get_best_result(training_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
+    all_mses = np.zeros((len(training_combinations), len(eval_datasets)))
+    for i, comb in enumerate(tqdm(training_combinations)):
         for j,ev_ds in enumerate(eval_datasets):
             comb_name = comb['name']
             ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
@@ -474,9 +474,70 @@ def get_best_result(trainings_combinations, eval_datasets=DEFAULT_EVALUATION_DAT
             mse = npz['mse']
             all_mses[i,j] = mse
     MSEs = np.mean(all_mses, axis=1)
-    best_comb = trainings_combinations[np.argmin(MSEs)]
+    best_comb = training_combinations[np.argmin(MSEs)]
     best_MSE = np.min(MSEs)
     return best_comb, best_MSE, MSEs
+
+def get_all_paramters_dict(training_comb):
+    name = training_comb['name']
+    #check if the name exists
+    comb_path = f'tmp/training_combinations/{name}.npz'
+    assert os.path.exists(comb_path), f'Name {name} does not exist'
+    npz = np.load(comb_path, allow_pickle=True)
+    ds_name = npz['ds_name']
+    ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
+    to_ret = {}
+    to_ret['imgs']              = ds['imgs']
+    to_ret['locs']              = ds['locs']
+    to_ret['hes']               = ds['hes']
+    to_ret['steer_noise_level'] = ds['steer_noise_level']
+    to_ret['he_distance']       = ds['he_distance']
+    to_ret['canny1']            = ds['canny1']
+    to_ret['canny2']            = ds['canny2']
+    to_ret['blur']              = ds['blur']
+    to_ret['img_noise']         = ds['img_noise']
+    to_ret['keep_bottom']       = ds['keep_bottom']
+    to_ret['img_size']          = ds['img_size']
+    to_ret['losses']            = npz['losses']
+    to_ret['net']               = npz['net']
+    to_ret['name']              = npz['name']
+    to_ret['ds_name']           = npz['ds_name']
+    to_ret['architecture']      = npz['architecture']
+    to_ret['batch_size']        = npz['batch_size']
+    to_ret['lr']                = npz['lr']
+    to_ret['epochs']            = npz['epochs']
+    to_ret['L1_lambda']         = npz['L1_lambda']
+    to_ret['L2_lambda']         = npz['L2_lambda']
+    to_ret['weight_decay']      = npz['weight_decay']
+    to_ret['dropout']           = npz['dropout']
+    to_ret['best_epoch']        = npz['best_epoch']
+    to_ret['best_val']          = npz['best_val']
+    return to_ret
+
+
+
+def get_MSEs_for(paramter, training_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS):
+    param_values = {}
+    for tr in tqdm(training_combinations):
+        params = get_all_paramters_dict(tr)
+        assert paramter in params.keys(), f'Parameter {paramter} does not exist'
+        p_val = float(params[paramter])
+        if p_val not in param_values.keys():
+            param_values[p_val] = []
+        param_values[p_val].append(tr)
+    print(f'Found {len(param_values.keys())} different values for {paramter}')
+    param_values_mses = {}
+    for p_val in tqdm(param_values.keys()):
+        tmpMSEs = [] 
+        for tr in param_values[p_val]:
+            for ev_ds in eval_datasets:
+                comb_name = tr['name']
+                ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
+                npz = np.load(ds_train_combination_path, allow_pickle=True)
+                mse = npz['mse']
+                tmpMSEs.append(mse)
+        param_values_mses[p_val] = np.mean(np.array(tmpMSEs))
+    return param_values_mses
 
 
 
