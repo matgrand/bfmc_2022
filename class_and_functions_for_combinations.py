@@ -250,6 +250,32 @@ def prepare_ds(ds_params):
     #save the dataset
     np.savez(ds_path, imgs=aug_imgs, locs=locs, hes=hes, name=name, steer_noise_level=steer_noise_level, he_distance=he_distance, canny1=canny1, canny2=canny2, blur=blur, img_noise=img_noise, keep_bottom=keep_bottom, img_size=img_size)
 
+def analyze_ds(ds_params):
+    name, steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size, ds_length = ds_params['name'], ds_params['steer_noise_level'], ds_params['he_distance'], ds_params['canny1'], ds_params['canny2'], ds_params['blur'], ds_params['img_noise'], ds_params['keep_bottom'], ds_params['img_size'], ds_params['ds_length']
+    #check if dataset is already in tmp folder
+    ds_path = f'tmp/dss/{name}.npz'
+    assert os.path.exists(ds_path), f'{ds_path} does not exist'
+    ds = np.load(ds_path, allow_pickle=True)
+    imgs, locs, hes, name, steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size = ds['imgs'], ds['locs'], ds['hes'], ds['name'], ds['steer_noise_level'], ds['he_distance'], ds['canny1'], ds['canny2'], ds['blur'], ds['img_noise'], ds['keep_bottom'], ds['img_size']
+    path = np.load('sparcs/sparcs_path_precise.npy', allow_pickle=True).T
+    path_yaws = np.zeros(path.shape[0])
+    for i in range(path.shape[0]-1):
+        path_yaws[i] = np.arctan2(path[i+1,1]-path[i,1], path[i+1,0]-path[i,0])
+    path_yaws[-1] = path_yaws[-2]
+
+    dists = np.zeros(locs.shape[0])
+    yaw_dists = np.zeros(locs.shape[0])
+    for i, (x,y,yaw) in enumerate(locs):
+        idx_closest_p = np.argmin(np.linalg.norm(path - np.array([x,y]), axis=1))
+        dists[i] = np.linalg.norm(path[idx_closest_p] - np.array([x,y]))
+        assert path_yaws[idx_closest_p].shape == yaw.shape, f'{path_yaws[idx_closest_p].shape} != {yaw.shape}'
+        yaw_dists[i] = np.abs(diff_angle(path_yaws[idx_closest_p], yaw))
+    
+    
+    print(f'Steer noise: {steer_noise_level}deg -- avg dist: {np.mean(dists):.4f}m, std: {np.std(dists):.4f}m -- avg yaw dist: {np.mean(yaw_dists):.4f}rad, std: {np.std(yaw_dists):.4f}rad')
+
+
+
 class MyDataset(Dataset):
     def __init__(self, ds_name, device='cpu'):
         #load the dataset
@@ -387,6 +413,8 @@ def train(params, device='cpu'):
 
 REAL_EVALUATION_DATASETS = ['acw0', 'acw2', 'acw4', 'acw6', 'acw8', 'acw10', 'acw12', 'acw14', 'cw0', 'cw2', 'cw4', 'cw6', 'cw8', 'cw10', 'cw12', 'cw14']
 SIM_EVALUATION_DATASETS = ['acw0_SIM', 'acw2_SIM', 'acw4_SIM', 'acw6_SIM', 'acw8_SIM', 'acw10_SIM', 'acw12_SIM', 'acw14_SIM', 'cw0_SIM', 'cw2_SIM', 'cw4_SIM', 'cw6_SIM', 'cw8_SIM', 'cw10_SIM', 'cw12_SIM', 'cw14_SIM']
+REAL_NOISY_DATASETS = ['acw10', 'acw12', 'acw14', 'cw10', 'cw12', 'cw14']
+SIM_NOISY_DATASETS = ['acw10_SIM', 'acw12_SIM', 'acw14_SIM', 'cw10_SIM', 'cw12_SIM', 'cw14_SIM']
 ALL_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
 DEFAULT_EVALUATION_DATASETS = ALL_EVALUATION_DATASETS
 
@@ -401,7 +429,7 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
     losses, net, name, ds_name, architecture, batch_size, lr, epochs, L1_lambda, L2_lambda, weight_decay, dropout, best_epoch, best_val = npz['losses'], npz['net'], npz['name'], npz['ds_name'], npz['architecture'], npz['batch_size'], npz['lr'], npz['epochs'], npz['L1_lambda'], npz['L2_lambda'], npz['weight_decay'], npz['dropout'], npz['best_epoch'], npz['best_val']
     ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
     train_imgs, train_locs, train_hes, train_steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size = ds['imgs'], ds['locs'], ds['hes'], ds['steer_noise_level'], ds['he_distance'], ds['canny1'], ds['canny2'], ds['blur'], ds['img_noise'], ds['keep_bottom'], ds['img_size']
-    #load datasets
+    net = net.item()
 
     MSEs = []
     for ev_ds in eval_datasets:
@@ -447,7 +475,6 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             imgs = torch.from_numpy(imgs[:,np.newaxis,:,:]).to(device)
 
             #run inference         
-            net = net.item()
             assert isinstance(net, HEstimator), f'Net is not an HEstimator, it is a {type(net)}'
             net.to(device)
             net.eval()
