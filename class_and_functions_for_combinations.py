@@ -401,8 +401,6 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
     losses, net, name, ds_name, architecture, batch_size, lr, epochs, L1_lambda, L2_lambda, weight_decay, dropout, best_epoch, best_val = npz['losses'], npz['net'], npz['name'], npz['ds_name'], npz['architecture'], npz['batch_size'], npz['lr'], npz['epochs'], npz['L1_lambda'], npz['L2_lambda'], npz['weight_decay'], npz['dropout'], npz['best_epoch'], npz['best_val']
     ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
     train_imgs, train_locs, train_hes, train_steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size = ds['imgs'], ds['locs'], ds['hes'], ds['steer_noise_level'], ds['he_distance'], ds['canny1'], ds['canny2'], ds['blur'], ds['img_noise'], ds['keep_bottom'], ds['img_size']
-    net = net.item()
-
     #load datasets
 
     MSEs = []
@@ -449,6 +447,7 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             imgs = torch.from_numpy(imgs[:,np.newaxis,:,:]).to(device)
 
             #run inference         
+            net = net.item()
             assert isinstance(net, HEstimator), f'Net is not an HEstimator, it is a {type(net)}'
             net.to(device)
             net.eval()
@@ -465,23 +464,20 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             #save
             np.savez(ds_train_combination_path, ev_ds=ev_ds, saved=to_save, mse=mse, comb_name=name)
 
-        #load
-        npz = np.load(ds_train_combination_path, allow_pickle=True)
-        MSEs.append(npz['mse'])
-    return np.mean(np.array(MSEs))
-
 def get_best_result(trainings_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
-    best_combination = None
-    best_MSE = np.inf
-    all_MSE = []
-    for comb in tqdm(trainings_combinations):
-        MSEs = evaluate(comb, eval_datasets=eval_datasets, device=device)
-        MSE = np.mean(MSEs)
-        all_MSE.append(MSE)
-        if MSE < best_MSE:
-            best_MSE = MSE
-            best_combination = comb
-    return best_combination, best_MSE, all_MSE
+    all_mses = np.zeros((len(trainings_combinations), len(eval_datasets)))
+    for i, comb in tqdm(enumerate(trainings_combinations)):
+        for j,ev_ds in enumerate(eval_datasets):
+            comb_name = comb['name']
+            ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
+            npz = np.load(ds_train_combination_path, allow_pickle=True)
+            mse = npz['mse']
+            all_mses[i,j] = mse
+    MSEs = np.mean(all_mses, axis=1)
+    best_comb = trainings_combinations[np.argmin(MSEs)]
+    best_MSE = np.min(MSEs)
+    return best_comb, best_MSE, MSEs
+
 
 
 

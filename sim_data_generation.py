@@ -16,7 +16,7 @@ LAPS = 10
 imgs = []
 locs = []
 
-STEER_NOSIE_STDS_DEG = [0, 3, 6, 9, 12, 14, 16, 18, 20, 22, 24]
+STEER_NOSIE_STDS_DEG = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]
 file_name = 'saved_tests/sim_ds_'
 
 SHOW_FRAMES = False
@@ -67,6 +67,10 @@ def save_data(imgs,locs, name):
     np.savez_compressed(name, imgs=imgs, locs=locs)
 
 for STEER_NOISE_STD_DEG in STEER_NOSIE_STDS_DEG:
+    ds_name = f'{file_name}{STEER_NOISE_STD_DEG}.npz'
+    if os.path.exists(ds_name):
+        print(f'{ds_name} already exists, skipping')
+        continue
     imgs = []
     locs = []
 
@@ -155,7 +159,7 @@ for STEER_NOISE_STD_DEG in STEER_NOSIE_STDS_DEG:
                 #stop the car
                 print('Stopping')
                 CAR.stop()
-                save_data(imgs, locs, name=f'{file_name}{STEER_NOISE_STD_DEG}.npz')
+                save_data(imgs, locs, name=ds_name)
                 break
             #invert direction at half the
             if lap==LAPS//2: 
