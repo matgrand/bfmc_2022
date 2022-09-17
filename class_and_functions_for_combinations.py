@@ -114,7 +114,7 @@ def preprocess_image(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=20
     img = cv.resize(img, (size, size))
     return img
 
-def get_est_heading_error(img, onnx_model, size=32, keep_bottom=0.66666667, canny1=100, canny2=200, blur=3):
+def get_est_heading_error(img, onnx_model, size=32, keep_bottom=.8, canny1=100, canny2=200, blur=3):
     img = preprocess_image(img, size, keep_bottom, canny1, canny2, blur)
     img_flipped = cv.flip(img, 1) 
     #stack the 2 images
@@ -295,6 +295,13 @@ class MyDataset(Dataset):
         ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
         self.img_size = ds['img_size']
         self.imgs, self.hes = ds['imgs'], ds['hes']
+
+        #add flipped images
+        flipped_imgs = np.flip(self.imgs, axis=2)
+        flipped_hes = - self.hes
+        self.imgs = np.concatenate((self.imgs, flipped_imgs), axis=0)
+        self.hes = np.concatenate((self.hes, flipped_hes), axis=0)
+
         assert len(self.imgs) == len(self.hes)
         self.imgs = self.imgs.astype(np.float32)
         self.imgs = self.imgs[:, np.newaxis, :, :]
