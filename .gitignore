@@ -27,3 +27,4 @@ sparcs/__pycache__/*
 __pycache__/*
 tmp/*
 tmp_bk.zip
+to_del/*

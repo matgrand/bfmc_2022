@@ -274,6 +274,19 @@ def analyze_ds(ds_params):
     
     print(f'Steer noise: {steer_noise_level}deg -- avg dist: {np.mean(dists):.4f}m, std: {np.std(dists):.4f}m -- avg yaw dist: {np.mean(yaw_dists):.4f}rad, std: {np.std(yaw_dists):.4f}rad')
 
+    fig, ax = plt.subplots(1,1, figsize=(10,5))
+    ax.plot(locs[:,0], locs[:,1], 'b.')
+    ax.plot(path[:,0], path[:,1], 'r.')
+    ax.set_title('Path and locations')
+    ax.set_xlabel('x [m]')
+    ax.set_ylabel('y [m]')
+    #same scale
+    ax.set_aspect('equal', 'box')
+    ax.legend(['Locations', 'Path'])
+
+    plt.show()
+
+
 
 
 class MyDataset(Dataset):
@@ -414,6 +427,7 @@ def train(params, device='cpu'):
 REAL_EVALUATION_DATASETS = ['acw0', 'acw2', 'acw4', 'acw6', 'acw8', 'acw10', 'acw12', 'acw14', 'cw0', 'cw2', 'cw4', 'cw6', 'cw8', 'cw10', 'cw12', 'cw14']
 SIM_EVALUATION_DATASETS = ['acw0_SIM', 'acw2_SIM', 'acw4_SIM', 'acw6_SIM', 'acw8_SIM', 'acw10_SIM', 'acw12_SIM', 'acw14_SIM', 'cw0_SIM', 'cw2_SIM', 'cw4_SIM', 'cw6_SIM', 'cw8_SIM', 'cw10_SIM', 'cw12_SIM', 'cw14_SIM']
 REAL_NOISY_DATASETS = ['acw10', 'acw12', 'acw14', 'cw10', 'cw12', 'cw14']
+REAL_CLEAN_DATASETS = ['acw0', 'acw2', 'acw4', 'acw6', 'acw8', 'cw0', 'cw2', 'cw4', 'cw6', 'cw8']
 SIM_NOISY_DATASETS = ['acw10_SIM', 'acw12_SIM', 'acw14_SIM', 'cw10_SIM', 'cw12_SIM', 'cw14_SIM']
 ALL_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
 DEFAULT_EVALUATION_DATASETS = ALL_EVALUATION_DATASETS
