@@ -72,7 +72,7 @@ class HEstimator(nn.Module):
         return x
 
 def create_net(architecture, img_size, dropout):
-    return  HEstimator() #TODO
+    return HEstimator() #TODO
 
 # IMAGE PREPROCESSING AND AUGMENTATION
 import cv2 as cv
@@ -188,20 +188,38 @@ def augment_img(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=200, bl
 
 
 def calculate_hes(locs, he_dist):
-    path = np.load('sparcs/sparcs_path_precise.npy', allow_pickle=True).T
+    path = my_load('sparcs/sparcs_path_precise.npy', allow_pickle=True).T
     hes = []
     for x,y,yaw in locs:
         he, _, _ = get_heading_error(x,y,yaw, path, he_dist)
         hes.append(he)
     return np.array(hes)
 
+all_names_used = []
+
+def check_name(name):
+    global all_names_used
+    if name in all_names_used:
+        raise ValueError("Name already used")
+    else:
+        all_names_used.append(name)
+
+mega_dict_in_ram = {}
+def my_load(name, allow_pickle=True):
+    global mega_dict_in_ram
+    if name not in all_names_used:
+        all_names_used.append(name)
+    if name in mega_dict_in_ram.keys():
+        return mega_dict_in_ram[name]
+    else:
+        mega_dict_in_ram[name] = np.load(name, allow_pickle=allow_pickle)
+        return mega_dict_in_ram[name]
 
 # DATASET
 def prepare_ds(ds_params):
     #name = f'ds_sn{steer_noise_level:.0f}_he{100*he_distance:.0f}_canny{canny1}_{canny2}_blur{blur:.0f}_noise{img_noise:.0f}_keep{100*keep_bottom:.0f}_size{img_size:.0f}_length{ds_length:.0f}'
     #params = {'name':name, 'steer_noise_level': steer_noise_level, 'he_distance': he_distance, 'canny1': canny1, 'canny2': canny2, 'blur': blur, 'img_noise': img_noise, 'keep_bottom': keep_bottom, 'img_size': img_size, 'ds_length': ds_length}
-    
-    
+
     name, steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size, ds_length = ds_params['name'], ds_params['steer_noise_level'], ds_params['he_distance'], ds_params['canny1'], ds_params['canny2'], ds_params['blur'], ds_params['img_noise'], ds_params['keep_bottom'], ds_params['img_size'], ds_params['ds_length']
     #check if dataset is already in tmp folder
     ds_path = f'tmp/dss/{name}.npz'
@@ -212,26 +230,28 @@ def prepare_ds(ds_params):
     sn_path = f'tmp/dss/ds_{steer_noise_level}.npz'
     if not os.path.exists(sn_path):
         #unzip and save the ds unzipped
-        tmp_ds = np.load(f'saved_tests/sim_ds_{steer_noise_level}.npz', allow_pickle=True)
+        tmp_ds = my_load(f'saved_tests/sim_ds_{steer_noise_level}.npz', allow_pickle=True)
         imgs, locs = tmp_ds['imgs'], tmp_ds['locs']
         np.savez(sn_path, imgs=imgs, locs=locs)
-        print(f'Unzipped and saved {ds_path}')
+        check_name(sn_path)
+        # print(f'Unzipped and saved {ds_path}')
     
     #check if he_distance is already in tmp
     hes_path = f'tmp/hes/hes_{steer_noise_level}_{100*he_distance:.0f}.npz'
     if not os.path.exists(hes_path):
         #load the dataset
-        tmp_ds = np.load(sn_path, allow_pickle=True)
+        tmp_ds = my_load(sn_path, allow_pickle=True)
         imgs, locs = tmp_ds['imgs'], tmp_ds['locs']
         #get the he
         hes = calculate_hes(locs, he_distance)
         #save the dataset
         np.savez(hes_path, hes=hes, he_distance=he_distance, steer_noise_level=steer_noise_level)
-        print(f'Calculated and saved {hes_path}')
+        check_name(hes_path)
+        # print(f'Calculated and saved {hes_path}')
     
     #load required components
-    ds = np.load(sn_path, allow_pickle=True)
-    hes = np.load(hes_path, allow_pickle=True)
+    ds = my_load(sn_path, allow_pickle=True)
+    hes = my_load(hes_path, allow_pickle=True)
     imgs, locs = ds['imgs'], ds['locs']
     hes = hes['hes']
     to_load = min(imgs.shape[0], ds_length)
@@ -247,15 +267,16 @@ def prepare_ds(ds_params):
     aug_imgs = np.array(aug_imgs)
     #save the dataset
     np.savez(ds_path, imgs=aug_imgs, locs=locs, hes=hes, name=name, steer_noise_level=steer_noise_level, he_distance=he_distance, canny1=canny1, canny2=canny2, blur=blur, img_noise=img_noise, keep_bottom=keep_bottom, img_size=img_size)
+    check_name(ds_path)
 
 def analyze_ds(ds_params):
     name, steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size, ds_length = ds_params['name'], ds_params['steer_noise_level'], ds_params['he_distance'], ds_params['canny1'], ds_params['canny2'], ds_params['blur'], ds_params['img_noise'], ds_params['keep_bottom'], ds_params['img_size'], ds_params['ds_length']
     #check if dataset is already in tmp folder
     ds_path = f'tmp/dss/{name}.npz'
     assert os.path.exists(ds_path), f'{ds_path} does not exist'
-    ds = np.load(ds_path, allow_pickle=True)
+    ds = my_load(ds_path, allow_pickle=True)
     imgs, locs, hes, name, steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size = ds['imgs'], ds['locs'], ds['hes'], ds['name'], ds['steer_noise_level'], ds['he_distance'], ds['canny1'], ds['canny2'], ds['blur'], ds['img_noise'], ds['keep_bottom'], ds['img_size']
-    path = np.load('sparcs/sparcs_path_precise.npy', allow_pickle=True).T
+    path = my_load('sparcs/sparcs_path_precise.npy', allow_pickle=True).T
     path_yaws = np.zeros(path.shape[0])
     for i in range(path.shape[0]-1):
         path_yaws[i] = np.arctan2(path[i+1,1]-path[i,1], path[i+1,0]-path[i,0])
@@ -284,13 +305,21 @@ def analyze_ds(ds_params):
 
     plt.show()
 
+def visualize_ds(imgs):
+    cv.namedWindow('img', cv.WINDOW_NORMAL)
+    for img in imgs:
+        cv.imshow('img', img)
+        if cv.waitKey(50) == 27:
+            break
+    cv.destroyAllWindows()
+    
 
 
 
 class MyDataset(Dataset):
     def __init__(self, ds_name, device='cpu'):
         #load the dataset
-        ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
+        ds = my_load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
         self.img_size = ds['img_size']
         self.imgs, self.hes = ds['imgs'], ds['hes']
 
@@ -365,6 +394,13 @@ def val_epoch(net, val_dataloader, regr_loss_fn):
     return np.mean(he_losses)
 
 def train(params, device='cpu'):
+    #reset everything
+    torch.manual_seed(0)
+    np.random.seed(0)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
     name, ds_name, architecture, batch_size, lr, epochs, L1_lambda, L2_lambda, weight_decay, dropout = params['name'], params['ds_name'], params['architecture'], params['batch_size'], params['lr'], params['epochs'], params['L1_lambda'], params['L2_lambda'], params['weight_decay'], params['dropout']
     
     # print(f'Name: {name}')
@@ -394,6 +430,7 @@ def train(params, device='cpu'):
     regr_loss_fn2 = nn.MSELoss() #after epochs/2 for finetuning
 
     #train
+
     best_val = np.inf
     best_epoch = 0
     best_model = None
@@ -409,11 +446,7 @@ def train(params, device='cpu'):
             best_epoch = epoch
             best_model = deepcopy(net)
             # torch.save(net.state_dict(), f'tmp/{name}.pt')
-    
-    # EVALUATE ON TEST SET (UNSEEN DATA)
-    # net.load_state_dict(torch.load(f'tmp/{name}.pt'))
-    net = best_model
-    he_loss = val_epoch(net, val_dataloader, regr_loss_fn)
+
 
     #export to onnx
     dummy_input = torch.randn(1, 1, ds.img_size, ds.img_size, device=device)
@@ -426,6 +459,7 @@ def train(params, device='cpu'):
                 architecture=architecture, batch_size=batch_size, lr=lr, epochs=epochs, 
                 L1_lambda=L1_lambda, L2_lambda=L2_lambda, weight_decay=weight_decay, dropout=dropout,
                 best_epoch=best_epoch, best_val=best_val)
+    check_name(comb_path)
 
 # EVALUATION
 
@@ -437,24 +471,23 @@ SIM_NOISY_DATASETS = ['acw10_SIM', 'acw12_SIM', 'acw14_SIM', 'cw10_SIM', 'cw12_S
 ALL_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
 DEFAULT_EVALUATION_DATASETS = ALL_EVALUATION_DATASETS
 
-def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
+def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu', show_imgs=False):
     name = params['name']
+    check_name(name)
 
     #check if the name exists
     comb_path = f'tmp/training_combinations/{name}.npz'
     assert os.path.exists(comb_path), f'Name {name} does not exist'
     #load model
-    npz = np.load(comb_path, allow_pickle=True)
+    npz = my_load(comb_path, allow_pickle=True)
     losses, net, name, ds_name, architecture, batch_size, lr, epochs, L1_lambda, L2_lambda, weight_decay, dropout, best_epoch, best_val = npz['losses'], npz['net'], npz['name'], npz['ds_name'], npz['architecture'], npz['batch_size'], npz['lr'], npz['epochs'], npz['L1_lambda'], npz['L2_lambda'], npz['weight_decay'], npz['dropout'], npz['best_epoch'], npz['best_val']
-    ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
+    ds = my_load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
     train_imgs, train_locs, train_hes, train_steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size = ds['imgs'], ds['locs'], ds['hes'], ds['steer_noise_level'], ds['he_distance'], ds['canny1'], ds['canny2'], ds['blur'], ds['img_noise'], ds['keep_bottom'], ds['img_size']
     net = net.item()
     net.to(device)
     net.eval()
 
-    MSEs = []
     for ev_ds in eval_datasets:
-        to_save = []
         ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{name}.npz'
         if not os.path.exists(ds_train_combination_path):
             #create hes
@@ -463,17 +496,19 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
                 #
                 ds_path = f'tmp/real_dss/{ev_ds}.npz'
                 if not os.path.exists(ds_path):
-                    tmp = np.load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
+                    tmp = my_load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
                     timgs, tlocs = tmp['imgs'], tmp['locs']
                     np.savez(ds_path, imgs=timgs, locs=tlocs)
+                    check_name(ds_path)
                     # print(f'Generating {ev_ds}')
-                locs = np.load(ds_path, allow_pickle=True) ['locs']
+                locs = my_load(ds_path, allow_pickle=True) ['locs']
                 #
                 #get the he
                 hes = calculate_hes(locs, he_distance)
                 np.savez(hes_path, hes=hes, he_distance=he_distance)
-                print(f'Generating {hes_path}')
-            hes = np.load(hes_path, allow_pickle=True)['hes']
+                check_name(hes_path)
+                # print(f'Generating {hes_path}')
+            hes = my_load(hes_path, allow_pickle=True)['hes']
 
             #preprocess images
             preproc_imgs_path = f'tmp/real_dss/{ev_ds}_preproc_imgs_{img_size}_{canny1}_{canny2}_{blur}_{img_noise}_{100*keep_bottom:.0f}.npz'
@@ -481,18 +516,23 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
                 #
                 ds_path = f'tmp/real_dss/{ev_ds}.npz'
                 if not os.path.exists(ds_path):
-                    tmp = np.load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
+                    tmp = my_load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
                     timgs, tlocs = tmp['imgs'], tmp['locs']
                     np.savez(ds_path, imgs=timgs, locs=tlocs)
-                    print(f'Generating {ev_ds}')
-                imgs = np.load(ds_path, allow_pickle=True)['imgs']
+                    check_name(ds_path)
+                    # print(f'Generating {ev_ds}')
+                imgs = my_load(ds_path, allow_pickle=True)['imgs']
                 #
                 timgs = np.zeros((len(imgs), img_size, img_size), dtype=np.uint8)
                 for i, img in enumerate(imgs):
                     timgs[i] = preprocess_image(img=img,size=int(img_size), keep_bottom=float(keep_bottom), canny1=int(canny1), canny2=int(canny2), blur=int(blur))
                 np.savez(preproc_imgs_path, imgs=timgs)
-                print(f'Generating {preproc_imgs_path}')
-            imgs = np.load(preproc_imgs_path, allow_pickle=True)['imgs'].astype(np.float32)
+                check_name(preproc_imgs_path)
+                # print(f'Generating {preproc_imgs_path}')
+            imgs = my_load(preproc_imgs_path, allow_pickle=True)['imgs'].astype(np.float32)
+
+            if show_imgs: visualize_ds(imgs)
+
             imgs = torch.from_numpy(imgs[:,np.newaxis,:,:]).to(device)
 
             #run inference         
@@ -501,10 +541,6 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             with torch.no_grad():
                 est_hes = net(imgs).cpu().numpy()
             
-            
-            #save
-            to_save.append({'ev_ds': ev_ds, 'hes': hes, 'est_hes': est_hes, 'he_distance': he_distance, 'combination':params})
-
             #calculate MSE
             #make hes and est_hes the same shape
             hes = hes.reshape(-1, 1)
@@ -514,7 +550,14 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
             mse = np.mean(se)
 
             #save
-            np.savez(ds_train_combination_path, ev_ds=ev_ds, saved=to_save, mse=mse, comb_name=name)
+            np.savez(ds_train_combination_path, ev_ds=ev_ds, hes=hes, est_hes=est_hes, he_distance=he_distance, mse=mse, comb_name=name)
+            check_name(ds_train_combination_path)
+        else:
+            if show_imgs:
+                preproc_imgs_path = f'tmp/real_dss/{ev_ds}_preproc_imgs_{img_size}_{canny1}_{canny2}_{blur}_{img_noise}_{100*keep_bottom:.0f}.npz'
+                imgs = my_load(preproc_imgs_path, allow_pickle=True)['imgs'].astype(np.float32)
+                visualize_ds(imgs)
+
 
 def get_best_result(training_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
     all_mses = np.zeros((len(training_combinations), len(eval_datasets)))
@@ -522,7 +565,7 @@ def get_best_result(training_combinations, eval_datasets=DEFAULT_EVALUATION_DATA
         for j,ev_ds in enumerate(eval_datasets):
             comb_name = comb['name']
             ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
-            npz = np.load(ds_train_combination_path, allow_pickle=True)
+            npz = my_load(ds_train_combination_path, allow_pickle=True)
             mse = npz['mse']
             all_mses[i,j] = mse
     MSEs = np.mean(all_mses, axis=1)
@@ -535,9 +578,9 @@ def get_all_paramters_dict(training_comb):
     #check if the name exists
     comb_path = f'tmp/training_combinations/{name}.npz'
     assert os.path.exists(comb_path), f'Name {name} does not exist'
-    npz = np.load(comb_path, allow_pickle=True)
+    npz = my_load(comb_path, allow_pickle=True)
     ds_name = npz['ds_name']
-    ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
+    ds = my_load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
     to_ret = {}
     to_ret['imgs']              = ds['imgs']
     to_ret['locs']              = ds['locs']
@@ -577,7 +620,10 @@ def get_MSEs_for(paramter, training_combinations, eval_datasets=DEFAULT_EVALUATI
         if p_val not in param_values.keys():
             param_values[p_val] = []
         param_values[p_val].append(tr)
-    print(f'Found {len(param_values.keys())} different values for {paramter}')
+    min_num_vals = np.min([len(v) for v in param_values.values()])
+    max_num_vals = np.max([len(v) for v in param_values.values()])
+    print(f'Found {len(param_values.keys())} different values for {paramter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
+
     if len(param_values.keys()) == 1:
         return None
     param_values_mses = {}
@@ -587,10 +633,11 @@ def get_MSEs_for(paramter, training_combinations, eval_datasets=DEFAULT_EVALUATI
             for ev_ds in eval_datasets:
                 comb_name = tr['name']
                 ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
-                npz = np.load(ds_train_combination_path, allow_pickle=True)
+                npz = my_load(ds_train_combination_path, allow_pickle=True)
                 mse = npz['mse']
                 tmpMSEs.append(mse)
         param_values_mses[p_val] = np.mean(np.array(tmpMSEs))
+        # print(f'p_val={p_val}, mses={tmpMSEs}, mean={param_values_mses[p_val]}')
     
     if plot:
         param_values = np.array(list(param_values_mses.keys()))
@@ -639,7 +686,7 @@ def get2D_MSEs_for(param1, param2, training_combinations, eval_datasets=DEFAULT_
             for ev_ds in eval_datasets:
                 comb_name = tr['name']
                 ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
-                npz = np.load(ds_train_combination_path, allow_pickle=True)
+                npz = my_load(ds_train_combination_path, allow_pickle=True)
                 mse = npz['mse']
                 tmpMSEs.append(mse)
         p12_values_mses[p12_val] = np.mean(np.array(tmpMSEs))
