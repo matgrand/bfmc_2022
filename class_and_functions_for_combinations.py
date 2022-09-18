@@ -4,12 +4,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm # progress bar
 from pprint import pprint # pretty print (useful for a more readable print of objects like lists or dictionaries)
 from IPython.display import clear_output # to clear the output of the notebook
-
 import torch
 import torch.nn as nn
 import torchvision
@@ -21,10 +19,10 @@ import os
 import torch.onnx
 from copy import deepcopy
 from time import time, sleep
-
-
 from Simulator.src.helper_functions import *
 import sys
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator
 
 # DEFINITIONS
 IN, OUT, CONV_LAYERS, FC_LAYERS, DROPOUT = 'IN', 'OUT', 'CONV_LAYERS', 'FC_LAYERS', 'DROPOUT'
@@ -179,7 +177,7 @@ def augment_img(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=200, bl
         img[offset:, :] = 0 # randint(0,255)
 
     #add noise 
-    std = noise_std
+    std = noise_std if noise_std > 1 else 2
     std = randint(1, std)
     noisem = randint(0, std, img.shape, dtype=np.uint8)
     img = cv.subtract(img, noisem)
@@ -451,6 +449,8 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
     ds = np.load(f'tmp/dss/{ds_name}.npz', allow_pickle=True)
     train_imgs, train_locs, train_hes, train_steer_noise_level, he_distance, canny1, canny2, blur, img_noise, keep_bottom, img_size = ds['imgs'], ds['locs'], ds['hes'], ds['steer_noise_level'], ds['he_distance'], ds['canny1'], ds['canny2'], ds['blur'], ds['img_noise'], ds['keep_bottom'], ds['img_size']
     net = net.item()
+    net.to(device)
+    net.eval()
 
     MSEs = []
     for ev_ds in eval_datasets:
@@ -466,7 +466,7 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
                     tmp = np.load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
                     timgs, tlocs = tmp['imgs'], tmp['locs']
                     np.savez(ds_path, imgs=timgs, locs=tlocs)
-                    print(f'Generating {ev_ds}')
+                    # print(f'Generating {ev_ds}')
                 locs = np.load(ds_path, allow_pickle=True) ['locs']
                 #
                 #get the he
@@ -497,17 +497,21 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu'):
 
             #run inference         
             assert isinstance(net, HEstimator), f'Net is not an HEstimator, it is a {type(net)}'
-            net.to(device)
-            net.eval()
             est_hes = np.zeros_like(hes)
             with torch.no_grad():
                 est_hes = net(imgs).cpu().numpy()
+            
             
             #save
             to_save.append({'ev_ds': ev_ds, 'hes': hes, 'est_hes': est_hes, 'he_distance': he_distance, 'combination':params})
 
             #calculate MSE
-            mse = np.mean(np.square(hes - est_hes))
+            #make hes and est_hes the same shape
+            hes = hes.reshape(-1, 1)
+            est_hes = est_hes.reshape(-1, 1)
+            se = np.square(hes - est_hes)
+            assert se.shape == hes.shape, f'se.shape {se.shape} != hes.shape {hes.shape}'
+            mse = np.mean(se)
 
             #save
             np.savez(ds_train_combination_path, ev_ds=ev_ds, saved=to_save, mse=mse, comb_name=name)
@@ -564,7 +568,7 @@ def get_all_paramters_dict(training_comb):
 
 
 
-def get_MSEs_for(paramter, training_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS):
+def get_MSEs_for(paramter, training_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, plot=True):
     param_values = {}
     for tr in tqdm(training_combinations):
         params = get_all_paramters_dict(tr)
@@ -574,6 +578,8 @@ def get_MSEs_for(paramter, training_combinations, eval_datasets=DEFAULT_EVALUATI
             param_values[p_val] = []
         param_values[p_val].append(tr)
     print(f'Found {len(param_values.keys())} different values for {paramter}')
+    if len(param_values.keys()) == 1:
+        return None
     param_values_mses = {}
     for p_val in tqdm(param_values.keys()):
         tmpMSEs = [] 
@@ -585,9 +591,81 @@ def get_MSEs_for(paramter, training_combinations, eval_datasets=DEFAULT_EVALUATI
                 mse = npz['mse']
                 tmpMSEs.append(mse)
         param_values_mses[p_val] = np.mean(np.array(tmpMSEs))
+    
+    if plot:
+        param_values = np.array(list(param_values_mses.keys()))
+        mses = np.array(list(param_values_mses.values()))
+        fig,ax = plt.subplots(figsize=(10, 5))
+        ax.plot(param_values, mses)
+        ax.set_xlabel(paramter)
+        ax.set_ylabel('MSE')
+        ax.set_title(f'MSE for different {paramter}')
+        plt.show()
+
     return param_values_mses
 
+def get2D_MSEs_for(param1, param2, training_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, plot=True):
+    p1_values = {}
+    p2_values = {}
+    p12_values = {}
+    for tr in tqdm(training_combinations):
+        params = get_all_paramters_dict(tr)
+        assert param1 in params.keys(), f'Parameter {param1} does not exist'
+        assert param2 in params.keys(), f'Parameter {param2} does not exist'
+        p1_val = float(params[param1])
+        p2_val = float(params[param2])
+        p12_val = (p1_val, p2_val)
+        if p1_val not in p1_values.keys():
+            p1_values[p1_val] = []
+        if p2_val not in p2_values.keys():
+            p2_values[p2_val] = []
+        if p12_val not in p12_values.keys():
+            p12_values[p12_val] = []
+        p1_values[p1_val].append(tr)
+        p2_values[p2_val].append(tr)
+        p12_values[p12_val].append(tr)
+    print(f'Found {len(p1_values.keys())} different values for {param1}')
+    print(f'Found {len(p2_values.keys())} different values for {param2}')
+    print(f'Found {len(p12_values.keys())} different values for {param1} and {param2}')
+    if len(p1_values.keys()) == 1 or len(p2_values.keys()) == 1:
+        return None
 
+    assert len(p1_values.keys())*len(p2_values.keys()) == len(p12_values.keys()), 'Something went wrong'
+
+    p12_values_mses = {}
+    for p12_val in tqdm(p12_values.keys()):
+        tmpMSEs = [] 
+        for tr in p12_values[p12_val]:
+            for ev_ds in eval_datasets:
+                comb_name = tr['name']
+                ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
+                npz = np.load(ds_train_combination_path, allow_pickle=True)
+                mse = npz['mse']
+                tmpMSEs.append(mse)
+        p12_values_mses[p12_val] = np.mean(np.array(tmpMSEs))
+    
+    if plot:
+        p1s = list(p1_values.keys())
+        p2s = list(p2_values.keys())
+        mses = np.zeros((len(p1s), len(p2s)))
+        for i,p1 in enumerate(p1s):
+            for j,p2 in enumerate(p2s):
+                mses[i, j] = p12_values_mses[(p1, p2)]
+        fig,ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=(10, 5))
+        X, Y = np.meshgrid(p1s, p2s)
+        Z = mses.T
+
+        print(f'X.shape: {X.shape}, Y.shape: {Y.shape}, mses.shape: {mses.shape}')
+
+        surf = ax.plot_surface(X, Y, Z,cmap=cm.coolwarm,linewidth=0, antialiased=False)
+        ax.set_xlabel(param1)
+        ax.set_ylabel(param2)
+        ax.set_zlabel('MSE')
+        ax.set_title(f'MSE for different {param1} and {param2}')
+        fig.colorbar(surf, shrink=0.5, aspect=5)
+        plt.show()
+
+    return p12_values_mses
 
 
 
