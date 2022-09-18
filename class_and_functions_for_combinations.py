@@ -651,7 +651,7 @@ def get2D_MSEs_for(param1, param2, training_combinations, eval_datasets=DEFAULT_
         for i,p1 in enumerate(p1s):
             for j,p2 in enumerate(p2s):
                 mses[i, j] = p12_values_mses[(p1, p2)]
-        fig,ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=(10, 5))
+        fig,ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=(18, 9))
         X, Y = np.meshgrid(p1s, p2s)
         Z = mses.T
 
