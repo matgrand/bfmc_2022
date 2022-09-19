@@ -72,7 +72,11 @@ class HEstimator(nn.Module):
         return x
 
 def create_net(architecture, img_size, dropout):
-    return HEstimator() #TODO
+    net = HEstimator()
+    #load the base network
+    base_net_name = f'tmp/models/base_{architecture}_{img_size}.pt'
+    net.load_state_dict(torch.load(base_net_name))
+    return net
 
 # IMAGE PREPROCESSING AND AUGMENTATION
 import cv2 as cv
@@ -393,6 +397,11 @@ def val_epoch(net, val_dataloader, regr_loss_fn):
         he_losses.append(he_loss.detach().cpu().numpy())
     return np.mean(he_losses)
 
+def reset_weights(model):
+    for layer in model.modules():
+        if isinstance(layer, nn.Conv2d) or isinstance(layer, nn.Linear):
+            layer.reset_parameters()
+
 def train(params, device='cpu'):
     #reset everything
     torch.manual_seed(0)
@@ -408,6 +417,8 @@ def train(params, device='cpu'):
     #check if the training has already been done
     comb_path = f'tmp/training_combinations/{name}.npz'
     if os.path.exists(comb_path):
+        print(f'Already trained: {name}')
+        # check_name(comb_path)
         return
 
     #create dataset
@@ -490,19 +501,20 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu', sh
     for ev_ds in eval_datasets:
         ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{name}.npz'
         if not os.path.exists(ds_train_combination_path):
+            #create dataset
+            ds_path = f'tmp/real_dss/{ev_ds}.npz'
+            if not os.path.exists(ds_path):
+                tmp = my_load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
+                timgs, tlocs = tmp['imgs'], tmp['locs']
+                np.savez(ds_path, imgs=timgs, locs=tlocs)
+                check_name(ds_path)
+                # print(f'Generating {ev_ds}')
+            npz = my_load(ds_path, allow_pickle=True)
+            imgs, locs = npz['imgs'], npz['locs']
+            
             #create hes
             hes_path = f'tmp/hes/{ev_ds}_{he_distance*100:.0f}.npz'
             if not os.path.exists(hes_path):
-                #
-                ds_path = f'tmp/real_dss/{ev_ds}.npz'
-                if not os.path.exists(ds_path):
-                    tmp = my_load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
-                    timgs, tlocs = tmp['imgs'], tmp['locs']
-                    np.savez(ds_path, imgs=timgs, locs=tlocs)
-                    check_name(ds_path)
-                    # print(f'Generating {ev_ds}')
-                locs = my_load(ds_path, allow_pickle=True) ['locs']
-                #
                 #get the he
                 hes = calculate_hes(locs, he_distance)
                 np.savez(hes_path, hes=hes, he_distance=he_distance)
@@ -513,16 +525,6 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu', sh
             #preprocess images
             preproc_imgs_path = f'tmp/real_dss/{ev_ds}_preproc_imgs_{img_size}_{canny1}_{canny2}_{blur}_{img_noise}_{100*keep_bottom:.0f}.npz'
             if not os.path.exists(preproc_imgs_path):
-                #
-                ds_path = f'tmp/real_dss/{ev_ds}.npz'
-                if not os.path.exists(ds_path):
-                    tmp = my_load(f'saved_tests/{ev_ds}.npz', allow_pickle=True)
-                    timgs, tlocs = tmp['imgs'], tmp['locs']
-                    np.savez(ds_path, imgs=timgs, locs=tlocs)
-                    check_name(ds_path)
-                    # print(f'Generating {ev_ds}')
-                imgs = my_load(ds_path, allow_pickle=True)['imgs']
-                #
                 timgs = np.zeros((len(imgs), img_size, img_size), dtype=np.uint8)
                 for i, img in enumerate(imgs):
                     timgs[i] = preprocess_image(img=img,size=int(img_size), keep_bottom=float(keep_bottom), canny1=int(canny1), canny2=int(canny2), blur=int(blur))
@@ -543,8 +545,8 @@ def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu', sh
             
             #calculate MSE
             #make hes and est_hes the same shape
-            hes = hes.reshape(-1, 1)
-            est_hes = est_hes.reshape(-1, 1)
+            hes = hes.reshape(-1)
+            est_hes = est_hes.reshape(-1)
             se = np.square(hes - est_hes)
             assert se.shape == hes.shape, f'se.shape {se.shape} != hes.shape {hes.shape}'
             mse = np.mean(se)
