@@ -94,8 +94,8 @@ def preprocess_image(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=20
 
 
     #set associated parameters to None to skip the step
-    skip_canny = canny1 == None or canny2 == None
-    skip_blur = blur == None
+    skip_canny = canny1 == None or canny2 == None or canny1==0 or canny2==0
+    skip_blur = blur == 0
     #check if its a valid image
     assert len(img.shape) == 3 or len(img.shape) == 2, "Invalid image shape"
     #check if the imge is grayscale
