@@ -417,8 +417,6 @@ def train(params, device='cpu'):
     #check if the training has already been done
     comb_path = f'tmp/training_combinations/{name}.npz'
     if os.path.exists(comb_path):
-        print(f'Already trained: {name}')
-        # check_name(comb_path)
         return
 
     #create dataset
@@ -481,6 +479,8 @@ REAL_CLEAN_DATASETS = ['acw0', 'acw2', 'acw4', 'acw6', 'acw8', 'cw0', 'cw2', 'cw
 SIM_NOISY_DATASETS = ['acw10_SIM', 'acw12_SIM', 'acw14_SIM', 'cw10_SIM', 'cw12_SIM', 'cw14_SIM']
 ALL_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
 DEFAULT_EVALUATION_DATASETS = ALL_EVALUATION_DATASETS
+LIST_REAL_DATASETS = [REAL_CLEAN_DATASETS, REAL_NOISY_DATASETS, REAL_EVALUATION_DATASETS]
+LIST_REAL_DATASETS_NAMES = ['Clean datasets', 'Noisy datasets', 'All evaluation datasets']
 
 def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu', show_imgs=False):
     name = params['name']
@@ -613,42 +613,52 @@ def get_all_paramters_dict(training_comb):
 
 
 
-def get_MSEs_for(paramter, training_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, plot=True):
-    param_values = {}
-    for tr in tqdm(training_combinations):
-        params = get_all_paramters_dict(tr)
-        assert paramter in params.keys(), f'Parameter {paramter} does not exist'
-        p_val = float(params[paramter])
-        if p_val not in param_values.keys():
-            param_values[p_val] = []
-        param_values[p_val].append(tr)
-    min_num_vals = np.min([len(v) for v in param_values.values()])
-    max_num_vals = np.max([len(v) for v in param_values.values()])
-    print(f'Found {len(param_values.keys())} different values for {paramter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
+def get_MSEs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS, list_names=LIST_REAL_DATASETS_NAMES, plot=True, log=False):
+    list_param_values = []
+    list_MSEs = []
+    for eval_datasets in list_eval_datasets:
+        param_values = {}
+        for tr in tqdm(training_combinations):
+            params = get_all_paramters_dict(tr)
+            assert paramter in params.keys(), f'Parameter {paramter} does not exist'
+            p_val = float(params[paramter])
+            if p_val not in param_values.keys():
+                param_values[p_val] = []
+            param_values[p_val].append(tr)
+        min_num_vals = np.min([len(v) for v in param_values.values()])
+        max_num_vals = np.max([len(v) for v in param_values.values()])
+        print(f'Found {len(param_values.keys())} different values for {paramter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
 
-    if len(param_values.keys()) == 1:
-        return None
-    param_values_mses = {}
-    for p_val in tqdm(param_values.keys()):
-        tmpMSEs = [] 
-        for tr in param_values[p_val]:
-            for ev_ds in eval_datasets:
-                comb_name = tr['name']
-                ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
-                npz = my_load(ds_train_combination_path, allow_pickle=True)
-                mse = npz['mse']
-                tmpMSEs.append(mse)
-        param_values_mses[p_val] = np.mean(np.array(tmpMSEs))
-        # print(f'p_val={p_val}, mses={tmpMSEs}, mean={param_values_mses[p_val]}')
-    
-    if plot:
+        if len(param_values.keys()) == 1:
+            return None
+        param_values_mses = {}
+        for p_val in tqdm(param_values.keys()):
+            tmpMSEs = [] 
+            for tr in param_values[p_val]:
+                for ev_ds in eval_datasets:
+                    comb_name = tr['name']
+                    ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
+                    npz = my_load(ds_train_combination_path, allow_pickle=True)
+                    mse = npz['mse']
+                    tmpMSEs.append(mse)
+            param_values_mses[p_val] = np.mean(np.array(tmpMSEs))
+            # print(f'p_val={p_val}, mses={tmpMSEs}, mean={param_values_mses[p_val]}')
         param_values = np.array(list(param_values_mses.keys()))
         mses = np.array(list(param_values_mses.values()))
+        list_param_values.append(param_values)
+        list_MSEs.append(mses)
+    
+    if plot:
         fig,ax = plt.subplots(figsize=(10, 5))
-        ax.plot(param_values, mses)
+        for param_values, mses, eval_datasets in zip(list_param_values, list_MSEs, list_eval_datasets):
+            ax.plot(param_values, mses)
         ax.set_xlabel(paramter)
         ax.set_ylabel('MSE')
         ax.set_title(f'MSE for different {paramter}')
+        ax.legend(list_names)
+        ax.grid()
+        if log:
+            ax.set_xscale('log')
         plt.show()
 
     return param_values_mses
