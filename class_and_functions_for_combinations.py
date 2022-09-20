@@ -111,7 +111,7 @@ def preprocess_image(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=20
         img = cv.Canny(img, canny1, canny2)
     #blur
     if not skip_blur:
-        img = cv.blur(img, (3,3), 0)
+        img = cv.blur(img, (blur,blur), 0)
     #resize 2
     img = cv.resize(img, (size, size))
     return img
