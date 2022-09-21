@@ -630,6 +630,7 @@ def get_MSEs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_D
         print(f'Found {len(param_values.keys())} different values for {paramter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
 
         if len(param_values.keys()) == 1:
+            clear_output()
             return None
         param_values_mses = {}
         for p_val in tqdm(param_values.keys()):
