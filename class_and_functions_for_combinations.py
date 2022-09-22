@@ -32,38 +32,31 @@ model_name = MODEL_FOLDER + '/lane_keeper.pt'
 onnx_lane_keeper_path = MODEL_FOLDER + '/lane_keeper.onnx'
 
 # NETWORK ARCHITECTURE
-DROPOUT_PROB = 0.3
-DEFAULT_CONV_LAYERS = nn.Sequential( #in = 32x32
+class HEstimator(nn.Module):
+    def __init__(self,dropout=0.3):
+        super().__init__()
+        self.conv = nn.Sequential( #in = 32x32
             nn.Conv2d(1, 4, 5, 1), #out = 28
             nn.ReLU(True),
-            nn.Dropout(p=DROPOUT_PROB),
+            nn.Dropout(p=dropout),
             nn.MaxPool2d(2, 2), #out=14
             nn.BatchNorm2d(4),
-            nn.Dropout(p=DROPOUT_PROB),
+            nn.Dropout(p=dropout),
             nn.Conv2d(4, 4, 5, 1), #out = 10
             nn.ReLU(True),
-            nn.Dropout(p=DROPOUT_PROB),
+            nn.Dropout(p=dropout),
             nn.MaxPool2d(2, 2), #out=5
-            nn.Dropout(p=DROPOUT_PROB),
+            nn.Dropout(p=dropout),
             nn.Conv2d(4, 32, 5, 1), #out = 1
             nn.ReLU(True),
         )
-DEFAULT_FC_LAYERS = nn.Sequential(
+        self.flatten = nn.Flatten()
+        self.lin = nn.Sequential(
             nn.Linear(1*1*32, 16),
             nn.ReLU(True),
             # nn.Tanh(),
             nn.Linear(16, 1),
         )
-
-NET_PARAMS = {IN:32, OUT:1, CONV_LAYERS:DEFAULT_CONV_LAYERS, FC_LAYERS:DEFAULT_FC_LAYERS, DROPOUT:DROPOUT_PROB}
-
-
-class HEstimator(nn.Module):
-    def __init__(self, net_params=NET_PARAMS):
-        super().__init__()
-        self.conv = net_params[CONV_LAYERS]
-        self.flatten = nn.Flatten()
-        self.lin = net_params[FC_LAYERS]
 
     def forward(self, x):
         x = self.conv(x)
@@ -72,7 +65,7 @@ class HEstimator(nn.Module):
         return x
 
 def create_net(architecture, img_size, dropout):
-    net = HEstimator()
+    net = HEstimator(dropout=dropout)
     #load the base network
     base_net_name = f'tmp/models/base_{architecture}_{img_size}.pt'
     net.load_state_dict(torch.load(base_net_name))
