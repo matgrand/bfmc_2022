@@ -643,6 +643,7 @@ def get_MSEs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_D
         list_MSEs.append(mses)
     
     if plot:
+        clear_output()
         fig,ax = plt.subplots(figsize=(10, 5))
         for param_values, mses, eval_datasets in zip(list_param_values, list_MSEs, list_eval_datasets):
             ax.plot(param_values, mses)
@@ -719,6 +720,184 @@ def get2D_MSEs_for(param1, param2, training_combinations, eval_datasets=DEFAULT_
         plt.show()
 
     return p12_values_mses
+
+
+def get_STDs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS, list_names=LIST_REAL_DATASETS_NAMES, plot=True, log=False):
+    list_param_values = []
+    list_STDs = []
+    for eval_datasets in list_eval_datasets:
+        param_values = {}
+        for tr in tqdm(training_combinations):
+            params = get_all_paramters_dict(tr)
+            assert paramter in params.keys(), f'Parameter {paramter} does not exist'
+            p_val = float(params[paramter])
+            if p_val not in param_values.keys():
+                param_values[p_val] = []
+            param_values[p_val].append(tr)
+        min_num_vals = np.min([len(v) for v in param_values.values()])
+        max_num_vals = np.max([len(v) for v in param_values.values()])
+        print(f'Found {len(param_values.keys())} different values for {paramter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
+
+        if len(param_values.keys()) == 1:
+            clear_output()
+            return None
+        param_values_mses = {}
+        for p_val in tqdm(param_values.keys()):
+            tmpSTDs = [] 
+            for tr in param_values[p_val]:
+                for ev_ds in eval_datasets:
+                    comb_name = tr['name']
+                    ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
+                    npz = my_load(ds_train_combination_path, allow_pickle=True)
+                    hes, est_hes = npz['hes'], npz['est_hes']
+                    assert hes.shape == est_hes.shape, f'hes.shape={hes.shape}, est_hes.shape={est_hes.shape}'
+                    tmpSTDs.append(np.std(hes-est_hes))
+                    # mse = np.mean(np.square(hes-est_hes))
+                    # mse = npz['mse']
+                    # tmpSTDs.append(mse)
+            param_values_mses[p_val] = np.mean(np.array(tmpSTDs))
+            # print(f'p_val={p_val}, mses={tmpSTDs}, mean={param_values_mses[p_val]}')
+        param_values = np.array(list(param_values_mses.keys()))
+        mses = np.array(list(param_values_mses.values()))
+        list_param_values.append(param_values)
+        list_STDs.append(mses)
+    
+    if plot:
+        clear_output()
+        fig,ax = plt.subplots(figsize=(10, 5))
+        for param_values, mses, eval_datasets in zip(list_param_values, list_STDs, list_eval_datasets):
+            ax.plot(param_values, mses)
+        ax.set_xlabel(paramter)
+        ax.set_ylabel('STD')
+        ax.set_title(f'STD for different {paramter}')
+        ax.legend(list_names)
+        ax.grid()
+        if log:
+            ax.set_xscale('log')
+        plt.show()
+
+    return param_values_mses
+
+
+def get_MAXs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS, list_names=LIST_REAL_DATASETS_NAMES, plot=True, log=False):
+    list_param_values = []
+    list_MAXs = []
+    for eval_datasets in list_eval_datasets:
+        param_values = {}
+        for tr in tqdm(training_combinations):
+            params = get_all_paramters_dict(tr)
+            assert paramter in params.keys(), f'Parameter {paramter} does not exist'
+            p_val = float(params[paramter])
+            if p_val not in param_values.keys():
+                param_values[p_val] = []
+            param_values[p_val].append(tr)
+        min_num_vals = np.min([len(v) for v in param_values.values()])
+        max_num_vals = np.max([len(v) for v in param_values.values()])
+        print(f'Found {len(param_values.keys())} different values for {paramter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
+
+        if len(param_values.keys()) == 1:
+            clear_output()
+            return None
+        param_values_mses = {}
+        for p_val in tqdm(param_values.keys()):
+            tmpMAXs = [] 
+            for tr in param_values[p_val]:
+                for ev_ds in eval_datasets:
+                    comb_name = tr['name']
+                    ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
+                    npz = my_load(ds_train_combination_path, allow_pickle=True)
+                    hes, est_hes = npz['hes'], npz['est_hes']
+                    assert hes.shape == est_hes.shape, f'hes.shape={hes.shape}, est_hes.shape={est_hes.shape}'
+                    tmpMAXs.append(np.max(np.abs(hes-est_hes)))
+                    # mse = np.mean(np.square(hes-est_hes))
+                    # mse = npz['mse']
+                    # tmpMAXs.append(mse)
+            param_values_mses[p_val] = np.max(np.array(tmpMAXs))
+            # print(f'p_val={p_val}, mses={tmpMAXs}, mean={param_values_mses[p_val]}')
+        param_values = np.array(list(param_values_mses.keys()))
+        mses = np.array(list(param_values_mses.values()))
+        list_param_values.append(param_values)
+        list_MAXs.append(mses)
+    
+    if plot:
+        clear_output()
+        fig,ax = plt.subplots(figsize=(10, 5))
+        for param_values, mses, eval_datasets in zip(list_param_values, list_MAXs, list_eval_datasets):
+            ax.plot(param_values, mses)
+        ax.set_xlabel(paramter)
+        ax.set_ylabel('MAX')
+        ax.set_title(f'MAX for different {paramter}')
+        ax.legend(list_names)
+        ax.grid()
+        if log:
+            ax.set_xscale('log')
+        plt.show()
+
+    return param_values_mses
+
+
+def get_PERCs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS, list_names=LIST_REAL_DATASETS_NAMES, plot=True, log=False):
+    list_param_values = []
+    list_PERCs = []
+    for eval_datasets in list_eval_datasets:
+        param_values = {}
+        for tr in tqdm(training_combinations):
+            params = get_all_paramters_dict(tr)
+            assert paramter in params.keys(), f'Parameter {paramter} does not exist'
+            p_val = float(params[paramter])
+            if p_val not in param_values.keys():
+                param_values[p_val] = []
+            param_values[p_val].append(tr)
+        min_num_vals = np.min([len(v) for v in param_values.values()])
+        max_num_vals = np.max([len(v) for v in param_values.values()])
+        print(f'Found {len(param_values.keys())} different values for {paramter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
+
+        if len(param_values.keys()) == 1:
+            clear_output()
+            return None
+        param_values_mses = {}
+        for p_val in tqdm(param_values.keys()):
+            tmpPERCs = [] 
+            for tr in param_values[p_val]:
+                for ev_ds in eval_datasets:
+                    comb_name = tr['name']
+                    ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
+                    npz = my_load(ds_train_combination_path, allow_pickle=True)
+                    hes, est_hes = npz['hes'], npz['est_hes']
+                    assert hes.shape == est_hes.shape, f'hes.shape={hes.shape}, est_hes.shape={est_hes.shape}'
+                    error = np.abs(hes-est_hes)
+                    rel_error = np.where(np.abs(hes) > 1e-2, error / np.abs(hes), np.zeros_like(error))
+
+                    assert np.all(np.isfinite(rel_error)), f'np.any(np.isfinite(rel_error))={np.any(np.isfinite(rel_error))}'
+                    assert error.shape == rel_error.shape, f'error.shape={error.shape}, rel_error.shape={rel_error.shape}'
+                    percentage_error = np.mean(rel_error)
+                    tmpPERCs.append(percentage_error)
+                    # mse = np.mean(np.square(hes-est_hes))
+                    # mse = npz['mse']
+                    # tmpPERCs.append(mse)
+            param_values_mses[p_val] = np.mean(np.array(tmpPERCs))
+            # print(f'p_val={p_val}, mses={tmpPERCs}, mean={param_values_mses[p_val]}')
+        param_values = np.array(list(param_values_mses.keys()))
+        mses = np.array(list(param_values_mses.values()))
+        list_param_values.append(param_values)
+        list_PERCs.append(mses)
+    
+    if plot:
+        clear_output()
+        fig,ax = plt.subplots(figsize=(10, 5))
+        for param_values, mses, eval_datasets in zip(list_param_values, list_PERCs, list_eval_datasets):
+            ax.plot(param_values, mses)
+        ax.set_xlabel(paramter)
+        ax.set_ylabel('PERC')
+        ax.set_ylim(0, 1)
+        ax.set_title(f'PERC for different {paramter}')
+        ax.legend(list_names)
+        ax.grid()
+        if log:
+            ax.set_xscale('log')
+        plt.show()
+
+    return param_values_mses
 
 
 
