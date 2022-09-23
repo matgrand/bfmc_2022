@@ -889,7 +889,7 @@ def get_PERCs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_
             ax.plot(param_values, mses)
         ax.set_xlabel(paramter)
         ax.set_ylabel('PERC')
-        ax.set_ylim(0, 1)
+        # ax.set_ylim(0, 1)
         ax.set_title(f'PERC for different {paramter}')
         ax.legend(list_names)
         ax.grid()
