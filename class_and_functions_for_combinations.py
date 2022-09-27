@@ -1,6 +1,7 @@
 
 
 #Imports
+from turtle import color
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -475,6 +476,10 @@ ALL_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
 DEFAULT_EVALUATION_DATASETS = ALL_EVALUATION_DATASETS
 LIST_REAL_DATASETS = [REAL_CLEAN_DATASETS, REAL_NOISY_DATASETS, REAL_CLEAN_DATASETS + REAL_NOISY_DATASETS]
 LIST_REAL_DATASETS_NAMES = ['Clean datasets', 'Noisy datasets', 'All evaluation datasets']
+C1 = (155/255, 0/255 ,20/255)
+C2 = (1.1*4/255, 1.1*100/255, 1.1*218/255)#(4/255, 100/255, 218/255)
+C3 = (C1[0]/2+C2[0]/2, C1[1]/2+C2[1]/2, C1[2]/2+C2[2]/2)
+MY_COLORS = [C1, C2, C3]
 
 def evaluate(params, eval_datasets=DEFAULT_EVALUATION_DATASETS, device='cpu', show_imgs=False):
     name = params['name']
@@ -739,7 +744,7 @@ def get2D_MSEs_for(param1, param2, training_combinations,
     return p12_values_stds
 
 
-def get_STDs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS, list_names=LIST_REAL_DATASETS_NAMES, plot=True, log=False):
+def get_STDs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS, list_names=LIST_REAL_DATASETS_NAMES, plot=True, log=False, save=True):
     list_param_values = []
     list_STDs = []
     for eval_datasets in list_eval_datasets:
@@ -782,17 +787,21 @@ def get_STDs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_D
     
     if plot:
         clear_output()
-        fig,ax = plt.subplots(figsize=(10, 5))
-        for param_values, mses, eval_datasets in zip(list_param_values, list_STDs, list_eval_datasets):
-            ax.plot(param_values, mses)
+        fig,ax = plt.subplots(figsize=(10, 4))
+        for i, (param_values, mses, eval_datasets) in enumerate(zip(list_param_values, list_STDs, list_eval_datasets)):
+            ax.plot(param_values, mses, label=f'{eval_datasets}', color=MY_COLORS[i])
         ax.set_xlabel(paramter)
-        ax.set_ylabel('STD')
+        ax.set_ylabel('STD (deg)')
         ax.set_title(f'STD for different {paramter}')
         ax.legend(list_names)
         ax.grid()
         if log:
             ax.set_xscale('log')
+
+        plt.tight_layout()
         plt.show()
+        if save:
+            fig.savefig(f'thesis_figures/STD_plot_{paramter}.eps', format='eps', dpi=5000)
 
     return param_values_mses
 
