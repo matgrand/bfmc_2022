@@ -95,6 +95,7 @@ def preprocess_image(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=20
     img_is_gray = len(img.shape) == 2
     if not img_is_gray:
         img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+        
     #cut the top part
     img = img[int(img.shape[0]*(1-keep_bottom)):,:]
     #resize 1
@@ -627,16 +628,16 @@ def get_MSEs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_D
             return None
         param_values_mses = {}
         for p_val in tqdm(param_values.keys()):
-            tmpMSEs = [] 
+            tmp_stds = [] 
             for tr in param_values[p_val]:
                 for ev_ds in eval_datasets:
                     comb_name = tr['name']
                     ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
                     npz = my_load(ds_train_combination_path, allow_pickle=True)
                     mse = npz['mse']
-                    tmpMSEs.append(mse)
-            param_values_mses[p_val] = np.mean(np.array(tmpMSEs))
-            # print(f'p_val={p_val}, mses={tmpMSEs}, mean={param_values_mses[p_val]}')
+                    tmp_stds.append(mse)
+            param_values_mses[p_val] = np.mean(np.array(tmp_stds))
+            # print(f'p_val={p_val}, mses={tmp_stds}, mean={param_values_mses[p_val]}')
         param_values = np.array(list(param_values_mses.keys()))
         mses = np.array(list(param_values_mses.values()))
         list_param_values.append(param_values)
@@ -658,7 +659,9 @@ def get_MSEs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_D
 
     return param_values_mses
 
-def get2D_MSEs_for(param1, param2, training_combinations, eval_datasets=DEFAULT_EVALUATION_DATASETS, plot=True):
+def get2D_MSEs_for(param1, param2, training_combinations, 
+                    eval_datasets=DEFAULT_EVALUATION_DATASETS, plot=True, 
+                    azimuth=45, elevation=45, save=False):
     p1_values = {}
     p2_values = {}
     p12_values = {}
@@ -682,44 +685,58 @@ def get2D_MSEs_for(param1, param2, training_combinations, eval_datasets=DEFAULT_
     print(f'Found {len(p2_values.keys())} different values for {param2}')
     print(f'Found {len(p12_values.keys())} different values for {param1} and {param2}')
     if len(p1_values.keys()) == 1 or len(p2_values.keys()) == 1:
+        clear_output()
         return None
 
     assert len(p1_values.keys())*len(p2_values.keys()) == len(p12_values.keys()), 'Something went wrong'
 
-    p12_values_mses = {}
+    p12_values_stds = {}
     for p12_val in tqdm(p12_values.keys()):
-        tmpMSEs = [] 
+        tmp_stds = [] 
         for tr in p12_values[p12_val]:
             for ev_ds in eval_datasets:
                 comb_name = tr['name']
                 ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
                 npz = my_load(ds_train_combination_path, allow_pickle=True)
-                mse = npz['mse']
-                tmpMSEs.append(mse)
-        p12_values_mses[p12_val] = np.mean(np.array(tmpMSEs))
+                hes = np.rad2deg(npz['hes'])
+                est_hes = np.rad2deg(npz['est_hes'])
+                std = np.std(hes - est_hes)
+                tmp_stds.append(std)
+
+        p12_values_stds[p12_val] = np.mean(np.array(tmp_stds))
     
     if plot:
         p1s = list(p1_values.keys())
         p2s = list(p2_values.keys())
-        mses = np.zeros((len(p1s), len(p2s)))
+        stds = np.zeros((len(p1s), len(p2s)))
         for i,p1 in enumerate(p1s):
             for j,p2 in enumerate(p2s):
-                mses[i, j] = p12_values_mses[(p1, p2)]
-        fig,ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=(18, 9))
+                stds[i, j] = p12_values_stds[(p1, p2)]
+        fig,ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=(12, 9))
         X, Y = np.meshgrid(p1s, p2s)
-        Z = mses.T
+        Z = stds.T
 
-        print(f'X.shape: {X.shape}, Y.shape: {Y.shape}, mses.shape: {mses.shape}')
+        print(f'X.shape: {X.shape}, Y.shape: {Y.shape}, stds.shape: {stds.shape}')
 
         surf = ax.plot_surface(X, Y, Z,cmap=cm.coolwarm,linewidth=0, antialiased=False)
         ax.set_xlabel(param1)
         ax.set_ylabel(param2)
-        ax.set_zlabel('MSE')
-        ax.set_title(f'MSE for different {param1} and {param2}')
+        ax.set_zlabel('STD (deg)')
+        ax.set_title(f'STD for different {param1} and {param2}')
         fig.colorbar(surf, shrink=0.5, aspect=5)
-        plt.show()
 
-    return p12_values_mses
+        #set azimuth and elevation
+        ax.view_init(azim=azimuth, elev=elevation)
+
+        clear_output()
+
+        plt.show()
+        plt.tight_layout()
+
+        if save:
+            fig.savefig(f'thesis_figures/3d_plot_{param1}_{param2}.eps', format='eps', dpi=1000)
+
+    return p12_values_stds
 
 
 def get_STDs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS, list_names=LIST_REAL_DATASETS_NAMES, plot=True, log=False):
