@@ -473,7 +473,7 @@ REAL_NOISY_DATASETS = ['cw6', 'acw6' ,'cw8', 'acw8', 'acw10', 'cw10']#['acw10', 
 REAL_CLEAN_DATASETS = ['acw0', 'acw2', 'acw4', 'cw0', 'cw2', 'cw4']
 SIM_NOISY_DATASETS = ['acw6_SIM', 'acw8_SIM', 'acw10_SIM', 'cw6_SIM', 'cw8_SIM', 'cw10_SIM']
 SIM_CLEAN_DATASETS = ['acw0_SIM', 'acw2_SIM', 'acw4_SIM', 'cw0_SIM', 'cw2_SIM', 'cw4_SIM']
-ALL_EVALUATION_DATASETS = REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
+ALL_EVALUATION_DATASETS = REAL_NOISY_DATASETS + REAL_CLEAN_DATASETS + SIM_NOISY_DATASETS + SIM_CLEAN_DATASETS#REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
 DEFAULT_EVALUATION_DATASETS = ALL_EVALUATION_DATASETS
 LIST_REAL_DATASETS = [REAL_CLEAN_DATASETS, REAL_NOISY_DATASETS, REAL_CLEAN_DATASETS + REAL_NOISY_DATASETS]
 LIST_SIM_DATASETS = [SIM_CLEAN_DATASETS, SIM_NOISY_DATASETS, SIM_CLEAN_DATASETS + SIM_NOISY_DATASETS]
@@ -613,59 +613,6 @@ def get_all_paramters_dict(training_comb):
     to_ret['best_val']          = npz['best_val']
     return to_ret
 
-
-
-def get_MSEs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS+LIST_SIM_DATASETS, list_names=LIST_REAL_DATASETS_NAMES+LIST_SIM_DATASETS_NAMES, plot=True, log=False):
-    list_param_values = []
-    list_MSEs = []
-    for eval_datasets in list_eval_datasets:
-        param_values = {}
-        for tr in tqdm(training_combinations):
-            params = get_all_paramters_dict(tr)
-            assert paramter in params.keys(), f'Parameter {paramter} does not exist'
-            p_val = float(params[paramter])
-            if p_val not in param_values.keys():
-                param_values[p_val] = []
-            param_values[p_val].append(tr)
-        min_num_vals = np.min([len(v) for v in param_values.values()])
-        max_num_vals = np.max([len(v) for v in param_values.values()])
-        print(f'Found {len(param_values.keys())} different values for {paramter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
-
-        if len(param_values.keys()) == 1:
-            clear_output()
-            return None
-        param_values_mses = {}
-        for p_val in tqdm(param_values.keys()):
-            tmp_stds = [] 
-            for tr in param_values[p_val]:
-                for ev_ds in eval_datasets:
-                    comb_name = tr['name']
-                    ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
-                    npz = my_load(ds_train_combination_path, allow_pickle=True)
-                    mse = npz['mse']
-                    tmp_stds.append(mse)
-            param_values_mses[p_val] = np.mean(np.array(tmp_stds))
-            # print(f'p_val={p_val}, mses={tmp_stds}, mean={param_values_mses[p_val]}')
-        param_values = np.array(list(param_values_mses.keys()))
-        mses = np.array(list(param_values_mses.values()))
-        list_param_values.append(param_values)
-        list_MSEs.append(mses)
-    
-    if plot:
-        clear_output()
-        fig,ax = plt.subplots(figsize=(10, 5))
-        for param_values, mses, eval_datasets in zip(list_param_values, list_MSEs, list_eval_datasets):
-            ax.plot(param_values, mses)
-        ax.set_xlabel(paramter)
-        ax.set_ylabel('MSE')
-        ax.set_title(f'MSE for different {paramter}')
-        ax.legend(list_names)
-        ax.grid()
-        if log:
-            ax.set_xscale('log')
-        plt.show()
-
-    return param_values_mses
 
 def get2D_MSEs_for(param1, param2, training_combinations, 
                     eval_datasets=DEFAULT_EVALUATION_DATASETS, plot=True, 
