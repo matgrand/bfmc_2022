@@ -185,6 +185,12 @@ def augment_img(img, size=32, keep_bottom=0.66666667, canny1=100, canny2=200, bl
 
     return img
 
+def get_hes(ev_ds, comb_name):
+    ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
+    npz = my_load(ds_train_combination_path, allow_pickle=True)
+    hes, est_hes = npz['hes'], npz['est_hes']
+    return hes, est_hes
+
 
 def calculate_hes(locs, he_dist):
     path = my_load('sparcs/sparcs_path_precise.npy', allow_pickle=True).T
