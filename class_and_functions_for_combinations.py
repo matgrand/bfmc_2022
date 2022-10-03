@@ -475,10 +475,10 @@ def train(params, device='cpu'):
 
 REAL_EVALUATION_DATASETS = ['acw0', 'acw2', 'acw4', 'acw6', 'acw8', 'acw10', 'acw12', 'acw14', 'cw0', 'cw2', 'cw4', 'cw6', 'cw8', 'cw10', 'cw12', 'cw14']
 SIM_EVALUATION_DATASETS = ['acw0_SIM', 'acw2_SIM', 'acw4_SIM', 'acw6_SIM', 'acw8_SIM', 'acw10_SIM', 'acw12_SIM', 'acw14_SIM', 'cw0_SIM', 'cw2_SIM', 'cw4_SIM', 'cw6_SIM', 'cw8_SIM', 'cw10_SIM', 'cw12_SIM', 'cw14_SIM']
-REAL_NOISY_DATASETS = ['cw6', 'acw6' ,'cw8', 'acw8', 'acw10', 'cw10']#['acw10', 'acw12', 'acw14', 'cw10', 'cw12', 'cw14']
-REAL_CLEAN_DATASETS = ['acw0', 'acw2', 'acw4', 'cw0', 'cw2', 'cw4']
-SIM_NOISY_DATASETS = ['acw6_SIM', 'acw8_SIM', 'acw10_SIM', 'cw6_SIM', 'cw8_SIM', 'cw10_SIM']
-SIM_CLEAN_DATASETS = ['acw0_SIM', 'acw2_SIM', 'acw4_SIM', 'cw0_SIM', 'cw2_SIM', 'cw4_SIM']
+REAL_NOISY_DATASETS = ['cw6', 'acw6' ,'cw8', 'acw8', 'cw10', 'acw10']#['acw10', 'acw12', 'acw14', 'cw10', 'cw12', 'cw14']
+REAL_CLEAN_DATASETS = ['cw0', 'acw0', 'cw2', 'acw2', 'cw4', 'acw4']
+SIM_NOISY_DATASETS = ['cw6_SIM', 'acw6_SIM', 'cw8_SIM', 'acw8_SIM', 'cw10_SIM', 'acw10_SIM']
+SIM_CLEAN_DATASETS = ['cw0_SIM', 'acw0_SIM', 'cw2_SIM', 'acw2_SIM', 'cw4_SIM', 'acw4_SIM']
 ALL_EVALUATION_DATASETS = REAL_NOISY_DATASETS + REAL_CLEAN_DATASETS + SIM_NOISY_DATASETS + SIM_CLEAN_DATASETS#REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
 DEFAULT_EVALUATION_DATASETS = ALL_EVALUATION_DATASETS
 LIST_REAL_DATASETS = [REAL_CLEAN_DATASETS, REAL_NOISY_DATASETS, REAL_CLEAN_DATASETS + REAL_NOISY_DATASETS]
