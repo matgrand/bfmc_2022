@@ -182,7 +182,7 @@ def project_onto_frame(frame, car, points, align_to_car=True, color=(0,255,255),
         return frame, proj_points[0]
     return frame, proj_points
 
-def project_onto_frame2(frame, points, x,y,yaw, color=(0,255,255), thickness=2, CAM_Z=0.2, CAM_FOV=1.085594795, CAM_PITCH=np.deg2rad(20), CAM_ROLL=np.deg2rad(3)):
+def project_onto_frame2(frame, points, x,y,yaw, color=(0,255,255), thickness=2, CAM_Z=0.195, CAM_FOV=1.085594795, CAM_PITCH=np.deg2rad(24), CAM_ROLL=np.deg2rad(-2)):
     #check if its a single point
     single_dim = False
     if points.ndim == 1:
