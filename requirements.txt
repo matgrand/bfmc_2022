@@ -1,0 +1,12 @@
+casadi==3.5.5.post2
+cv_bridge==1.16.0
+genpy==0.6.15
+matplotlib==3.1.2
+networkx==2.6.3
+numpy==1.17.4
+opencv_contrib_python==4.5.5.62
+pyclothoids==0.1.4
+pynput==1.7.5
+rospy==1.15.14
+scipy==1.7.3
+sensor_msgs==1.13.1
