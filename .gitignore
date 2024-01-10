@@ -19,3 +19,4 @@ tmp/*
 __pycache__/*
 saved_tests/*
 thesis_figures/*
+tmp.tar.gz

@@ -211,14 +211,15 @@ def check_name(name):
 
 mega_dict_in_ram = {}
 def my_load(name, allow_pickle=True):
-    global mega_dict_in_ram
-    if name not in all_names_used:
-        all_names_used.append(name)
-    if name in mega_dict_in_ram.keys():
-        return mega_dict_in_ram[name]
-    else:
-        mega_dict_in_ram[name] = np.load(name, allow_pickle=allow_pickle)
-        return mega_dict_in_ram[name]
+    # global mega_dict_in_ram
+    # if name not in all_names_used:
+    #     all_names_used.append(name)
+    # if name in mega_dict_in_ram.keys():
+    #     return mega_dict_in_ram[name]
+    # else:
+    #     mega_dict_in_ram[name] = np.load(name, allow_pickle=allow_pickle)
+    #     return mega_dict_in_ram[name]
+    return np.load(name, allow_pickle=allow_pickle)
 
 # DATASET
 def prepare_ds(ds_params):
@@ -583,7 +584,7 @@ def get_best_result(training_combinations, eval_datasets=DEFAULT_EVALUATION_DATA
     best_MSE = np.min(MSEs)
     return best_comb, best_MSE, MSEs
 
-def get_all_paramters_dict(training_comb):
+def get_all_parameters_dict(training_comb):
     name = training_comb['name']
     #check if the name exists
     comb_path = f'tmp/training_combinations/{name}.npz'
@@ -627,7 +628,7 @@ def get2D_MSEs_for(param1, param2, training_combinations,
     p2_values = {}
     p12_values = {}
     for tr in tqdm(training_combinations):
-        params = get_all_paramters_dict(tr)
+        params = get_all_parameters_dict(tr)
         assert param1 in params.keys(), f'Parameter {param1} does not exist'
         assert param2 in params.keys(), f'Parameter {param2} does not exist'
         p1_val = float(params[param1])
@@ -700,21 +701,87 @@ def get2D_MSEs_for(param1, param2, training_combinations,
     return p12_values_stds
 
 
-def get_STDs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS+LIST_SIM_DATASETS, list_names=LIST_REAL_DATASETS_NAMES+LIST_SIM_DATASETS_NAMES, plot=True, log=False, save=True):
+def get_STDs_for(parameter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS+LIST_SIM_DATASETS, list_names=LIST_REAL_DATASETS_NAMES+LIST_SIM_DATASETS_NAMES, plot=True, log=False, save=True):
     list_param_values = []
     list_STDs = []
     for eval_datasets in list_eval_datasets:
         param_values = {}
         for tr in tqdm(training_combinations):
-            params = get_all_paramters_dict(tr)
-            assert paramter in params.keys(), f'Parameter {paramter} does not exist'
-            p_val = float(params[paramter])
+            params = get_all_parameters_dict(tr)
+            assert parameter in params.keys(), f'Parameter {parameter} does not exist'
+            p_val = float(params[parameter])
             if p_val not in param_values.keys():
                 param_values[p_val] = []
             param_values[p_val].append(tr)
         min_num_vals = np.min([len(v) for v in param_values.values()])
         max_num_vals = np.max([len(v) for v in param_values.values()])
-        print(f'Found {len(param_values.keys())} different values for {paramter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
+        print(f'Found {len(param_values.keys())} different values for {parameter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
+        if len(param_values.keys()) == 1:
+            clear_output()
+            return None
+        param_values_mses = {}
+        for p_val in tqdm(param_values.keys()):
+            tmpSTDs = [] 
+            for tr in param_values[p_val]:
+                for ev_ds in eval_datasets:
+                    comb_name = tr['name']
+                    ds_train_combination_path = f'tmp/evals/eval_{ev_ds}___{comb_name}.npz'
+                    npz = my_load(ds_train_combination_path, allow_pickle=True)
+                    hes, est_hes = npz['hes'], npz['est_hes']
+                    assert hes.shape == est_hes.shape, f'hes.shape={hes.shape}, est_hes.shape={est_hes.shape}'
+                    tmpSTDs.append(np.std(hes-est_hes))
+            param_values_mses[p_val] = np.mean(np.array(tmpSTDs))
+        param_values = np.array(list(param_values_mses.keys()))
+        mses = np.array(list(param_values_mses.values()))
+        mses = np.rad2deg(mses)
+        list_param_values.append(param_values)
+        list_STDs.append(mses)
+    
+    if plot:
+        titles = {'name':'Name', 'steer_noise_level': 'Steering Noise Level', 'he_distance': 'LHE Distance', 
+                  'canny1': 'Canny 1', 'canny2': 'Canny2', 'blur': 'Blur', 'img_noise': 'Image Noise', 
+                  'keep_bottom': 'Bottom Crop', 'img_size': 'Image Size', 'ds_length': 'Dataset Length', 'lr': 'Learning Rate', 
+                  'batch_size': 'Batch Size', 'epochs': 'Epochs', 'L1_lambda': 'L1 Lambda', 'L2_lambda': 'L2 Lambda', 'weight_decay': 'Weight Decay', 'dropout': 'Dropout'}
+        ds_names = ['Real Clean DS', 'Real Noisy DS', 'Real Datasets', 'Sim Clean DS', 'Sim Noisy DS', 'Simulation Datasets']
+        clear_output()
+        # fig,ax = plt.subplots(figsize=(10, 4))
+        fig,ax = plt.subplots(figsize=(8, 3))
+        for i, (param_values, mses, eval_datasets) in enumerate(zip(list_param_values, list_STDs, list_eval_datasets)):
+            if i < 3 and i == 2:
+                ax.scatter(param_values, mses, color=C1)
+                ax.plot(param_values, mses, label=f'{ds_names[i]}', color=C1)
+            elif i >= 3 and i == 5:
+                ax.scatter(param_values, mses, color=C2)
+                ax.plot(param_values, mses, label=f'{ds_names[i]}', color=C2)
+            else: pass
+        ax.set_xlabel(titles[parameter])
+        ax.set_ylabel('STD (deg)')
+        ax.set_title(f'STD for different {titles[parameter]}')
+        ax.legend()
+        ax.grid()
+        if log: ax.set_xscale('log')
+        plt.tight_layout()
+        plt.show()
+        if save:
+            fig.savefig(f'thesis_figures/STD_plot_{parameter}.eps', format='eps', dpi=5000)
+
+    return param_values_mses
+    
+def get_STDs_for2(parameter, training_combinations, list_eval_datasets=LIST_REAL_DATASETS+LIST_SIM_DATASETS, list_names=LIST_REAL_DATASETS_NAMES+LIST_SIM_DATASETS_NAMES, plot=True, log=False, save=True):
+    list_param_values = []
+    list_STDs = []
+    for eval_datasets in list_eval_datasets:
+        param_values = {}
+        for tr in tqdm(training_combinations):
+            params = get_all_parameters_dict(tr)
+            assert parameter in params.keys(), f'Parameter {parameter} does not exist'
+            p_val = float(params[parameter])
+            if p_val not in param_values.keys():
+                param_values[p_val] = []
+            param_values[p_val].append(tr)
+        min_num_vals = np.min([len(v) for v in param_values.values()])
+        max_num_vals = np.max([len(v) for v in param_values.values()])
+        print(f'Found {len(param_values.keys())} different values for {parameter}, min_num_vals={min_num_vals}, max_num_vals={max_num_vals}')
 
         if len(param_values.keys()) == 1:
             clear_output()
@@ -730,11 +797,7 @@ def get_STDs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_D
                     hes, est_hes = npz['hes'], npz['est_hes']
                     assert hes.shape == est_hes.shape, f'hes.shape={hes.shape}, est_hes.shape={est_hes.shape}'
                     tmpSTDs.append(np.std(hes-est_hes))
-                    # mse = np.mean(np.square(hes-est_hes))
-                    # mse = npz['mse']
-                    # tmpSTDs.append(mse)
             param_values_mses[p_val] = np.mean(np.array(tmpSTDs))
-            # print(f'p_val={p_val}, mses={tmpSTDs}, mean={param_values_mses[p_val]}')
         param_values = np.array(list(param_values_mses.keys()))
         mses = np.array(list(param_values_mses.values()))
         mses = np.rad2deg(mses)
@@ -742,17 +805,24 @@ def get_STDs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_D
         list_STDs.append(mses)
     
     if plot:
+        titles = {'name':'Name', 'steer_noise_level': 'Steering Noise Level', 'he_distance': 'LHE Distance', 
+                  'canny1': 'Canny 1', 'canny2': 'Canny2', 'blur': 'Blur', 'img_noise': 'Image Noise', 
+                  'keep_bottom': 'Bottom Crop', 'img_size': 'Image Size', 'ds_length': 'Dataset Length'}
+        ds_names = ['Real Clean DS', 'Real Noisy DS', 'All Real DS', 'Sim Clean DS', 'Sim Noisy DS', 'All Sim DS']
         clear_output()
         fig,ax = plt.subplots(figsize=(10, 4))
         for i, (param_values, mses, eval_datasets) in enumerate(zip(list_param_values, list_STDs, list_eval_datasets)):
             if i < 3:
-                ax.plot(param_values, mses, label=f'{eval_datasets}', color=MY_COLORS[i])
-            else:
-                ax.plot(param_values, mses, label=f'{eval_datasets}', color=MY_COLORS[i-3], linestyle='--')
-        ax.set_xlabel(paramter)
+                ax.scatter(param_values, mses, color=MY_COLORS[i])
+                ax.plot(param_values, mses, label=f'{ds_names[i]}', color=MY_COLORS[i])
+            elif i >= 3:
+                ax.scatter(param_values, mses, color=MY_COLORS[i-3])
+                ax.plot(param_values, mses, label=f'{ds_names[i]}', color=MY_COLORS[i-3], linestyle='--')
+            else: raise ValueError('Something went wrong')
+        ax.set_xlabel(titles[parameter])
         ax.set_ylabel('STD (deg)')
-        ax.set_title(f'STD for different {paramter}')
-        ax.legend(list_names)
+        ax.set_title(f'STD for different {titles[parameter]}')
+        ax.legend()
         ax.grid()
         if log:
             ax.set_xscale('log')
@@ -760,10 +830,14 @@ def get_STDs_for(paramter, training_combinations, list_eval_datasets=LIST_REAL_D
         plt.tight_layout()
         plt.show()
         if save:
-            fig.savefig(f'thesis_figures/STD_plot_{paramter}.eps', format='eps', dpi=5000)
+            fig.savefig(f'thesis_figures/STD_plot_{parameter}.eps', format='eps', dpi=5000)
 
     return param_values_mses
     
+
+
+
+
 
 
 
