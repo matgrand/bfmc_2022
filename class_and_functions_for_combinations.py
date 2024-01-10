@@ -211,15 +211,15 @@ def check_name(name):
 
 mega_dict_in_ram = {}
 def my_load(name, allow_pickle=True):
-    # global mega_dict_in_ram
-    # if name not in all_names_used:
-    #     all_names_used.append(name)
-    # if name in mega_dict_in_ram.keys():
-    #     return mega_dict_in_ram[name]
-    # else:
-    #     mega_dict_in_ram[name] = np.load(name, allow_pickle=allow_pickle)
-    #     return mega_dict_in_ram[name]
-    return np.load(name, allow_pickle=allow_pickle)
+    global mega_dict_in_ram
+    if name not in all_names_used:
+        all_names_used.append(name)
+    if name in mega_dict_in_ram.keys():
+        return mega_dict_in_ram[name]
+    else:
+        mega_dict_in_ram[name] = np.load(name, allow_pickle=allow_pickle)
+        return mega_dict_in_ram[name]
+    # return np.load(name, allow_pickle=allow_pickle)
 
 # DATASET
 def prepare_ds(ds_params):
