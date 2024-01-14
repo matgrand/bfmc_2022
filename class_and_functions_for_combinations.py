@@ -748,7 +748,8 @@ def get_STDs_for(parameter, training_combinations, list_eval_datasets=LIST_REAL_
         ds_names = ['Real Clean DS', 'Real Noisy DS', 'Real Datasets', 'Sim Clean DS', 'Sim Noisy DS', 'Simulation Datasets']
         clear_output()
         # fig,ax = plt.subplots(figsize=(10, 4))
-        fig,ax = plt.subplots(figsize=(8, 3.5))
+        # fig,ax = plt.subplots(figsize=(8, 3.5))
+        fig,ax = plt.subplots(figsize=(6, 3))
         for i, (param_values, mses, eval_datasets) in enumerate(zip(list_param_values, list_STDs, list_eval_datasets)):
             if i < 3 and i == 2:
                 ax.scatter(param_values, mses, color=C1)
