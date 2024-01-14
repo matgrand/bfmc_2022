@@ -211,15 +211,15 @@ def check_name(name):
 
 mega_dict_in_ram = {}
 def my_load(name, allow_pickle=True):
-    global mega_dict_in_ram
-    if name not in all_names_used:
-        all_names_used.append(name)
-    if name in mega_dict_in_ram.keys():
-        return mega_dict_in_ram[name]
-    else:
-        mega_dict_in_ram[name] = np.load(name, allow_pickle=allow_pickle)
-        return mega_dict_in_ram[name]
-    # return np.load(name, allow_pickle=allow_pickle)
+    # global mega_dict_in_ram
+    # if name not in all_names_used:
+    #     all_names_used.append(name)
+    # if name in mega_dict_in_ram.keys():
+    #     return mega_dict_in_ram[name]
+    # else:
+    #     mega_dict_in_ram[name] = np.load(name, allow_pickle=allow_pickle)
+    #     return mega_dict_in_ram[name]
+    return np.load(name, allow_pickle=allow_pickle)
 
 # DATASET
 def prepare_ds(ds_params):
@@ -480,10 +480,13 @@ REAL_NOISY_DATASETS = ['cw6', 'acw6' ,'cw8', 'acw8', 'cw10', 'acw10']#['acw10', 
 REAL_CLEAN_DATASETS = ['cw0', 'acw0', 'cw2', 'acw2', 'cw4', 'acw4']
 SIM_NOISY_DATASETS = ['cw6_SIM', 'acw6_SIM', 'cw8_SIM', 'acw8_SIM', 'cw10_SIM', 'acw10_SIM']
 SIM_CLEAN_DATASETS = ['cw0_SIM', 'acw0_SIM', 'cw2_SIM', 'acw2_SIM', 'cw4_SIM', 'acw4_SIM']
-ALL_EVALUATION_DATASETS = REAL_NOISY_DATASETS + REAL_CLEAN_DATASETS + SIM_NOISY_DATASETS + SIM_CLEAN_DATASETS#REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
+ALL_REAL_EVAL_DATASETS = REAL_NOISY_DATASETS + REAL_CLEAN_DATASETS
+ALL_SIM_EVAL_DATASETS = SIM_NOISY_DATASETS + SIM_CLEAN_DATASETS
+# ALL_EVALUATION_DATASETS = REAL_NOISY_DATASETS + REAL_CLEAN_DATASETS + SIM_NOISY_DATASETS + SIM_CLEAN_DATASETS#REAL_EVALUATION_DATASETS + SIM_EVALUATION_DATASETS
+ALL_EVALUATION_DATASETS = ALL_REAL_EVAL_DATASETS + ALL_SIM_EVAL_DATASETS
 DEFAULT_EVALUATION_DATASETS = ALL_EVALUATION_DATASETS
-LIST_REAL_DATASETS = [REAL_CLEAN_DATASETS, REAL_NOISY_DATASETS, REAL_CLEAN_DATASETS + REAL_NOISY_DATASETS]
-LIST_SIM_DATASETS = [SIM_CLEAN_DATASETS, SIM_NOISY_DATASETS, SIM_CLEAN_DATASETS + SIM_NOISY_DATASETS]
+LIST_REAL_DATASETS = [REAL_CLEAN_DATASETS, REAL_NOISY_DATASETS, ALL_REAL_EVAL_DATASETS]
+LIST_SIM_DATASETS = [SIM_CLEAN_DATASETS, SIM_NOISY_DATASETS, ALL_SIM_EVAL_DATASETS]
 LIST_REAL_DATASETS_NAMES = ['Real clean datasets', 'Real noisy datasets', 'All real evaluation datasets']
 LIST_SIM_DATASETS_NAMES = ['Sim clean datasets', 'Sim noisy datasets', 'All sim evaluation datasets']
 C1 = (155/255, 0/255 ,20/255)
@@ -738,14 +741,14 @@ def get_STDs_for(parameter, training_combinations, list_eval_datasets=LIST_REAL_
         list_STDs.append(mses)
     
     if plot:
-        titles = {'name':'Name', 'steer_noise_level': 'Steering Noise Level', 'he_distance': 'LHE Distance', 
-                  'canny1': 'Canny 1', 'canny2': 'Canny2', 'blur': 'Blur', 'img_noise': 'Image Noise', 
+        titles = {'name':'Name', 'steer_noise_level': 'Longitudinal and Lateral Noise STD [deg]', 
+                  'he_distance': 'LHE Distance [m]', 'canny1': 'Canny 1', 'canny2': 'Canny2', 'blur': 'Blur', 'img_noise': 'Image Noise', 
                   'keep_bottom': 'Bottom Crop', 'img_size': 'Image Size', 'ds_length': 'Dataset Length', 'lr': 'Learning Rate', 
                   'batch_size': 'Batch Size', 'epochs': 'Epochs', 'L1_lambda': 'L1 Lambda', 'L2_lambda': 'L2 Lambda', 'weight_decay': 'Weight Decay', 'dropout': 'Dropout'}
         ds_names = ['Real Clean DS', 'Real Noisy DS', 'Real Datasets', 'Sim Clean DS', 'Sim Noisy DS', 'Simulation Datasets']
         clear_output()
         # fig,ax = plt.subplots(figsize=(10, 4))
-        fig,ax = plt.subplots(figsize=(8, 3))
+        fig,ax = plt.subplots(figsize=(8, 3.5))
         for i, (param_values, mses, eval_datasets) in enumerate(zip(list_param_values, list_STDs, list_eval_datasets)):
             if i < 3 and i == 2:
                 ax.scatter(param_values, mses, color=C1)
@@ -755,15 +758,16 @@ def get_STDs_for(parameter, training_combinations, list_eval_datasets=LIST_REAL_
                 ax.plot(param_values, mses, label=f'{ds_names[i]}', color=C2)
             else: pass
         ax.set_xlabel(titles[parameter])
-        ax.set_ylabel('STD (deg)')
-        ax.set_title(f'STD for different {titles[parameter]}')
+        ax.set_ylabel('STD [deg]')
+        # ax.set_title(f'STD for different {titles[parameter]}')
         ax.legend()
         ax.grid()
+        ax.set_axisbelow(True)
         if log: ax.set_xscale('log')
         plt.tight_layout()
         plt.show()
-        if save:
-            fig.savefig(f'thesis_figures/STD_plot_{parameter}.eps', format='eps', dpi=5000)
+        if save: fig.savefig(f'thesis_figures/STD_plot_{parameter}.eps', format='eps', dpi=100)
+        os.system(f'epspdf thesis_figures/STD_plot_{parameter}.eps') #convert to pdf
 
     return param_values_mses
     
