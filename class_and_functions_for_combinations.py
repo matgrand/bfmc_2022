@@ -741,7 +741,7 @@ def get_STDs_for(parameter, training_combinations, list_eval_datasets=LIST_REAL_
         list_STDs.append(mses)
     
     if plot:
-        titles = {'name':'Name', 'steer_noise_level': 'Longitudinal and Lateral Noise STD [deg]', 
+        titles = {'name':'Name', 'steer_noise_level': 'Longitudinal Noise STD [deg]', 
                   'he_distance': 'LHE Distance [m]', 'canny1': 'Canny 1', 'canny2': 'Canny2', 'blur': 'Blur', 'img_noise': 'Image Noise', 
                   'keep_bottom': 'Bottom Crop', 'img_size': 'Image Size', 'ds_length': 'Dataset Length', 'lr': 'Learning Rate', 
                   'batch_size': 'Batch Size', 'epochs': 'Epochs', 'L1_lambda': 'L1 Lambda', 'L2_lambda': 'L2 Lambda', 'weight_decay': 'Weight Decay', 'dropout': 'Dropout'}
