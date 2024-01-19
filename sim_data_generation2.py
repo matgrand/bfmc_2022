@@ -1,12 +1,9 @@
 
-from audioop import tomono
 import os, signal, rospy
-from turtle import color
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
 from time import sleep, time
-from shutil import get_terminal_size
 from Simulator.src.helper_functions import *
 from tqdm import tqdm # progress bar
 
